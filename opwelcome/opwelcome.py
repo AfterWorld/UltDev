@@ -2,6 +2,7 @@ import discord
 from discord.ext import tasks
 from redbot.core import commands, Config
 from datetime import datetime
+import aiohttp
 
 class OPWelcome(commands.Cog):
     def __init__(self, bot):
@@ -129,6 +130,17 @@ class OPWelcome(commands.Cog):
         """Test the welcome message."""
         await self.on_member_join(ctx.author)
 
+    async def fetch_amari_xp(self, guild_id, user_id):
+        url = f"https://amaribot.com/api/v1/guild/{guild_id}/member/{user_id}"
+        headers = {"Authorization": "79aa90dbcf5267516433b828.71cc12.9bf4a8a3663d9213aa3a6f6c3da"}  # Replace with your actual Amari API token
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return data.get("total_exp", 0), data.get("level", 0)
+                else:
+                    return None, None
+
     @commands.Cog.listener()
     async def on_member_join(self, member):
         guild = member.guild
@@ -196,12 +208,13 @@ class OPWelcome(commands.Cog):
             inline=False
         )
 
-        # Join Date and XP (assuming an XP system is available)
+        # Join Date and XP
         join_date = member.joined_at.strftime("%Y-%m-%d %H:%M:%S")
-        xp = "XP system not configured."  # Placeholder for actual XP value
+        xp, level = await self.fetch_amari_xp(guild.id, member.id)
+        xp_info = f"**XP:** {xp}\n**Level:** {level}" if xp is not None and level is not None else "XP system not configured."
         embed.add_field(
             name="Member Info",
-            value=f"**Join Date:** {join_date}\n**XP:** {xp}",
+            value=f"**Join Date:** {join_date}\n{xp_info}",
             inline=False
         )
 
@@ -214,9 +227,6 @@ class OPWelcome(commands.Cog):
                 welcome_role = guild.get_role(welcome_role_id)
                 if welcome_role:
                     await member.add_roles(welcome_role)
-            # Adding reactions for quick interactions
-            await welcome_message.add_reaction("✅")  # Acknowledge rules
-            await welcome_message.add_reaction("❓")  # Ask for help
 
             # Moderation Alerts
             mod_channel_id = await self.config.guild(guild).mod_channel()
