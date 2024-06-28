@@ -11,7 +11,7 @@ class OnePieceInfo(commands.Cog):
         self.bot = bot
 
     @commands.command()
-    async def onepiece_info(self, ctx):
+    async def onepiece(self, ctx):
         """Shows One Piece themed information about the One Piece Community."""
         python_version = "{}.{}.{}".format(*sys.version_info[:3])
         dpy_version = discord.__version__
