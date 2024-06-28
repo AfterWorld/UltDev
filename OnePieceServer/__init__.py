@@ -1,4 +1,4 @@
-from .onepieceserver import OnePieceServer
+from .modified_core import setup
 
 async def setup(bot):
-    await bot.add_cog(OnePieceServer(bot))
+    await setup(bot)
