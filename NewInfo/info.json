@@ -1,10 +1,10 @@
 {
     "author": ["UltPanda"],
-    "install_msg": "The core info command has been modified with a One Piece theme!",
-    "name": "ModifiedCore",
-    "short": "Modifies the core info command with a One Piece theme.",
-    "description": "This cog replaces the default Red info command with a One Piece themed version.",
-    "tags": ["core", "modification", "one piece"],
+    "install_msg": "The One Piece themed info command has been installed! Use `[p]onepiece_info` to see it in action.",
+    "name": "OnePieceInfo",
+    "short": "Provides a One Piece themed info command.",
+    "description": "This cog adds a new `onepiece_info` command that displays server information with a One Piece theme.",
+    "tags": ["info", "one piece", "theme"],
     "min_bot_version": "3.5.0",
     "end_user_data_statement": "This cog does not persistently store any data or metadata about users."
 }
