@@ -1,16 +1,17 @@
 import discord
 from redbot.core import commands
 from redbot.core.bot import Red
-from redbot.core.commands import Core
 import sys
 
-class ModifiedCore(Core):
+class OnePieceInfo(commands.Cog):
+    """Provides a One Piece themed info command."""
+
     def __init__(self, bot: Red):
-        super().__init__(bot)
+        self.bot = bot
 
     @commands.command()
-    async def info(self, ctx):
-        """Shows information about the Grand Line Discord <:strawhat:1243924879045034075>."""
+    async def onepiece_info(self, ctx):
+        """Shows One Piece themed information about the Grand Line Discord <:strawhat:1243924879045034075>."""
         python_version = "{}.{}.{}".format(*sys.version_info[:3])
         dpy_version = discord.__version__
         red_version = self.bot.__version__
@@ -26,7 +27,4 @@ class ModifiedCore(Core):
         await ctx.send(embed=embed)
 
 async def setup(bot: Red):
-    core = bot.get_cog("Core")
-    if core:
-        await bot.remove_cog("Core")
-    await bot.add_cog(ModifiedCore(bot))
+    await bot.add_cog(OnePieceInfo(bot))
