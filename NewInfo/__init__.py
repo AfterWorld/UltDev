@@ -1,4 +1,4 @@
-from .modified_core import setup
+from .onepiece_info import setup
 
 async def setup(bot):
     await setup(bot)
