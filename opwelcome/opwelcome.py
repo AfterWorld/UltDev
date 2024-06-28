@@ -14,7 +14,8 @@ class OPWelcome(commands.Cog):
                 "Ahoy, {mention}! Welcome aboard the {guild} crew! 🏴‍☠️\n\n"
                 "You've just set sail on an incredible adventure in the world of One Piece! 🌊"
             ),
-            "welcome_role": None
+            "welcome_role": None,
+            "mod_channel": None
         }
         self.config.register_guild(**default_guild)
 
@@ -29,6 +30,12 @@ class OPWelcome(commands.Cog):
         """Set the welcome channel."""
         await self.config.guild(ctx.guild).welcome_channel.set(channel.id)
         await ctx.send(f"Welcome channel set to {channel.mention} 🌟")
+
+    @welcome.command()
+    async def modchannel(self, ctx, channel: discord.TextChannel):
+        """Set the moderation alert channel."""
+        await self.config.guild(ctx.guild).mod_channel.set(channel.id)
+        await ctx.send(f"Moderation alert channel set to {channel.mention} 🛡️")
 
     @welcome.command()
     async def toggle(self, ctx):
@@ -189,15 +196,34 @@ class OPWelcome(commands.Cog):
             inline=False
         )
 
+        # Join Date and XP (assuming an XP system is available)
+        join_date = member.joined_at.strftime("%Y-%m-%d %H:%M:%S")
+        xp = "XP system not configured."  # Placeholder for actual XP value
+        embed.add_field(
+            name="Member Info",
+            value=f"**Join Date:** {join_date}\n**XP:** {xp}",
+            inline=False
+        )
+
         embed.set_footer(text=f"Member #{guild.member_count}")
 
         try:
-            await channel.send(embed=embed)
+            welcome_message = await channel.send(embed=embed)
             welcome_role_id = await self.config.guild(guild).welcome_role()
             if welcome_role_id:
                 welcome_role = guild.get_role(welcome_role_id)
                 if welcome_role:
                     await member.add_roles(welcome_role)
+            # Adding reactions for quick interactions
+            await welcome_message.add_reaction("✅")  # Acknowledge rules
+            await welcome_message.add_reaction("❓")  # Ask for help
+
+            # Moderation Alerts
+            mod_channel_id = await self.config.guild(guild).mod_channel()
+            if mod_channel_id:
+                mod_channel = guild.get_channel(mod_channel_id)
+                if mod_channel:
+                    await mod_channel.send(f"{member.mention} has joined the server.")
         except discord.Forbidden:
             await guild.owner.send(f"I don't have permission to send messages in {channel.mention}")
 
