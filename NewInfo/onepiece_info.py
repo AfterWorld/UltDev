@@ -26,5 +26,5 @@ class OnePieceInfo(commands.Cog):
         embed.add_field(inline=False, name="", value=(f"**<:log_pose:1252942734738591776> Python Version: {python_version} \n<:den_den_mushi:1252942959855276143> discord.py: {dpy_version} \n<:sunny:1244503516039348234> Red version: {red_version} \n🏴‍☠️ Ping : {ping}ms\n**"))
         await ctx.send(embed=embed)
 
-async def setup(bot: Red):
-    await bot.add_cog(OnePieceInfo(bot))
+async def setup(bot):
+    bot.add_cog(OnePieceInfo(bot))
