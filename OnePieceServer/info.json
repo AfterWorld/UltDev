@@ -1,10 +1,10 @@
 {
     "author": ["UltPanda"],
-    "install_msg": "Thank you for installing the One Piece Server cog! Set sail for adventure with `[p]help OnePieceServer`!",
-    "name": "OnePieceServer",
-    "short": "A One Piece themed cog for your Discord server.",
-    "description": "This cog provides One Piece themed commands and information for your Discord server. Join the adventure in the Grand Line!",
-    "tags": ["one piece", "anime", "fun", "server"],
+    "install_msg": "The core info command has been modified with a One Piece theme!",
+    "name": "ModifiedCore",
+    "short": "Modifies the core info command with a One Piece theme.",
+    "description": "This cog replaces the default Red info command with a One Piece themed version.",
+    "tags": ["core", "modification", "one piece"],
     "min_bot_version": "3.5.0",
     "end_user_data_statement": "This cog does not persistently store any data or metadata about users."
 }
