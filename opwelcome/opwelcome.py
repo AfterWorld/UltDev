@@ -1,7 +1,5 @@
 import discord
-from discord.ext import tasks
 from redbot.core import commands, Config
-from redbot.core.utils.chat_formatting import box
 from datetime import datetime
 
 class OPWelcome(commands.Cog):
@@ -39,10 +37,19 @@ class OPWelcome(commands.Cog):
         await ctx.send(f"Welcome message {state}. 🟢" if state == "enabled" else f"Welcome message {state}. 🔴")
 
     @welcome.command()
-    async def message(self, ctx, *, welcome_message: str):
-        """Set a custom welcome message."""
-        await self.config.guild(ctx.guild).welcome_message.set(welcome_message)
-        await ctx.send("Welcome message updated! 📝")
+    async def message(self, ctx, *, welcome_message: str = None):
+        """Set a custom welcome message or reset to default if no message is provided."""
+        default_message = (
+            "Ahoy, {mention}! Welcome aboard the {guild} crew! 🏴‍☠️\n\n"
+            "You've just set sail on an incredible adventure in the world of One Piece! 🌊"
+        )
+        if not welcome_message:
+            welcome_message = default_message
+            await self.config.guild(ctx.guild).welcome_message.set(default_message)
+            await ctx.send("Welcome message has been reset to the default. 📝")
+        else:
+            await self.config.guild(ctx.guild).welcome_message.set(welcome_message)
+            await ctx.send("Welcome message updated! 📝")
 
     @welcome.command()
     async def test(self, ctx):
