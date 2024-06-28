@@ -73,10 +73,9 @@ class OPWelcome(commands.Cog):
             name="Server Information",
             value=(
                 "🏴‍☠️ **Crew Quarters (channels):**\n"
-                "• #rules-and-info - Essential laws of the sea 📜\n"
-                "• #general-chat - Main deck for casual conversations 💬\n"
-                "• #devil-fruit-discussion - Discuss powerful abilities 🍎\n"
-                "• #bounty-board - Check your rank and rewards 🏆"
+                "• <#425068612542398476> - General 💬\n"
+                "• <#590972222366023718> - Rules 📜\n"
+                "• <#597528644432166948> - Roles 🏷️"
             ),
             inline=False
         )
