@@ -211,7 +211,7 @@ class OPWelcome(commands.Cog):
         # Join Date and XP
         join_date = member.joined_at.strftime("%Y-%m-%d %H:%M:%S")
         xp, level = await self.fetch_amari_xp(guild.id, member.id)
-        xp_info = f"**XP:** {xp}\n**Level:** {level}" if xp is not None and level is not None else "XP system not configured."
+        xp_info = f"**Level:** {level}" if level is not None else "XP system not configured."
         embed.add_field(
             name="Member Info",
             value=f"**Join Date:** {join_date}\n{xp_info}",
