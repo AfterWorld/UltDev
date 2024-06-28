@@ -1,6 +1,6 @@
 import discord
 from redbot.core import commands
-from redbot.core.bot import Red
+from redbot import __version__ as red_version
 import sys
 
 class OnePieceInfo(commands.Cog):
@@ -14,7 +14,6 @@ class OnePieceInfo(commands.Cog):
         """Shows One Piece themed information about the Grand Line Discord <:strawhat:1243924879045034075>."""
         python_version = "{}.{}.{}".format(*sys.version_info[:3])
         dpy_version = discord.__version__
-        red_version = self.bot.__version__
         ping = round(self.bot.latency * 1000)
 
         title = "Grand Line Discord <:strawhat:1243924879045034075>"
