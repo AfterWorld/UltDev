@@ -75,5 +75,5 @@ class OPWelcome(commands.Cog):
 
         await channel.send(welcome_message)
 
-def setup(bot):
+async def setup(bot):
     bot.add_cog(OPWelcome(bot))
