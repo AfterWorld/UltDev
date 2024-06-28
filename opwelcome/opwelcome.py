@@ -1,6 +1,7 @@
 import discord
 from redbot.core import commands, Config
 from redbot.core.utils.chat_formatting import box
+from datetime import datetime
 
 class OPWelcome(commands.Cog):
     def __init__(self, bot):
@@ -56,8 +57,13 @@ class OPWelcome(commands.Cog):
                 f"Ahoy, {member.mention}! Welcome aboard the {guild.name} crew! 🏴‍☠️\n\n"
                 "You've just set sail on an incredible adventure in the world of One Piece! 🌊"
             ),
-            color=discord.Color.blue()
+            color=discord.Color.blue(),
+            timestamp=datetime.utcnow()
         )
+
+        embed.set_thumbnail(url=member.display_avatar.url)
+        embed.set_image(url="https://example.com/path/to/welcome/banner.png")  # Add a relevant welcome banner URL
+        embed.set_author(name=guild.name, icon_url=guild.icon.url)
 
         embed.add_field(
             name="About One Piece",
@@ -95,8 +101,7 @@ class OPWelcome(commands.Cog):
             inline=False
         )
 
-        embed.set_thumbnail(url=member.display_avatar.url)
-        embed.set_image(url="https://example.com/path/to/welcome/image.png")  # Add a relevant image URL
+        embed.set_footer(text=f"Member #{guild.member_count}")
 
         await channel.send(embed=embed)
 
