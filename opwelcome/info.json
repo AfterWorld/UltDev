@@ -1,0 +1,12 @@
+{
+    "author": ["UltPanda"],
+    "install_msg": "Thank you for installing OPWelcome! Configure the welcome message using `[p]welcome channel` and toggle it with `[p]welcome toggle`.",
+    "name": "OPWelcome",
+    "short": "A One Piece themed welcome cog.",
+    "description": "Provides a One Piece themed welcome message for new members.",
+    "version": "1.0.0",
+    "required_cogs": {},
+    "requirements": [],
+    "tags": ["welcome", "one piece", "greeting"],
+    "type": "COG"
+}
