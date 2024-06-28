@@ -1,4 +1,5 @@
 import discord
+from discord.ext import tasks
 from redbot.core import commands, Config
 from redbot.core.utils.chat_formatting import box
 from datetime import datetime
@@ -10,10 +11,15 @@ class OPWelcome(commands.Cog):
         default_guild = {
             "welcome_channel": None,
             "welcome_enabled": False,
+            "welcome_message": (
+                "Ahoy, {mention}! Welcome aboard the {guild} crew! 🏴‍☠️\n\n"
+                "You've just set sail on an incredible adventure in the world of One Piece! 🌊"
+            ),
         }
         self.config.register_guild(**default_guild)
 
     @commands.group()
+    @commands.admin_or_permissions(manage_guild=True)
     async def welcome(self, ctx):
         """Manage welcome settings."""
         pass
@@ -31,6 +37,12 @@ class OPWelcome(commands.Cog):
         await self.config.guild(ctx.guild).welcome_enabled.set(not current)
         state = "enabled" if not current else "disabled"
         await ctx.send(f"Welcome message {state}. 🟢" if state == "enabled" else f"Welcome message {state}. 🔴")
+
+    @welcome.command()
+    async def message(self, ctx, *, welcome_message: str):
+        """Set a custom welcome message."""
+        await self.config.guild(ctx.guild).welcome_message.set(welcome_message)
+        await ctx.send("Welcome message updated! 📝")
 
     @welcome.command()
     async def test(self, ctx):
@@ -51,12 +63,15 @@ class OPWelcome(commands.Cog):
         if not channel:
             return
 
+        welcome_message_template = await self.config.guild(guild).welcome_message()
+        welcome_message = welcome_message_template.format(
+            mention=member.mention,
+            guild=guild.name
+        )
+
         embed = discord.Embed(
             title="Ahoy, New Crew Member!",
-            description=(
-                f"Ahoy, {member.mention}! Welcome aboard the {guild.name} crew! 🏴‍☠️\n\n"
-                "You've just set sail on an incredible adventure in the world of One Piece! 🌊"
-            ),
+            description=welcome_message,
             color=discord.Color.blue(),
             timestamp=datetime.utcnow()
         )
@@ -103,7 +118,10 @@ class OPWelcome(commands.Cog):
 
         embed.set_footer(text=f"Member #{guild.member_count}")
 
-        await channel.send(embed=embed)
+        try:
+            await channel.send(embed=embed)
+        except discord.Forbidden:
+            await guild.owner.send(f"I don't have permission to send messages in {channel.mention}")
 
 def setup(bot):
     bot.add_cog(OPWelcome(bot))
