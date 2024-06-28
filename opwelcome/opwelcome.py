@@ -27,8 +27,8 @@ class OPWelcome(commands.Cog):
     async def toggle(self, ctx):
         """Toggle the welcome message on or off."""
         current = await self.config.guild(ctx.guild).welcome_enabled()
-        await self.config.guild(ctx.guild).welcome_enabled.set(!current)
-        state = "enabled" if !current else "disabled"
+        await self.config.guild(ctx.guild).welcome_enabled.set(not current)
+        state = "enabled" if not current else "disabled"
         await ctx.send(f"Welcome message {state}. 🟢" if state == "enabled" else f"Welcome message {state}. 🔴")
 
     @welcome.command()
