@@ -36,6 +36,7 @@ class OPWelcome(commands.Cog):
         """Test the welcome message."""
         await self.on_member_join(ctx.author)
 
+    @commands.Cog.listener()
     async def on_member_join(self, member):
         guild = member.guild
         if not await self.config.guild(guild).welcome_enabled():
@@ -74,3 +75,6 @@ class OPWelcome(commands.Cog):
         )
 
         await channel.send(welcome_message)
+
+def setup(bot):
+    bot.add_cog(OPWelcome(bot))
