@@ -1,5 +1,6 @@
 import discord
 from redbot.core import commands
+from redbot.core.bot import Red
 from redbot import __version__ as red_version
 import sys
 
