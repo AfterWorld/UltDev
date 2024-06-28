@@ -84,11 +84,6 @@ class OnePieceInfo(commands.Cog):
         )
         embed.add_field(
             inline=False,
-            name='Emojis 😄',
-            value="Most of the emojis used in this bot are taken from NQN, so the credits go to their respective owners."
-        )
-        embed.add_field(
-            inline=False,
             name='Cogs and their creators (Thanks to those awesome people for their work!)',
             value=(
                 "**[aaa3a-cogs](https://github.com/AAA3A-AAA3A/AAA3A-cogs): aaa3a\n"
