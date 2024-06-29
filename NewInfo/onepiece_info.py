@@ -107,7 +107,9 @@ class OnePieceInfo(commands.Cog):
             value=(
                 "`[p]help`: View all commands\n"
                 "`[p]info`: Display this ship's log\n"
-                "`[p]ping`: Test the waters with Aokiji and Akainu"
+                "`[p]ping`: Test the waters with Aokiji and Akainu\n"
+                "`[p]serverinfo: Display the ships info\n"
+                "`[p]userinfo: For the pirates info"
             ),
             inline=True
         )
