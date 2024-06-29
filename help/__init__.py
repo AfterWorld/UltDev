@@ -1,3 +1,0 @@
-from .onepiece_help import OnePieceHelp, setup
-
-__red_end_user_data_statement__ = "This cog does not store any End User Data."
