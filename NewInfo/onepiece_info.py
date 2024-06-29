@@ -13,11 +13,32 @@ old_info = None
 old_ping = None
 
 class OnePieceInfo(commands.Cog):
-    """Provides One Piece themed info and ping commands."""
-
-    def __init__(self, bot: Red):
+    def __init__(self, bot):
         self.bot = bot
+        self.config = Config.get_conf(self, identifier=1234567890)
+        default_global = {"aokiji_wins": 0, "akainu_wins": 0, "ties": 0}
+        self.config.register_global(**default_global)
 
+    def get_latency_description(self, latency):
+        if latency < 50:
+            return "As fast as Luffy's Gear 4th Snakeman!"
+        elif latency < 100:
+            return "Quick as Kizaru's light beams!"
+        elif latency < 200:
+            return "Steady as Whitebeard's earthquake punches!"
+        else:
+            return "Slower than Foxy's Noro Noro Beam..."
+
+    def get_power_up(self, latency):
+        if latency < 50:
+            return "Ultimate Power-Up", 30
+        elif latency < 100:
+            return "Strong Power-Up", 20
+        elif latency < 200:
+            return "Moderate Power-Up", 10
+        else:
+            return "Weak Power-Up", 5
+            
     def cog_unload(self):
         global old_info, old_ping
         if old_info:
@@ -101,60 +122,93 @@ class OnePieceInfo(commands.Cog):
 
     @commands.command()
     async def ping(self, ctx):
-        """Shows a battle between Aokiji and Akainu, with detailed ping information!"""
+        """Initiate an epic battle between Aokiji and Akainu!"""
         start = time.perf_counter()
-        message = await ctx.send("A fierce battle is about to begin on Punk Hazard...")
+        message = await ctx.send("The tension rises on Punk Hazard...")
         end = time.perf_counter()
         message_latency = (end - start) * 1000
-
         websocket_latency = round(self.bot.latency * 1000, 2)
 
-        battle_frames = [
-            "🌋 Akainu: 'I'll show you the power of absolute justice!' ❄️ Aokiji: 'Not if I freeze you first!'",
-            "❄️ Aokiji unleashes his Ice Age! 🌋 Akainu counters with his Meteor Volcano!",
-            "🌋❄️ The attacks collide, creating a massive steam cloud!",
-            "💨💨💨 The steam clears, revealing the outcome...",
-        ]
-
         embed = discord.Embed(title="Battle on Punk Hazard: Aokiji vs Akainu", color=discord.Color.orange())
-        embed.set_footer(text="May the strongest prevail!")
+        embed.set_thumbnail(url="https://example.com/punk_hazard.jpg")
 
-        for frame in battle_frames:
-            embed.description = frame
-            await message.edit(content=None, embed=embed)
-            await asyncio.sleep(1.5)
+        aokiji_health = akainu_health = 100
+        rounds = 3
 
-        # Randomly determine the battle outcome
-        winner = random.choice(["Aokiji", "Akainu", "Tie"])
+        attacks = {
+            "Aokiji": ["Ice Time", "Ice Block: Partisan", "Ice Age"],
+            "Akainu": ["Great Eruption", "Meteor Volcano", "Hellhound"]
+        }
 
-        if winner == "Aokiji":
-            color = discord.Color.blue()
-            outcome = "Aokiji's ice freezes Akainu's magma! The azure admiral emerges victorious!"
-        elif winner == "Akainu":
-            color = discord.Color.red()
-            outcome = "Akainu's magma overpowers Aokiji's ice! The crimson admiral stands triumphant!"
+        # Latency-based power-ups
+        aokiji_power_up, aokiji_boost = self.get_power_up(websocket_latency)
+        akainu_power_up, akainu_boost = self.get_power_up(message_latency)
+
+        embed.add_field(name="Power-Ups", value=f"Aokiji: {aokiji_power_up} (+{aokiji_boost} damage)\nAkainu: {akainu_power_up} (+{akainu_boost} damage)", inline=False)
+
+        for round in range(1, rounds + 1):
+            embed.add_field(name=f"Round {round}", value="The battle rages on!", inline=False)
+            
+            aokiji_attack = random.choice(attacks["Aokiji"])
+            akainu_attack = random.choice(attacks["Akainu"])
+            
+            aokiji_damage = random.randint(10, 30) + aokiji_boost
+            akainu_damage = random.randint(10, 30) + akainu_boost
+
+            akainu_health -= aokiji_damage
+            aokiji_health -= akainu_damage
+
+            embed.description = f"Aokiji uses {aokiji_attack}! ❄️➡️➡️➡️🌋\n"
+            embed.description += f"Akainu counters with {akainu_attack}! 🌋➡️➡️➡️❄️\n\n"
+            embed.description += f"Aokiji HP: {'█' * (aokiji_health // 10)}{aokiji_health}\n"
+            embed.description += f"Akainu HP: {'█' * (akainu_health // 10)}{akainu_health}"
+
+            await message.edit(embed=embed)
+            await asyncio.sleep(2)
+
+            # Easter egg: random character interruption (5% chance)
+            if random.random() < 0.05:
+                interrupting_characters = ["Garp", "Sengoku", "Blackbeard", "Shanks"]
+                character = random.choice(interrupting_characters)
+                embed.add_field(name="Unexpected Interruption!", value=f"Suddenly, {character} appears and temporarily halts the battle!", inline=False)
+                await message.edit(embed=embed)
+                await asyncio.sleep(2)
+
+        if aokiji_health > akainu_health:
+            winner = "Aokiji"
+            outcome = "The azure admiral freezes his opponent solid!"
+            await self.config.aokiji_wins.set(await self.config.aokiji_wins() + 1)
+        elif akainu_health > aokiji_health:
+            winner = "Akainu"
+            outcome = "The crimson admiral's magma melts through all resistance!"
+            await self.config.akainu_wins.set(await self.config.akainu_wins() + 1)
         else:
-            color = discord.Color.purple()
-            outcome = "It's a draw! Punk Hazard is left half frozen, half burning! Neither admiral could overpower the other!"
+            winner = "Tie"
+            outcome = "Both admirals stand at an impasse, neither willing to yield!"
+            await self.config.ties.set(await self.config.ties() + 1)
 
-        embed.color = color
-        embed.description = outcome
-        embed.add_field(name="Battle Winner", value=winner, inline=False)
-        embed.add_field(name="WebSocket Latency", value=f"{websocket_latency:.2f}ms", inline=True)
-        embed.add_field(name="Message Latency", value=f"{message_latency:.2f}ms", inline=True)
+        embed.add_field(name="Battle Outcome", value=f"{winner}: {outcome}", inline=False)
         
-        # Calculate average latency
-        avg_latency = (websocket_latency + message_latency) / 2
-        embed.add_field(name="Average Latency", value=f"{avg_latency:.2f}ms", inline=True)
+        # Themed latency descriptions
+        embed.add_field(name="WebSocket Latency", value=f"{websocket_latency:.2f}ms\n{self.get_latency_description(websocket_latency)}", inline=True)
+        embed.add_field(name="Message Latency", value=f"{message_latency:.2f}ms\n{self.get_latency_description(message_latency)}", inline=True)
 
-        if avg_latency < 100:
-            speed_comment = "As swift as Kizaru's light!"
-        elif avg_latency < 200:
-            speed_comment = "Moving at the speed of Gear Second!"
-        else:
-            speed_comment = "Slower than Foxy's Noro Noro Beam..."
+        # Leaderboard
+        stats = await self.config.all()
+        embed.add_field(name="Battle Leaderboard", value=f"Aokiji Wins: {stats['aokiji_wins']}\nAkainu Wins: {stats['akainu_wins']}\nTies: {stats['ties']}", inline=False)
 
-        embed.set_footer(text=f"Connection Speed: {speed_comment}")
+        # One Piece trivia
+        trivia_questions = [
+            "What is Aokiji's real name?",
+            "What is Akainu's real name?",
+            "What happened to Punk Hazard after their battle?",
+            "What are Aokiji's and Akainu's Devil Fruit powers?",
+            "Who became Fleet Admiral after this battle?",
+            "What was the duration of Aokiji and Akainu's fight on Punk Hazard?",
+            "What did Aokiji do after leaving the Marines?",
+            "How did the battle on Punk Hazard affect the island's climate?",
+        ]
+        embed.add_field(name="One Piece Trivia", value=random.choice(trivia_questions), inline=False)
 
         await message.edit(embed=embed)
         
