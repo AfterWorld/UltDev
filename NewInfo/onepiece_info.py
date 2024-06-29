@@ -302,7 +302,7 @@ class OnePieceInfo(commands.Cog):
         
         await ctx.send(embed=embed)
 
-   @commands.command()
+    @commands.command()
     async def credits(self, ctx):
         """Shows the credits for Sunny and the server."""
         cog = self.bot.get_cog("Downloader")
