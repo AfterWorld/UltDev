@@ -79,7 +79,7 @@ class OnePieceInfo(commands.Cog):
                 f"**🗺️ Chart Storage:** {disk.percent}% full\n"
                 f"**🌡️ Ocean Temperature:** {ping}ms\n"
             ),
-            inline=True
+            inline=False
         )
 
         embed.add_field(
