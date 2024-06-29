@@ -105,23 +105,23 @@ class OnePieceInfo(commands.Cog):
             inline=False
         )
 
-        # Add fields for each rank with titles and member mentions
+        # Add fields for each rank with titles
         embed.add_field(
             name="🏴‍☠️ **Pirate Crew**",
             value=(
                 "----------------------------------------------------------------------------------\n"
                 "⚔️ **Sun God Nika**: The Supreme Deity\n"
-                "{}\n".format("\n".join(rank_members.get("⚔️ Sun God Nika ⚔️", ["No members"]))) +
+                "{}\n".format("\n".join(rank_members.get("⚔️ Sun God Nika ⚔️", []))) +
                 "🛡️ **GodHand**: The Divine Protectors\n"
-                "{}\n".format("\n".join(rank_members.get("GodHand", ["No members"]))) +
+                "{}\n".format("\n".join(rank_members.get("GodHand", []))) +
                 "👑 **Gorosei**: The Elders of Wisdom\n"
-                "{}\n".format("\n".join(rank_members.get("Gorosei", ["No members"]))) +
+                "{}\n".format("\n".join(rank_members.get("Gorosei", []))) +
                 "⭐️ **Yonko**: The Emperors of the Sea\n"
-                "{}\n".format("\n".join(rank_members.get("⭐️ - Yonko - ⭐️", ["No members"]))) +
+                "{}\n".format("\n".join(rank_members.get("⭐️ - Yonko - ⭐️", []))) +
                 "⚓ **Warlords**: The Government Allies\n"
-                "{}\n".format("\n".join(rank_members.get("⚓️- Warlords - ⚓️", ["No members"]))) +
+                "{}\n".format("\n".join(rank_members.get("⚓️- Warlords - ⚓️", []))) +
                 "⚡ **Worst Generation**: The Rising Stars\n"
-                "{}\n".format("\n".join(rank_members.get("⚡️ - Worst Generation - ⚡️", ["No members"]))) +
+                "{}\n".format("\n".join(rank_members.get("⚡️ - Worst Generation - ⚡️", []))) +
                 "----------------------------------------------------------------------------------\n"
             ),
             inline=False
