@@ -110,7 +110,7 @@ class OnePieceInfo(commands.Cog):
         )
 
         cog_creators = [
-            "**[aaa3a-cogs](https://github.com/AAA3A-AAA3A/AAA3A-cogs): aaa3a",
+            "[aaa3a-cogs](https://github.com/AAA3A-AAA3A/AAA3A-cogs): aaa3a",
             "[ad-cog](https://github.com/aikaterna/gobcog.git): aikaterna",
             "[adrian](https://github.com/designbyadrian/CogsByAdrian.git): thinkadrian",
             "[blizz-cogs](https://git.purplepanda.cc/blizz/blizz-cogs): blizzthewolf",
