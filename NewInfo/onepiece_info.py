@@ -33,7 +33,7 @@ class OnePieceInfo(commands.Cog):
                 pass
             self.bot.add_command(old_ping)
 
-   @commands.command()
+    @commands.command()
     async def info(self, ctx):
         """Shows One Piece themed information about the Thousand Sunny Bot."""
         python_version = "{}.{}.{}".format(*sys.version_info[:3])
