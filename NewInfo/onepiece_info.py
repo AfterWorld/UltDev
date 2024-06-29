@@ -68,7 +68,7 @@ class OnePieceInfo(commands.Cog):
                 f"**🐉 Captain:** {ctx.guild.owner.mention}\n"
                 "----------------------------------------------------------------------------------"
             ),
-            inline=True
+            inline=False
         )
 
         embed.add_field(
