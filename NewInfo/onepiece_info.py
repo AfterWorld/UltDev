@@ -66,7 +66,7 @@ class OnePieceInfo(commands.Cog):
                 f"**🌊 Sailing on:** {guild_count} / {max_guilds} seas\n"
                 f"**⚓ Docked at:** {ctx.guild.name}\n"
                 f"**🐉 Captain:** {ctx.guild.owner.mention}\n"
-                "-----------------------------------------"
+                "----------------------------------------------------------------------------------"
             ),
             inline=True
         )
@@ -78,7 +78,6 @@ class OnePieceInfo(commands.Cog):
                 f"**⚙️ Engine Load:** {cpu_usage}%\n"
                 f"**🗺️ Chart Storage:** {disk.percent}% full\n"
                 f"**🌡️ Ocean Temperature:** {ping}ms\n"
-                "-----------------------------------------"
             ),
             inline=True
         )
@@ -95,7 +94,7 @@ class OnePieceInfo(commands.Cog):
                 "📚 **Robin:** The Historian (Logging and Database)\n"
                 "🛠️ **Franky:** The SUPER Technician (Utility Commands)\n"
                 "🎻 **Brook:** The Soul King of Music (Music Commands)\n"
-                "-----------------------------------------"
+                "----------------------------------------------------------------------------------
             ),
             inline=False
         )
