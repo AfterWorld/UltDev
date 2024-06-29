@@ -8,6 +8,7 @@ import platform
 import asyncio
 import random
 
+# Global variables for old commands
 old_info = None
 old_ping = None
 
@@ -46,38 +47,41 @@ class OnePieceInfo(commands.Cog):
         memory = psutil.virtual_memory()
         disk = psutil.disk_usage('/')
 
-        title = "🏴‍☠️ Welcome Aboard the Thousand Sunny! 🌞"
-        description = (
-            "Ahoy, brave pirates! I'm the Thousand Sunny, the dream ship crafted by the legendary shipwright Franky. "
-            "I've sailed through digital Grand Lines to reach you, powered by the spirit of adventure and the technology of [Red-DiscordBot](https://github.com/Cog-Creators/Red-DiscordBot)!"
+        # Embed content
+        embed = discord.Embed(
+            title="🏴‍☠️ Welcome Aboard the Thousand Sunny! 🌞",
+            description=(
+                "Ahoy, brave pirates! I'm the Thousand Sunny, the dream ship crafted by the legendary shipwright Franky. "
+                "I've sailed through digital Grand Lines to reach you, powered by the spirit of adventure and the technology of "
+                "[Red-DiscordBot](https://github.com/Cog-Creators/Red-DiscordBot)!"
+            ),
+            color=discord.Color.gold()
         )
-        embed = discord.Embed(title=title, description=description, color=discord.Color.gold())
         embed.set_thumbnail(url="https://example.com/thousand_sunny.png")
         
         embed.add_field(
-            inline=False,
             name="🧭 Ship's Log",
             value=(
                 f"🏴‍☠️ Crew Members: {ctx.guild.member_count}\n"
                 f"🌊 Sailing on: {guild_count} / {max_guilds} seas\n"
                 f"⚓ Docked at: {ctx.guild.name}\n"
                 f"🐉 Captain: {ctx.guild.owner.mention}"
-            )
+            ),
+            inline=False
         )
         
         embed.add_field(
-            inline=False,
             name="🔧 Ship's Specs",
             value=(
                 f"🐏 Ram: {memory.percent}% occupied\n"
                 f"⚙️ Engine Load: {cpu_usage}%\n"
                 f"🗺️ Chart Storage: {disk.percent}% full\n"
                 f"🌡️ Ocean Temperature: {ping}ms"
-            )
+            ),
+            inline=False
         )
         
         embed.add_field(
-            inline=False,
             name="🏴‍☠️ Pirate Crew",
             value=(
                 "Our brave crew consists of:\n"
@@ -90,29 +94,30 @@ class OnePieceInfo(commands.Cog):
                 "📚 Robin: The Historian (Logging and Database)\n"
                 "🛠️ Franky: The SUPER Technician (Utility Commands)\n"
                 "🎻 Brook: The Soul King of Music (Music Commands)"
-            )
+            ),
+            inline=False
         )
         
         embed.add_field(
-            inline=False,
             name="🗝️ Devil Fruit Powers",
             value=(
                 "My Devil Fruit powers are fueled by:\n"
                 f"🐍 Python {python_version}\n"
                 f"🤖 Discord.py {dpy_version}\n"
                 f"🔴 Red-DiscordBot {red_version}"
-            )
+            ),
+            inline=False
         )
         
         embed.add_field(
-            inline=False,
             name="🧭 Navigation",
             value=(
                 "Use these commands to explore the Grand Line:\n"
                 "`[p]help`: View all commands\n"
                 "`[p]info`: Display this ship's log\n"
                 "`[p]ping`: Test the waters with Aokiji and Akainu"
-            )
+            ),
+            inline=False
         )
         
         embed.set_footer(text="Set sail for adventure with the Straw Hat Pirates!")
@@ -136,7 +141,7 @@ class OnePieceInfo(commands.Cog):
             "💨💨💨 Steam fills the air as ice meets magma!",
             "🌋➡️➡️➡️❄️ Akainu counterattacks! Great Eruption!",
             "💥💥💥 The attacks collide in a massive explosion!",
-            "The smoke clears, revealing the outcome...",
+            "The smoke clears, revealing the outcome..."
         ]
         
         # Easter egg interruptions
