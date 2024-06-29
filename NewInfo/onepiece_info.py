@@ -105,6 +105,12 @@ class OnePieceInfo(commands.Cog):
         )
 
         embed.add_field(
+            name="\u200B",  # Empty field for spacing
+            value="\u200B",
+            inline=False
+        )
+
+        embed.add_field(
             name="🗝️ **Devil Fruit Powers**",
             value=(
                 "🐍 **Python:** {}\n"
