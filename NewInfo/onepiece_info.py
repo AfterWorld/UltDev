@@ -47,6 +47,23 @@ class OnePieceInfo(commands.Cog):
         memory = psutil.virtual_memory()
         disk = psutil.disk_usage('/')
 
+        # Get members for each rank
+        roles = {
+            "⚔️ Sun God Nika ⚔️": "⚔️ Sun God Nika ⚔️",
+            "GodHand": "GodHand",
+            "Gorosei": "Gorosei",
+            "⭐️ - Yonko - ⭐️": "⭐️ - Yonko - ⭐️",
+            "⚓️- Warlords - ⚓️": "⚓️- Warlords - ⚓️",
+            "⚡️ - Worst Generation - ⚡️": "⚡️ - Worst Generation - ⚡️"
+        }
+
+        rank_members = {}
+        for rank, role_name in roles.items():
+            role = discord.utils.get(ctx.guild.roles, name=role_name)
+            if role:
+                members = [member.mention for member in role.members]
+                rank_members[rank] = members
+
         # Embed content
         embed = discord.Embed(
             title="🏴‍☠️ Welcome Aboard the Thousand Sunny! 🌞",
@@ -88,19 +105,23 @@ class OnePieceInfo(commands.Cog):
             inline=False
         )
 
+        # Add fields for each rank with titles and member mentions
         embed.add_field(
             name="🏴‍☠️ **Pirate Crew**",
             value=(
                 "----------------------------------------------------------------------------------\n"
-                "🍖 **Luffy:** The Chatty Captain (Chat Commands)\n"
-                "🗡️ **Zoro:** The Moderating Swordsman (Moderation)\n"
-                "💰 **Nami:** The Trading Navigator (Economy System)\n"
-                "🎯 **Usopp:** The Tall Tale Teller (Fun Commands)\n"
-                "🍳 **Sanji:** The Culinary Informant (Information Commands)\n"
-                "🩺 **Chopper:** The Helping Doctor (Support Features)\n"
-                "📚 **Robin:** The Historian (Logging and Database)\n"
-                "🛠️ **Franky:** The SUPER Technician (Utility Commands)\n"
-                "🎻 **Brook:** The Soul King of Music (Music Commands)\n"
+                "⚔️ **Sun God Nika**: The Supreme Deity\n"
+                "{}\n".format("\n".join(rank_members.get("⚔️ Sun God Nika ⚔️", ["No members"])))
+                "🛡️ **GodHand**: The Divine Protectors\n"
+                "{}\n".format("\n".join(rank_members.get("GodHand", ["No members"])))
+                "👑 **Gorosei**: The Elders of Wisdom\n"
+                "{}\n".format("\n".join(rank_members.get("Gorosei", ["No members"])))
+                "⭐️ **Yonko**: The Emperors of the Sea\n"
+                "{}\n".format("\n".join(rank_members.get("⭐️ - Yonko - ⭐️", ["No members"])))
+                "⚓ **Warlords**: The Government Allies\n"
+                "{}\n".format("\n".join(rank_members.get("⚓️- Warlords - ⚓️", ["No members"])))
+                "⚡ **Worst Generation**: The Rising Stars\n"
+                "{}\n".format("\n".join(rank_members.get("⚡️ - Worst Generation - ⚡️", ["No members"])))
                 "----------------------------------------------------------------------------------\n"
             ),
             inline=False
@@ -135,7 +156,6 @@ class OnePieceInfo(commands.Cog):
         embed.set_footer(text="Set sail for adventure with the Straw Hat Pirates!")
         
         await ctx.send(embed=embed)
-
 
     @commands.command()
     async def ping(self, ctx):
