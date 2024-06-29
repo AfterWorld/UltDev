@@ -11,7 +11,7 @@ class OnePieceHelp(commands.HelpCommand):
     def __init__(self):
         super().__init__(command_attrs={
             "help": "Shows help about the bot, a command, or a category",
-            "cooldown": commands.Cooldown(1, 3, commands.BucketType.user),
+            "cooldown": commands.CooldownMapping.from_cooldown(1, 3, commands.BucketType.user),
         })
         self.devil_fruits = {}
 
