@@ -1,0 +1,10 @@
+{
+    "author": ["UltPanda"],
+    "install_msg": "Thanks for installing the One Piece Moderation cog! Get ready to moderate your server with the power of the Grand Line!",
+    "name": "OnePieceMod",
+    "short": "One Piece themed moderation commands",
+    "description": "This cog provides One Piece themed versions of kick, ban, and mute commands, complete with logging to a specified channel.",
+    "tags": ["moderation", "onepiece", "theme"],
+    "requirements": [],
+    "hidden": false
+}
