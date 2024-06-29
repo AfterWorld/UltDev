@@ -91,7 +91,7 @@ class OnePieceInfo(commands.Cog):
         embed.add_field(
             name="🏴‍☠️ **Pirate Crew**",
             value=(
-                "-------------------------------------------------------"
+                "-------------------------------------------------------\n"
                 "🍖 **Luffy:** The Chatty Captain (Chat Commands)\n"
                 "🗡️ **Zoro:** The Moderating Swordsman (Moderation)\n"
                 "💰 **Nami:** The Trading Navigator (Economy System)\n"
@@ -100,7 +100,7 @@ class OnePieceInfo(commands.Cog):
                 "🩺 **Chopper:** The Helping Doctor (Support Features)\n"
                 "📚 **Robin:** The Historian (Logging and Database)\n"
                 "🛠️ **Franky:** The SUPER Technician (Utility Commands)\n"
-                "🎻 **Brook:** The Soul King of Music (Music Commands)"
+                "🎻 **Brook:** The Soul King of Music (Music Commands)"\n
                 "-------------------------------------------------------"
             ),
             inline=False
