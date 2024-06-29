@@ -10,10 +10,8 @@ import random
 from datetime import datetime, timezone
 import textwrap
 
-old_info = None
-old_ping = None
-old_serverinfo = None
-old_userinfo = None
+# Global dictionary to store original commands
+original_commands = {}
 
 class OnePieceInfo(commands.Cog):
     """Provides One Piece themed info and ping commands."""
@@ -22,31 +20,12 @@ class OnePieceInfo(commands.Cog):
         self.bot = bot
 
     def cog_unload(self):
-        global old_info, old_ping, old_serverinfo, old_userinfo
-        if old_info:
-            try:
-                self.bot.remove_command("info")
-            except:
-                pass
-            self.bot.add_command(old_info)
-        if old_ping:
-            try:
-                self.bot.remove_command("ping")
-            except:
-                pass
-            self.bot.add_command(old_ping)
-        if old_serverinfo:
-            try:
-                self.bot.remove_command("serverinfo")
-            except:
-                pass
-            self.bot.add_command(old_serverinfo)
-        if old_userinfo:
-            try:
-                self.bot.remove_command("userinfo")
-            except:
-                pass
-            self.bot.add_command(old_userinfo)
+        # Restore original commands
+        for cmd_name, cmd in original_commands.items():
+            if self.bot.get_command(cmd_name):
+                self.bot.remove_command(cmd_name)
+            if cmd:
+                self.bot.add_command(cmd)
 
     @commands.command()
     async def info(self, ctx):
@@ -345,79 +324,26 @@ class OnePieceInfo(commands.Cog):
         
         await ctx.send(embed=embed)
 
-    @commands.command()
-    async def credits(self, ctx):
-        """Shows the credits for Sunny and the server."""
-        cog = self.bot.get_cog("Downloader")
-        if cog and hasattr(cog, '_repo_manager'):
-            repos = cog._repo_manager.repos
-            s_repos = sorted(repos, key=lambda r: str.lower(r.name))
-        else:
-            s_repos = []
-
-        embed = discord.Embed(title='The Honorable CreditBoard', description="", color=discord.Color.blue())
-        embed.add_field(
-            inline=False,
-            name='Red-DiscordBot',
-            value=(
-                "Sunny is powered by Red, created by [Twentysix26](https://github.com/Twentysix26) and "
-                "[improved by many awesome people.](https://github.com/Cog-Creators/Red-DiscordBot/graphs/contributors)"
-            )
-        )
-        cog_creators = [
-            "[aaa3a-cogs](https://github.com/AAA3A-AAA3A/AAA3A-cogs): aaa3a",
-            "[ad-cog](https://github.com/aikaterna/gobcog.git): aikaterna",
-            "[adrian](https://github.com/designbyadrian/CogsByAdrian.git): thinkadrian",
-            "[blizz-cogs](https://git.purplepanda.cc/blizz/blizz-cogs): blizzthewolf",
-            "[crab-cogs](https://github.com/orchidalloy/crab-cogs): hollowstrawberry",
-            "[flare-cogs](https://github.com/flaree/Flare-Cogs): flare (flare#0001)",
-            "[fluffycogs](https://github.com/zephyrkul/FluffyCogs): Zephyrkul (Zephyrkul#1089)",
-            "[jojocogs](https://github.com/Just-Jojo/JojoCogs): Jojo#7791",
-            "[jumperplugins](https://github.com/Redjumpman/Jumper-Plugins): Redjumpman (Redjumpman#1337)",
-            "[laggrons-dumb-cogs](https://github.com/retke/Laggrons-Dumb-Cogs): El Laggron",
-            "[lui-cogs-v3](https://github.com/Injabie3/lui-cogs-v3): Injabie3#1660, sedruk, KaguneAstra#6000, TheDarkBot#1677, quachtridat・たつ#8232",
-            "[maxcogs](https://github.com/ltzmax/maxcogs): MAX",
-            "[ultcogs](https://github.com/AfterWorld/ultcogs): UltPanda",
-            "[npc-cogs](https://github.com/npc203/npc-cogs): epic guy#0715",
-            "[pcxcogs](https://github.com/PhasecoreX/PCXCogs): PhasecoreX (PhasecoreX#0635)",
-            "[seina-cogs](https://github.com/japandotorg/Seina-Cogs/): inthedark.org",
-            "[sravan](https://github.com/sravan1946/sravan-cogs): sravan",
-            "[toxic-cogs](https://github.com/NeuroAssassin/Toxic-Cogs): Neuro Assassin",
-            "[Trusty-cogs](https://github.com/TrustyJAID/Trusty-cogs/): TrustyJAID",
-            "[vrt-cogs](https://github.com/vertyco/vrt-cogs): Vertyco",
-            "[yamicogs](https://github.com/yamikaitou/YamiCogs): YamiKaitou#8975"
-        ]
-
-        # Split the cog creators list into two parts
-        mid = len(cog_creators) // 2
-        embed.add_field(
-            inline=False,
-            name='Cogs and their creators (Part 1)',
-            value="\n".join(cog_creators[:mid])
-        )
-        embed.add_field(
-            inline=False,
-            name='Cogs and their creators (Part 2)',
-            value="\n".join(cog_creators[mid:])
-        )
-
-        await ctx.send(embed=embed)
-
-async def setup(bot):
-    global old_info, old_ping, old_serverinfo, old_userinfo
-    old_info = bot.get_command("info")
-    old_ping = bot.get_command("ping")
-    old_serverinfo = bot.get_command("serverinfo")
-    old_userinfo = bot.get_command("userinfo")
-    
-    if old_info:
-        bot.remove_command(old_info.name)
-    if old_ping:
-        bot.remove_command(old_ping.name)
-    if old_serverinfo:
-        bot.remove_command(old_serverinfo.name)
-    if old_userinfo:
-        bot.remove_command(old_userinfo.name)
-
+async def setup(bot: Red):
+    global original_commands
     cog = OnePieceInfo(bot)
+
+    # Store and replace original commands
+    command_names = ["info", "serverinfo", "userinfo"]
+    for cmd_name in command_names:
+        original_cmd = bot.get_command(cmd_name)
+        if original_cmd:
+            original_commands[cmd_name] = original_cmd
+            bot.remove_command(cmd_name)
+
     await bot.add_cog(cog)
+
+async def teardown(bot: Red):
+    global original_commands
+    # Restore original commands
+    for cmd_name, cmd in original_commands.items():
+        if bot.get_command(cmd_name):
+            bot.remove_command(cmd_name)
+        if cmd:
+            bot.add_command(cmd)
+    original_commands.clear()
