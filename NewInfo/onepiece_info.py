@@ -97,7 +97,7 @@ class OnePieceInfo(commands.Cog):
         )
         
         await ctx.send(embed=embed)
-        
+
     @commands.command()
     async def ping(self, ctx):
         """Shows a battle between Aokiji and Akainu, with detailed ping information!"""
@@ -115,32 +115,29 @@ class OnePieceInfo(commands.Cog):
             "💨💨💨 The steam clears, revealing the outcome...",
         ]
 
+        embed = discord.Embed(title="Battle on Punk Hazard: Aokiji vs Akainu", color=discord.Color.orange())
+        embed.set_footer(text="May the strongest prevail!")
+
         for frame in battle_frames:
-            await asyncio.sleep(1)
-            await message.edit(content=frame)
+            embed.description = frame
+            await message.edit(content=None, embed=embed)
+            await asyncio.sleep(1.5)
 
-        await asyncio.sleep(1)
+        # Randomly determine the battle outcome
+        winner = random.choice(["Aokiji", "Akainu", "Tie"])
 
-        # Determine the battle outcome
-        if websocket_latency < 100:
-            winner = "Aokiji"
+        if winner == "Aokiji":
             color = discord.Color.blue()
-            outcome = "Aokiji's ice freezes Akainu's magma! The bot's connection is as cool as Aokiji's ice powers!"
-        elif websocket_latency < 200:
-            winner = "Tie"
-            color = discord.Color.purple()
-            outcome = "It's a draw! Punk Hazard is half frozen, half burning! The bot's connection is balanced, like the aftermath of their battle!"
-        else:
-            winner = "Akainu"
+            outcome = "Aokiji's ice freezes Akainu's magma! The azure admiral emerges victorious!"
+        elif winner == "Akainu":
             color = discord.Color.red()
-            outcome = "Akainu's magma overpowers Aokiji's ice! The bot's connection is as hot as Akainu's magma!"
+            outcome = "Akainu's magma overpowers Aokiji's ice! The crimson admiral stands triumphant!"
+        else:
+            color = discord.Color.purple()
+            outcome = "It's a draw! Punk Hazard is left half frozen, half burning! Neither admiral could overpower the other!"
 
-        # Create the embed
-        embed = discord.Embed(
-            title="Battle on Punk Hazard: Aokiji vs Akainu",
-            description=outcome,
-            color=color
-        )
+        embed.color = color
+        embed.description = outcome
         embed.add_field(name="Battle Winner", value=winner, inline=False)
         embed.add_field(name="WebSocket Latency", value=f"{websocket_latency:.2f}ms", inline=True)
         embed.add_field(name="Message Latency", value=f"{message_latency:.2f}ms", inline=True)
@@ -149,9 +146,16 @@ class OnePieceInfo(commands.Cog):
         avg_latency = (websocket_latency + message_latency) / 2
         embed.add_field(name="Average Latency", value=f"{avg_latency:.2f}ms", inline=True)
 
-        embed.set_footer(text="May the fastest connection win!")
+        if avg_latency < 100:
+            speed_comment = "As swift as Kizaru's light!"
+        elif avg_latency < 200:
+            speed_comment = "Moving at the speed of Gear Second!"
+        else:
+            speed_comment = "Slower than Foxy's Noro Noro Beam..."
 
-        await message.edit(content=None, embed=embed)
+        embed.set_footer(text=f"Connection Speed: {speed_comment}")
+
+        await message.edit(embed=embed)
         
     @commands.command()
     async def credits(self, ctx):
