@@ -47,8 +47,8 @@ class OnePieceInfo(commands.Cog):
         memory = psutil.virtual_memory()
         disk = psutil.disk_usage('/')
 
-        # Embed content
-        embed = discord.Embed(
+        # Embed content for the first page
+        embed1 = discord.Embed(
             title="🏴‍☠️ Welcome Aboard the Thousand Sunny! 🌞",
             description=(
                 "Ahoy, brave pirates! I'm the Thousand Sunny, the dream ship crafted by the legendary shipwright Franky. "
@@ -57,9 +57,9 @@ class OnePieceInfo(commands.Cog):
             ),
             color=discord.Color.gold()
         )
-        embed.set_thumbnail(url="https://example.com/thousand_sunny.png")
+        embed1.set_thumbnail(url="https://example.com/thousand_sunny.png")
         
-        embed.add_field(
+        embed1.add_field(
             name="🧭 **Ship's Log**",
             value=(
                 f"**🏴‍☠️ Crew Members:** {ctx.guild.member_count}\n"
@@ -69,19 +69,8 @@ class OnePieceInfo(commands.Cog):
             ),
             inline=False
         )
-        
-        embed.add_field(
-            name="🔧 **Ship's Specs**",
-            value=(
-                f"**🐏 Ram:** {memory.percent}% occupied\n"
-                f"**⚙️ Engine Load:** {cpu_usage}%\n"
-                f"**🗺️ Chart Storage:** {disk.percent}% full\n"
-                f"**🌡️ Ocean Temperature:** {ping}ms"
-            ),
-            inline=False
-        )
-        
-        embed.add_field(
+
+        embed1.add_field(
             name="🏴‍☠️ **Pirate Crew**",
             value=(
                 "Our brave crew consists of:\n"
@@ -98,7 +87,24 @@ class OnePieceInfo(commands.Cog):
             inline=False
         )
         
-        embed.add_field(
+        # Embed content for the second page
+        embed2 = discord.Embed(
+            title="🔧 Ship's Specs",
+            color=discord.Color.gold()
+        )
+        
+        embed2.add_field(
+            name="🔧 **Ship's Specs**",
+            value=(
+                f"**🐏 Ram:** {memory.percent}% occupied\n"
+                f"**⚙️ Engine Load:** {cpu_usage}%\n"
+                f"**🗺️ Chart Storage:** {disk.percent}% full\n"
+                f"**🌡️ Ocean Temperature:** {ping}ms"
+            ),
+            inline=False
+        )
+        
+        embed2.add_field(
             name="🗝️ **Devil Fruit Powers**",
             value=(
                 "My Devil Fruit powers are fueled by:\n"
@@ -108,8 +114,8 @@ class OnePieceInfo(commands.Cog):
             ),
             inline=False
         )
-        
-        embed.add_field(
+
+        embed2.add_field(
             name="🧭 **Navigation**",
             value=(
                 "Use these commands to explore the Grand Line:\n"
@@ -120,9 +126,27 @@ class OnePieceInfo(commands.Cog):
             inline=False
         )
         
-        embed.set_footer(text="Set sail for adventure with the Straw Hat Pirates!")
-        
-        await ctx.send(embed=embed)
+        embed2.set_footer(text="Set sail for adventure with the Straw Hat Pirates!")
+
+        # Create a View for the pagination
+        view = InfoView(embed1, embed2)
+        await ctx.send(embed=embed1, view=view)
+
+class InfoView(discord.ui.View):
+    def __init__(self, embed1, embed2):
+        super().__init__()
+        self.embed1 = embed1
+        self.embed2 = embed2
+        self.current_page = 1
+
+    @discord.ui.button(label="Next", style=discord.ButtonStyle.primary)
+    async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.current_page == 1:
+            self.current_page = 2
+            await interaction.response.edit_message(embed=self.embed2)
+        else:
+            self.current_page = 1
+            await interaction.response.edit_message(embed=self.embed1)
 
     @commands.command()
     async def ping(self, ctx):
