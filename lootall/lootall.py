@@ -23,8 +23,12 @@ class LootAll(commands.Cog):
         if not members:
             return await ctx.send(f"No members found with the role {role.name}")
 
-        loot_type = getattr(adventure.Rarities, rarity.lower())
-        
+        # Use the RarityConverter from the Adventure cog
+        try:
+            loot_type = await adventure.RarityConverter().convert(ctx, rarity)
+        except commands.BadArgument:
+            return await ctx.send(f"Invalid rarity: {rarity}")
+
         success_count = 0
         for member in members:
             try:
