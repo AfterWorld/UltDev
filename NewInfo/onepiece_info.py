@@ -99,9 +99,6 @@ class OnePieceInfo(commands.Cog):
 
     import random
 
-class OnePieceInfo(commands.Cog):
-    # ... (previous methods remain unchanged)
-
     @commands.command()
     async def ping(self, ctx):
         """Shows a battle between Aokiji and Akainu, with the ping as the deciding factor!"""
