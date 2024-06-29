@@ -1,5 +1,3 @@
-from .onepiece_info import OnePieceInfo
+from .onepiece_info import OnePieceInfo, setup
 
-async def setup(bot):
-    cog = OnePieceInfo(bot)
-    await bot.add_cog(cog)
+__red_end_user_data_statement__ = "This cog does not store any End User Data."
