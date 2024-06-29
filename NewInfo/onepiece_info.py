@@ -6,6 +6,7 @@ import sys
 import psutil
 import platform
 import asyncio
+import random
 
 old_info = None
 old_ping = None
@@ -101,7 +102,8 @@ class OnePieceInfo(commands.Cog):
     async def ping(self, ctx):
         """Shows a battle between Aokiji and Akainu with ping information"""
         start = ctx.message.created_at
-        message = await ctx.send("A fierce battle is about to begin on Punk Hazard...")
+        embed = discord.Embed(title="Battle on Punk Hazard: Aokiji vs Akainu", color=discord.Color.orange())
+        message = await ctx.send(embed=embed)
         
         # Animation frames
         battle_frames = [
@@ -116,9 +118,24 @@ class OnePieceInfo(commands.Cog):
             "The smoke clears, revealing the outcome...",
         ]
         
+        # Easter egg interruptions
+        easter_eggs = [
+            "Suddenly, Garp appears and knocks both admirals out!",
+            "A wild Luffy appears, mistaking the battle for a meat-cooking contest!",
+            "Buggy the Clown accidentally stumbles into the battlefield, somehow emerging unscathed!",
+            "The battle is interrupted by Whitebeard's ghostly laughter echoing across Punk Hazard!",
+            "Unexpected interference! The Thousand Sunny crashes into the island, scattering the combatants!"
+        ]
+
         for frame in battle_frames:
+            embed.description = frame
             await asyncio.sleep(1)
-            await message.edit(content=frame)
+            
+            # 5% chance for an Easter egg to occur
+            if random.random() < 0.05:
+                embed.add_field(name="Unexpected Interruption!", value=random.choice(easter_eggs), inline=False)
+            
+            await message.edit(embed=embed)
         
         end = discord.utils.utcnow()
         ping_time = (end - start).total_seconds() * 1000
@@ -127,22 +144,25 @@ class OnePieceInfo(commands.Cog):
         if ping_time < 100:
             winner = "Aokiji"
             outcome = "Aokiji's ice freezes even Akainu's magma!"
+            color = discord.Color.blue()
         elif ping_time < 200:
             winner = "Tie"
             outcome = "Neither admiral can overcome the other. It's a draw!"
+            color = discord.Color.purple()
         else:
             winner = "Akainu"
             outcome = "Akainu's magma melts through Aokiji's ice!"
+            color = discord.Color.red()
         
-        final_message = (
-            f"**Battle Outcome:** {winner} {'wins' if winner != 'Tie' else ''}\n"
-            f"{outcome}\n\n"
+        embed.color = color
+        embed.add_field(name="Battle Outcome", value=f"**{winner}** {'wins' if winner != 'Tie' else ''}\n{outcome}", inline=False)
+        embed.add_field(name="Battle Statistics", value=(
             f"⏱️ Battle duration: **{ping_time:.2f}ms**\n"
-            f"🌡️ WebSocket latency: **{round(self.bot.latency * 1000, 2)}ms**\n\n"
-            "The fight on Punk Hazard rages on, changing the very nature of the island!"
-        )
+            f"🌡️ WebSocket latency: **{round(self.bot.latency * 1000, 2)}ms**"
+        ), inline=False)
+        embed.set_footer(text="The fight on Punk Hazard rages on, changing the very nature of the island!")
         
-        await message.edit(content=final_message)
+        await message.edit(embed=embed)
 
     @commands.command()
     async def credits(self, ctx):
