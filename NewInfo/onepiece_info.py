@@ -7,21 +7,28 @@ import psutil
 import platform
 
 old_info = None
+old_ping = None
 
 class OnePieceInfo(commands.Cog):
-    """Provides a One Piece themed info command."""
+    """Provides One Piece themed info and ping commands."""
 
     def __init__(self, bot: Red):
         self.bot = bot
 
     def cog_unload(self):
-        global old_info
+        global old_info, old_ping
         if old_info:
             try:
                 self.bot.remove_command("info")
             except:
                 pass
             self.bot.add_command(old_info)
+        if old_ping:
+            try:
+                self.bot.remove_command("ping")
+            except:
+                pass
+            self.bot.add_command(old_ping)
 
     @commands.command()
     async def info(self, ctx):
@@ -90,6 +97,12 @@ class OnePieceInfo(commands.Cog):
         await ctx.send(embed=embed)
 
     @commands.command()
+    async def ping(self, ctx):
+        """Shows Aokiji's ping"""
+        ping = round(self.bot.latency * 1000)
+        await ctx.send(f"Ice Age! I've frozen your message at a speed of **{ping}ms**. Looks like my Devil Fruit powers are as cool as ever!")
+
+    @commands.command()
     async def credits(self, ctx):
         """Shows the credits for Sunny and the server."""
         cog = self.bot.get_cog("Downloader")
@@ -110,7 +123,7 @@ class OnePieceInfo(commands.Cog):
         )
 
         cog_creators = [
-            "[aaa3a-cogs](https://github.com/AAA3A-AAA3A/AAA3A-cogs): aaa3a",
+            "**[aaa3a-cogs](https://github.com/AAA3A-AAA3A/AAA3A-cogs): aaa3a",
             "[ad-cog](https://github.com/aikaterna/gobcog.git): aikaterna",
             "[adrian](https://github.com/designbyadrian/CogsByAdrian.git): thinkadrian",
             "[blizz-cogs](https://git.purplepanda.cc/blizz/blizz-cogs): blizzthewolf",
@@ -149,10 +162,13 @@ class OnePieceInfo(commands.Cog):
         await ctx.send(embed=embed)
 
 async def setup(bot):
-    global old_info
+    global old_info, old_ping
     old_info = bot.get_command("info")
+    old_ping = bot.get_command("ping")
     if old_info:
         bot.remove_command(old_info.name)
+    if old_ping:
+        bot.remove_command(old_ping.name)
 
     cog = OnePieceInfo(bot)
     await bot.add_cog(cog)
