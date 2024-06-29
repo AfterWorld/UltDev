@@ -100,7 +100,7 @@ class OnePieceInfo(commands.Cog):
                 "🩺 **Chopper:** The Helping Doctor (Support Features)\n"
                 "📚 **Robin:** The Historian (Logging and Database)\n"
                 "🛠️ **Franky:** The SUPER Technician (Utility Commands)\n"
-                "🎻 **Brook:** The Soul King of Music (Music Commands)"\n
+                "🎻 **Brook:** The Soul King of Music (Music Commands)\n"
                 "-------------------------------------------------------"
             ),
             inline=False
