@@ -91,7 +91,7 @@ class OnePieceInfo(commands.Cog):
         embed.add_field(
             name="🏴‍☠️ **Pirate Crew**",
             value=(
-                "----------------------------------------------------------------------------------"
+                "---------------------------------------------------------------------------------"
                 "🍖 **Luffy:** The Chatty Captain (Chat Commands)\n"
                 "🗡️ **Zoro:** The Moderating Swordsman (Moderation)\n"
                 "💰 **Nami:** The Trading Navigator (Economy System)\n"
