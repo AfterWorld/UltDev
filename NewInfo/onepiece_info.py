@@ -65,7 +65,7 @@ class OnePieceInfo(commands.Cog):
             value=(
                 f"**🏴‍☠️ Crew Members:** {ctx.guild.member_count}\n"
                 f"**🌊 Sailing on:** {guild_count} / {max_guilds} seas\n"
-                f"**⚓ Docked at:** {ctx.guild.name}\n"
+                f"**⚓ Docked:** {ctx.guild.name}\n"
                 f"**🐉 Captain:** {ctx.guild.owner.mention}"
             ),
             inline=True
@@ -91,6 +91,7 @@ class OnePieceInfo(commands.Cog):
         embed.add_field(
             name="🏴‍☠️ **Pirate Crew**",
             value=(
+                "----------------------------------------------------------------------------------"
                 "🍖 **Luffy:** The Chatty Captain (Chat Commands)\n"
                 "🗡️ **Zoro:** The Moderating Swordsman (Moderation)\n"
                 "💰 **Nami:** The Trading Navigator (Economy System)\n"
@@ -100,6 +101,7 @@ class OnePieceInfo(commands.Cog):
                 "📚 **Robin:** The Historian (Logging and Database)\n"
                 "🛠️ **Franky:** The SUPER Technician (Utility Commands)\n"
                 "🎻 **Brook:** The Soul King of Music (Music Commands)"
+                "----------------------------------------------------------------------------------"
             ),
             inline=False
         )
