@@ -7,6 +7,7 @@ import psutil
 import platform
 import asyncio
 import time
+import random
 
 old_info = None
 old_ping = None
