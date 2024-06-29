@@ -329,7 +329,7 @@ async def setup(bot: Red):
     cog = OnePieceInfo(bot)
 
     # Store and replace original commands
-    command_names = ["info", "serverinfo", "userinfo"]
+    command_names = ["info", "serverinfo", "userinfo", "ping"]
     for cmd_name in command_names:
         original_cmd = bot.get_command(cmd_name)
         if original_cmd:
