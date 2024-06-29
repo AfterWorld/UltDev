@@ -122,7 +122,7 @@ class OnePieceInfo(commands.Cog):
         
         await ctx.send(embed=embed)
 
-   @commands.command()
+    @commands.command()
     async def ping(self, ctx):
         """Initiate an epic battle between Aokiji and Akainu!"""
         print("Ping command started")  # Debug print
