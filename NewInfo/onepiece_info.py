@@ -60,57 +60,57 @@ class OnePieceInfo(commands.Cog):
         embed.set_thumbnail(url="https://example.com/thousand_sunny.png")
         
         embed.add_field(
-            name="🧭 Ship's Log",
+            name="🧭 **Ship's Log**",
             value=(
-                f"🏴‍☠️ Crew Members: {ctx.guild.member_count}\n"
-                f"🌊 Sailing on: {guild_count} / {max_guilds} seas\n"
-                f"⚓ Docked at: {ctx.guild.name}\n"
-                f"🐉 Captain: {ctx.guild.owner.mention}"
+                f"**🏴‍☠️ Crew Members:** {ctx.guild.member_count}\n"
+                f"**🌊 Sailing on:** {guild_count} / {max_guilds} seas\n"
+                f"**⚓ Docked at:** {ctx.guild.name}\n"
+                f"**🐉 Captain:** {ctx.guild.owner.mention}"
             ),
             inline=False
         )
         
         embed.add_field(
-            name="🔧 Ship's Specs",
+            name="🔧 **Ship's Specs**",
             value=(
-                f"🐏 Ram: {memory.percent}% occupied\n"
-                f"⚙️ Engine Load: {cpu_usage}%\n"
-                f"🗺️ Chart Storage: {disk.percent}% full\n"
-                f"🌡️ Ocean Temperature: {ping}ms"
+                f"**🐏 Ram:** {memory.percent}% occupied\n"
+                f"**⚙️ Engine Load:** {cpu_usage}%\n"
+                f"**🗺️ Chart Storage:** {disk.percent}% full\n"
+                f"**🌡️ Ocean Temperature:** {ping}ms"
             ),
             inline=False
         )
         
         embed.add_field(
-            name="🏴‍☠️ Pirate Crew",
+            name="🏴‍☠️ **Pirate Crew**",
             value=(
                 "Our brave crew consists of:\n"
-                "🍖 Luffy: The Chatty Captain (Chat Commands)\n"
-                "🗡️ Zoro: The Moderating Swordsman (Moderation)\n"
-                "💰 Nami: The Trading Navigator (Economy System)\n"
-                "🎯 Usopp: The Tall Tale Teller (Fun Commands)\n"
-                "🍳 Sanji: The Culinary Informant (Information Commands)\n"
-                "🩺 Chopper: The Helping Doctor (Support Features)\n"
-                "📚 Robin: The Historian (Logging and Database)\n"
-                "🛠️ Franky: The SUPER Technician (Utility Commands)\n"
-                "🎻 Brook: The Soul King of Music (Music Commands)"
+                "🍖 **Luffy:** The Chatty Captain (Chat Commands)\n"
+                "🗡️ **Zoro:** The Moderating Swordsman (Moderation)\n"
+                "💰 **Nami:** The Trading Navigator (Economy System)\n"
+                "🎯 **Usopp:** The Tall Tale Teller (Fun Commands)\n"
+                "🍳 **Sanji:** The Culinary Informant (Information Commands)\n"
+                "🩺 **Chopper:** The Helping Doctor (Support Features)\n"
+                "📚 **Robin:** The Historian (Logging and Database)\n"
+                "🛠️ **Franky:** The SUPER Technician (Utility Commands)\n"
+                "🎻 **Brook:** The Soul King of Music (Music Commands)"
             ),
             inline=False
         )
         
         embed.add_field(
-            name="🗝️ Devil Fruit Powers",
+            name="🗝️ **Devil Fruit Powers**",
             value=(
                 "My Devil Fruit powers are fueled by:\n"
-                f"🐍 Python {python_version}\n"
-                f"🤖 Discord.py {dpy_version}\n"
-                f"🔴 Red-DiscordBot {red_version}"
+                f"**🐍 Python {python_version}**\n"
+                f"**🤖 Discord.py {dpy_version}**\n"
+                f"**🔴 Red-DiscordBot {red_version}**"
             ),
             inline=False
         )
         
         embed.add_field(
-            name="🧭 Navigation",
+            name="🧭 **Navigation**",
             value=(
                 "Use these commands to explore the Grand Line:\n"
                 "`[p]help`: View all commands\n"
