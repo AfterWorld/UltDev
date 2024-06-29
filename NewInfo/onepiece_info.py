@@ -32,9 +32,9 @@ class OnePieceInfo(commands.Cog):
                 pass
             self.bot.add_command(old_ping)
 
-    @commands.command()
+   @commands.command()
     async def info(self, ctx):
-        """Shows One Piece themed information about the One Piece Community."""
+        """Shows One Piece themed information about the Thousand Sunny Bot."""
         python_version = "{}.{}.{}".format(*sys.version_info[:3])
         dpy_version = discord.__version__
         ping = round(self.bot.latency * 1000)
@@ -46,55 +46,76 @@ class OnePieceInfo(commands.Cog):
         memory = psutil.virtual_memory()
         disk = psutil.disk_usage('/')
 
-        title = "One Piece Community"
+        title = "🏴‍☠️ Welcome Aboard the Thousand Sunny! 🌞"
         description = (
-            "Ahoy, pirates! Welcome to our One Piece themed Discord server. "
-            "I'm Sunny, the bot sailing these digital seas. I'm always on deck and ready to help whenever a nakama needs me. "
-            "Now, let me tell you about my friend [Red](https://github.com/Cog-Creators/Red-DiscordBot/tree/V3/develop/redbot), the system that powers me."
+            "Ahoy, brave pirates! I'm the Thousand Sunny, the dream ship crafted by the legendary shipwright Franky. "
+            "I've sailed through digital Grand Lines to reach you, powered by the spirit of adventure and the technology of [Red-DiscordBot](https://github.com/Cog-Creators/Red-DiscordBot)!"
         )
         embed = discord.Embed(title=title, description=description, color=discord.Color.gold())
-        embed.set_thumbnail(url="https://example.com/sunny_bot_avatar.png")
+        embed.set_thumbnail(url="https://example.com/thousand_sunny.png")
+        
         embed.add_field(
             inline=False,
-            name='Bot Information',
+            name="🧭 Ship's Log",
             value=(
-                "I (Sunny) am an instance of Red-DiscordBot. If you want a bot like me "
-                "(because I'm as SUPER as Franky!), you can create your own by following the "
-                "[Red installation docs](https://docs.discord.red/en/stable/install_guides/index.html)."
+                f"🏴‍☠️ Crew Members: {ctx.guild.member_count}\n"
+                f"🌊 Sailing on: {guild_count} / {max_guilds} seas\n"
+                f"⚓ Docked at: {ctx.guild.name}\n"
+                f"🐉 Captain: {ctx.guild.owner.mention}"
             )
         )
+        
         embed.add_field(
             inline=False,
-            name='Useful Commands',
-            value='Use `!credits` and `!findcog` to view the other sources used in Sunny.'
-        )
-        embed.add_field(
-            inline=False,
-            name='Getting Sunny',
+            name="🔧 Ship's Specs",
             value=(
-                "You might be wondering how to get Sunny for your own server. Currently, Sunny is a private bot for this One Piece Community, "
-                "but if you want to set sail with a bot like Sunny, you'll need to contact our Shipwright (server admin). Or better yet, build your own Red instance and customize it to be as SUPER as you want!"
+                f"🐏 Ram: {memory.percent}% occupied\n"
+                f"⚙️ Engine Load: {cpu_usage}%\n"
+                f"🗺️ Chart Storage: {disk.percent}% full\n"
+                f"🌡️ Ocean Temperature: {ping}ms"
             )
         )
+        
         embed.add_field(
             inline=False,
-            name='System Information',
+            name="🏴‍☠️ Pirate Crew",
             value=(
-                f"Python Version: {python_version}\n"
-                f"Discord.py Version: {dpy_version}\n"
-                f"Red Version: {red_version}\n"
-                f"Ping: {ping}ms\n"
-                f"OS: {platform.system()} {platform.release()}\n"
-                f"CPU Usage: {cpu_usage}%\n"
-                f"Memory Usage: {memory.percent}%\n"
-                f"Disk Usage: {disk.percent}%"
+                "Our brave crew consists of:\n"
+                "🍖 Luffy: The Chatty Captain (Chat Commands)\n"
+                "🗡️ Zoro: The Moderating Swordsman (Moderation)\n"
+                "💰 Nami: The Trading Navigator (Economy System)\n"
+                "🎯 Usopp: The Tall Tale Teller (Fun Commands)\n"
+                "🍳 Sanji: The Culinary Informant (Information Commands)\n"
+                "🩺 Chopper: The Helping Doctor (Support Features)\n"
+                "📚 Robin: The Historian (Logging and Database)\n"
+                "🛠️ Franky: The SUPER Technician (Utility Commands)\n"
+                "🎻 Brook: The Soul King of Music (Music Commands)"
             )
         )
+        
         embed.add_field(
             inline=False,
-            name='Server Slots',
-            value=f"Currently in {guild_count} / {max_guilds} servers"
+            name="🗝️ Devil Fruit Powers",
+            value=(
+                "My Devil Fruit powers are fueled by:\n"
+                f"🐍 Python {python_version}\n"
+                f"🤖 Discord.py {dpy_version}\n"
+                f"🔴 Red-DiscordBot {red_version}"
+            )
         )
+        
+        embed.add_field(
+            inline=False,
+            name="🧭 Navigation",
+            value=(
+                "Use these commands to explore the Grand Line:\n"
+                "`[p]help`: View all commands\n"
+                "`[p]info`: Display this ship's log\n"
+                "`[p]ping`: Test the waters with Aokiji and Akainu"
+            )
+        )
+        
+        embed.set_footer(text="Set sail for adventure with the Straw Hat Pirates!")
         
         await ctx.send(embed=embed)
 
