@@ -47,23 +47,6 @@ class OnePieceInfo(commands.Cog):
         memory = psutil.virtual_memory()
         disk = psutil.disk_usage('/')
 
-        # Get members for each rank
-        roles = {
-            "⚔️ Sun God Nika ⚔️": "⚔️ Sun God Nika ⚔️",
-            "GodHand": "GodHand",
-            "Gorosei": "Gorosei",
-            "⭐️ - Yonko - ⭐️": "⭐️ - Yonko - ⭐️",
-            "⚓️- Warlords - ⚓️": "⚓️- Warlords - ⚓️",
-            "⚡️ - Worst Generation - ⚡️": "⚡️ - Worst Generation - ⚡️"
-        }
-
-        rank_members = {}
-        for rank, role_name in roles.items():
-            role = discord.utils.get(ctx.guild.roles, name=role_name)
-            if role:
-                members = [member.mention for member in role.members]
-                rank_members[rank] = members
-
         # Embed content
         embed = discord.Embed(
             title="🏴‍☠️ Welcome Aboard the Thousand Sunny! 🌞",
@@ -105,23 +88,17 @@ class OnePieceInfo(commands.Cog):
             inline=False
         )
 
-        # Add fields for each rank with titles
+        # Add fields for each rank with titles only
         embed.add_field(
             name="🏴‍☠️ **Pirate Crew**",
             value=(
                 "----------------------------------------------------------------------------------\n"
                 "⚔️ **Sun God Nika**: The Supreme Deity\n"
-                "{}\n".format("\n".join(rank_members.get("⚔️ Sun God Nika ⚔️", []))) +
                 "🛡️ **GodHand**: The Divine Protectors\n"
-                "{}\n".format("\n".join(rank_members.get("GodHand", []))) +
                 "👑 **Gorosei**: The Elders of Wisdom\n"
-                "{}\n".format("\n".join(rank_members.get("Gorosei", []))) +
                 "⭐️ **Yonko**: The Emperors of the Sea\n"
-                "{}\n".format("\n".join(rank_members.get("⭐️ - Yonko - ⭐️", []))) +
                 "⚓ **Warlords**: The Government Allies\n"
-                "{}\n".format("\n".join(rank_members.get("⚓️- Warlords - ⚓️", []))) +
                 "⚡ **Worst Generation**: The Rising Stars\n"
-                "{}\n".format("\n".join(rank_members.get("⚡️ - Worst Generation - ⚡️", []))) +
                 "----------------------------------------------------------------------------------\n"
             ),
             inline=False
