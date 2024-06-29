@@ -204,58 +204,45 @@ class OnePieceInfo(commands.Cog):
         """Display information about the current island (server)."""
         guild = ctx.guild
         
+        # Determine island type and features
         if guild.member_count < 50:
-            island_type = "🏝️ Small island village"
+            island_type = "🏝️ East Blue Village"
         elif guild.member_count < 200:
-            island_type = "🏙️ Bustling port town"
+            island_type = "🏙️ Grand Line Port"
         elif guild.member_count < 1000:
-            island_type = "🌴 Grand Line island"
+            island_type = "🌴 New World Island"
         else:
-            island_type = "🌋 New World stronghold"
+            island_type = "🌋 Yonko Territory"
 
-        bot_count = sum(1 for m in guild.members if m.bot)
-        human_count = guild.member_count - bot_count
+        island_features = []
+        if "COMMUNITY" in guild.features:
+            island_features.append("🏴‍☠️ Pirate Haven")
+        if "ANIMATED_ICON" in guild.features:
+            island_features.append("🎭 Thriller Bark Illusions")
+        if "BANNER" in guild.features:
+            island_features.append("🚩 Jolly Roger Flying")
+        if "DISCOVERABLE" in guild.features:
+            island_features.append("🗺️ Log Pose Attraction")
+        if "INVITE_SPLASH" in guild.features:
+            island_features.append("🌊 Aqua Laguna Defenses")
+        if "PUBLIC" in guild.features:
+            island_features.append("📯 Buster Call Target")
+        if "VANITY_URL" in guild.features:
+            island_features.append("🧭 Eternal Pose")
         
         embed = discord.Embed(title=f"📍 Island Log: {guild.name}", color=discord.Color.blue())
         embed.set_thumbnail(url=guild.icon.url if guild.icon else "https://example.com/default_island.png")
         
-        # Basic Info
-        embed.add_field(name="🏝️ Island Type", value=island_type, inline=False)
+        embed.add_field(name="🏝️ Island Type", value=island_type, inline=True)
         embed.add_field(name="🏴‍☠️ Pirate Captain", value=guild.owner.mention, inline=True)
-        embed.add_field(name="🗺️ Region", value=str(guild.region).title() if hasattr(guild, 'region') else "Unknown Seas", inline=True)
         embed.add_field(name="⚓ Founding Date", value=guild.created_at.strftime("%B %d, %Y"), inline=True)
         
-        # Population
-        embed.add_field(name="👥 Population", value=f"Total: {guild.member_count}\nPirates: {human_count}\nDen Den Mushi: {bot_count}", inline=False)
+        embed.add_field(name="👥 Population", value=f"Total: {guild.member_count}\nPirates: {len([m for m in guild.members if not m.bot])}\nDen Den Mushi: {len([m for m in guild.members if m.bot])}", inline=True)
+        embed.add_field(name="🏘️ Locations", value=f"Taverns (Text): {len(guild.text_channels)}\nCrow's Nests (Voice): {len(guild.voice_channels)}\nDistricts (Categories): {len(guild.categories)}", inline=True)
+        embed.add_field(name="🏅 Crew Positions", value=f"Total Roles: {len(guild.roles)}\nHighest Role: {guild.roles[-1].name}", inline=True)
         
-        # Channels
-        channel_info = (
-            f"🗣️ Taverns (Text): {len(guild.text_channels)}\n"
-            f"🎙️ Crow's Nests (Voice): {len(guild.voice_channels)}\n"
-            f"📜 Notice Boards (Categories): {len(guild.categories)}"
-        )
-        embed.add_field(name="🏘️ Locations", value=channel_info, inline=False)
-        
-        # Roles
-        role_info = (
-            f"🎭 Total Roles: {len(guild.roles)}\n"
-            f"👑 Highest Role: {guild.roles[-1].name}"
-        )
-        embed.add_field(name="🏅 Crew Positions", value=role_info, inline=False)
-        
-        # Server Features
-        if guild.features:
-            features = ", ".join(f"`{feature}`" for feature in guild.features)
-            embed.add_field(name="🌟 Special Features", value=features, inline=False)
-        
-        # Security Level
-        verification_level = str(guild.verification_level).capitalize()
-        embed.add_field(name="🔒 Security Level", value=f"Marine Inspection Level: {verification_level}", inline=False)
-        
-        # Server Boosting
-        if guild.premium_tier > 0:
-            boost_info = f"Level {guild.premium_tier} with {guild.premium_subscription_count} boosters"
-            embed.add_field(name="⚡ Devil Fruit Boost", value=boost_info, inline=False)
+        if island_features:
+            embed.add_field(name="🌟 Island Features", value="\n".join(island_features), inline=False)
         
         embed.set_footer(text="May the winds of adventure guide your ship to this island!")
         
@@ -268,7 +255,9 @@ class OnePieceInfo(commands.Cog):
         
         now = datetime.now(timezone.utc)
         joined_at = member.joined_at.replace(tzinfo=timezone.utc)
+        created_at = member.created_at.replace(tzinfo=timezone.utc)
         days_on_server = (now - joined_at).days
+        days_on_discord = (now - created_at).days
         
         if days_on_server < 7:
             rank = "🐣 Cabin Boy"
@@ -284,34 +273,73 @@ class OnePieceInfo(commands.Cog):
         embed = discord.Embed(title=f"🏴‍☠️ Pirate Profile: {member.name}", color=member.color)
         embed.set_thumbnail(url=member.avatar.url)
         
-        embed.add_field(name="🎭 Pirate Alias", value=member.display_name, inline=True)
-        embed.add_field(name="🏅 Crew Rank", value=rank, inline=True)
-        embed.add_field(name="🗺️ Joined Crew", value=f"{member.joined_at.strftime('%B %d, %Y')}\n({days_on_server} days ago)", inline=True)
-        embed.add_field(name="🌊 Sailed Discord Seas Since", value=member.created_at.strftime("%B %d, %Y"), inline=True)
+        # Main Info
+        main_info = (
+            f"**🎭 Pirate Alias:** {member.display_name}\n"
+            f"**🏅 Crew Rank:** {rank}\n"
+            f"**🔢 Pirate ID:** {member.id}\n"
+            f"**🎨 Colors:** {len(member.roles) - 1} roles\n"
+            f"**🏴‍☠️ Top Role:** {member.top_role.mention if len(member.roles) > 1 else 'None'}"
+        )
+        embed.add_field(name="Main Info", value=main_info, inline=True)
         
+        # Dates
+        dates_info = (
+            f"**🗺️ Joined Crew:** {joined_at.strftime('%B %d, %Y')}\n"
+            f"**⏳ Crew Time:** {days_on_server} days\n"
+            f"**🌊 Sailed Discord:** {created_at.strftime('%B %d, %Y')}\n"
+            f"**⚓ Discord Age:** {days_on_discord} days"
+        )
+        embed.add_field(name="Dates", value=dates_info, inline=True)
+        
+        # Roles
         roles = [role.mention for role in reversed(member.roles) if role.name != "@everyone"]
-        embed.add_field(name=f"🎨 Colors of Allegiance ({len(roles)})", 
-                        value=textwrap.shorten(" ".join(roles) if roles else "No colors", width=1024, placeholder="..."), 
-                        inline=False)
+        roles_value = textwrap.shorten(" ".join(roles) if roles else "No roles", width=1024, placeholder="...")
+        embed.add_field(name=f"🎨 Colors of Allegiance ({len(roles)})", value=roles_value, inline=False)
         
+        # Permissions
+        key_permissions = []
+        if member.guild_permissions.administrator:
+            key_permissions.append("👑 Admiral (Administrator)")
+        if member.guild_permissions.manage_guild:
+            key_permissions.append("🏛️ Fleet Commander (Manage Server)")
+        if member.guild_permissions.manage_roles:
+            key_permissions.append("🎖️ Commodore (Manage Roles)")
+        if member.guild_permissions.manage_channels:
+            key_permissions.append("🗺️ Navigator (Manage Channels)")
+        if member.guild_permissions.manage_messages:
+            key_permissions.append("📜 Scribe (Manage Messages)")
+        if member.guild_permissions.kick_members:
+            key_permissions.append("👢 Bouncer (Kick Members)")
+        if member.guild_permissions.ban_members:
+            key_permissions.append("🚫 Enforcer (Ban Members)")
+        
+        if key_permissions:
+            embed.add_field(name="🔑 Key Permissions", value="\n".join(key_permissions), inline=False)
+        
+        # Status and Activity
         status_emoji = {
             discord.Status.online: "🟢",
             discord.Status.idle: "🟡",
             discord.Status.dnd: "🔴",
             discord.Status.offline: "⚫"
         }
-        pirate_status = f"{status_emoji.get(member.status, '⚪')} {str(member.status).capitalize()}"
+        status = f"{status_emoji.get(member.status, '⚪')} {str(member.status).capitalize()}"
         if member.is_on_mobile():
-            pirate_status += " (via Den Den Mushi)"
-        embed.add_field(name="⚓ Current Status", value=pirate_status, inline=False)
+            status += " (via Den Den Mushi)"
         
         if member.activity:
             if isinstance(member.activity, discord.Game):
-                embed.add_field(name="🎮 Current Adventure", value=f"Playing {member.activity.name}", inline=False)
+                activity = f"Playing {member.activity.name}"
             elif isinstance(member.activity, discord.Streaming):
-                embed.add_field(name="📡 Broadcasting Adventure", value=f"Streaming {member.activity.name}", inline=False)
+                activity = f"Streaming {member.activity.name}"
             elif isinstance(member.activity, discord.Spotify):
-                embed.add_field(name="🎵 Pirate Shanty", value=f"Listening to {member.activity.title} by {member.activity.artist}", inline=False)
+                activity = f"Listening to {member.activity.title} by {member.activity.artist}"
+            else:
+                activity = str(member.activity)
+            embed.add_field(name="⚓ Current Status", value=f"{status}\n{activity}", inline=False)
+        else:
+            embed.add_field(name="⚓ Current Status", value=status, inline=False)
         
         embed.set_footer(text="A true nakama, through calm seas and stormy weather!")
         
