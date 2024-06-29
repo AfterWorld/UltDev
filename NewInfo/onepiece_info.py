@@ -4,19 +4,27 @@ from redbot.core.bot import Red
 from redbot import __version__ as red_version
 import sys
 
-class OnePieceInfo(commands.Cog):
-    """Provides a One Piece themed info command."""
+old_info = None
 
+class OnePieceInfo(commands.Cog):
+    ""
     def __init__(self, bot: Red):
         self.bot = bot
 
+    def cog_unload(self):
+        global old_info
+        if old_info:
+            try:
+                self.bot.remove_command("info")
+            except:
+                pass
+            self.bot.add_command(old_
     @commands.command()
-    async def onepiece(self, ctx):
+    async def info(self, ctx):
         """Shows One Piece themed information about the One Piece Community."""
         python_version = "{}.{}.{}".format(*sys.version_info[:3])
         dpy_version = discord.__version__
-        ping = round(self.bot.latency * 1000)
-        guild_count = len(self.bot.guilds)
+        ping = round        guild_count = len(self.bot.guilds)
         max_guilds = 20  # Assuming 20 is the max slots reserved for the bot
 
         title = "🏴‍☠️ One Piece Community 🌊"
@@ -25,16 +33,14 @@ class OnePieceInfo(commands.Cog):
             "I'm Sunny, the bot sailing these digital seas. I'm always on deck and ready to help whenever a nakama needs me. "
             "Now, let me tell you about my friend [Red](https://github.com/Cog-Creators/Red-DiscordBot/tree/V3/develop/redbot), the system that powers me."
         )
-        embed = discord.Embed(title=title, description=description)
-        embed.set_thumbnail(url="https://example.com/sunny_bot_avatar.png")
+        embed = discord.Em        embed.set_thumbnail(url="https://example.com/sunny_bot_avatar.png")
         embed.add_field(
             inline=False,
             name='Bot Information 🌞',
             value=(
                 "I (Sunny 🌞) am an instance of Red-DiscordBot. If you want a bot like me "
                 "(because I'm as SUPER as Franky!), you can create your own by following the "
-                "[Red installation docs](https://docs.discord.red/en/stable/install_guides/index.html)."
-            )
+                           )
         )
         embed.add_field(
             inline=False,
@@ -48,27 +54,24 @@ class OnePieceInfo(commands.Cog):
                 "You might be wondering how to get Sunny for your own server. Currently, Sunny is a private bot for this One Piece Community, "
                 "but if you want to set sail with a bot like Sunny, you'll need to contact our Shipwright (server admin). Or better yet, build your own Red instance and customize it to be as SUPER as you want!"
             )
-        )
-        embed.add_field(
+              embed.add_field(
             inline=False,
             name='System Information 💻',
             value=(
-                f"**Python Version: {python_version} 🐍\n"
-                f"Discord.py Version: {dpy_version} 📚\n"
+                f"**                f"Discord.py Version: {dpy_version} 📚\n"
                 f"Red Version: {red_version} 🔴\n"
                 f"Ping: {ping}ms 🏴‍☠️**"
             )
         )
         embed.add_field(
             inline=False,
-            name='Server Slots ⚓',
-            value=f"**Currently in {guild_count} / {max_guilds} servers**"
+            n            value=f"**Currently in {guild_count} / {max_guilds} servers**"
         )
         
         await ctx.send(embed=embed)
 
-    @commands.command()
-    async def credits(self, ctx):
+     @commands.command()
+     async def credits(self, ctx):
         """Shows the credits for Sunny and the server."""
         cog = self.bot.get_cog("Downloader")
         repos = cog._repo_manager.repos
@@ -118,4 +121,10 @@ class OnePieceInfo(commands.Cog):
         await ctx.send(embed=embed)
 
 async def setup(bot):
-    bot.add_cog(OnePieceInfo(bot))
+    global old_info
+    old_info = bot.get_command("info")
+    if old_info:
+        bot.remove_command(old_info.name)
+
+    cog = OnePieceInfo(bot)
+    await bot.add_cog(cog)
