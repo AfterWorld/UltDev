@@ -302,7 +302,7 @@ class OnePieceInfo(commands.Cog):
         
         await ctx.send(embed=embed)
 
-    @commands.command()
+   @commands.command()
     async def credits(self, ctx):
         """Shows the credits for Sunny and the server."""
         cog = self.bot.get_cog("Downloader")
@@ -321,8 +321,7 @@ class OnePieceInfo(commands.Cog):
                 "[improved by many awesome people.](https://github.com/Cog-Creators/Red-DiscordBot/graphs/contributors)"
             )
         )
-
-     cog_creators = [
+        cog_creators = [
             "[aaa3a-cogs](https://github.com/AAA3A-AAA3A/AAA3A-cogs): aaa3a",
             "[ad-cog](https://github.com/aikaterna/gobcog.git): aikaterna",
             "[adrian](https://github.com/designbyadrian/CogsByAdrian.git): thinkadrian",
@@ -343,7 +342,7 @@ class OnePieceInfo(commands.Cog):
             "[toxic-cogs](https://github.com/NeuroAssassin/Toxic-Cogs): Neuro Assassin",
             "[Trusty-cogs](https://github.com/TrustyJAID/Trusty-cogs/): TrustyJAID",
             "[vrt-cogs](https://github.com/vertyco/vrt-cogs): Vertyco",
-            "[yamicogs](https://github.com/yamikaitou/YamiCogs): YamiKaitou#8975**"
+            "[yamicogs](https://github.com/yamikaitou/YamiCogs): YamiKaitou#8975"
         ]
 
         # Split the cog creators list into two parts
@@ -360,7 +359,7 @@ class OnePieceInfo(commands.Cog):
         )
 
         await ctx.send(embed=embed)
-
+        
 async def setup(bot):
     global old_info, old_ping, old_serverinfo, old_userinfo
     old_info = bot.get_command("info")
