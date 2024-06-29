@@ -145,16 +145,9 @@ class OnePieceInfo(commands.Cog):
         embed.add_field(name="WebSocket Latency", value=f"{websocket_latency:.2f}ms", inline=True)
         embed.add_field(name="Message Latency", value=f"{message_latency:.2f}ms", inline=True)
         
-        # Get Discord API latency
-        api_start = time.perf_counter()
-        await ctx.trigger_typing()
-        api_end = time.perf_counter()
-        api_latency = (api_end - api_start) * 1000
-        embed.add_field(name="Discord API Latency", value=f"{api_latency:.2f}ms", inline=True)
-
         # Calculate average latency
-        avg_latency = (websocket_latency + message_latency + api_latency) / 3
-        embed.add_field(name="Average Latency", value=f"{avg_latency:.2f}ms", inline=False)
+        avg_latency = (websocket_latency + message_latency) / 2
+        embed.add_field(name="Average Latency", value=f"{avg_latency:.2f}ms", inline=True)
 
         embed.set_footer(text="May the fastest connection win!")
 
