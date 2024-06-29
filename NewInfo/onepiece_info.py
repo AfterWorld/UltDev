@@ -33,7 +33,7 @@ class OnePieceInfo(commands.Cog):
                 pass
             self.bot.add_command(old_ping)
 
-    @commands.command()
+   @commands.command()
     async def info(self, ctx):
         """Shows One Piece themed information about the Thousand Sunny Bot."""
         python_version = "{}.{}.{}".format(*sys.version_info[:3])
@@ -111,17 +111,17 @@ class OnePieceInfo(commands.Cog):
             value=(
                 "----------------------------------------------------------------------------------\n"
                 "⚔️ **Sun God Nika**: The Supreme Deity\n"
-                "{}\n".format("\n".join(rank_members.get("⚔️ Sun God Nika ⚔️", ["No members"])))
+                "{}\n".format("\n".join(rank_members.get("⚔️ Sun God Nika ⚔️", ["No members"]))) +
                 "🛡️ **GodHand**: The Divine Protectors\n"
-                "{}\n".format("\n".join(rank_members.get("GodHand", ["No members"])))
+                "{}\n".format("\n".join(rank_members.get("GodHand", ["No members"]))) +
                 "👑 **Gorosei**: The Elders of Wisdom\n"
-                "{}\n".format("\n".join(rank_members.get("Gorosei", ["No members"])))
+                "{}\n".format("\n".join(rank_members.get("Gorosei", ["No members"]))) +
                 "⭐️ **Yonko**: The Emperors of the Sea\n"
-                "{}\n".format("\n".join(rank_members.get("⭐️ - Yonko - ⭐️", ["No members"])))
+                "{}\n".format("\n".join(rank_members.get("⭐️ - Yonko - ⭐️", ["No members"]))) +
                 "⚓ **Warlords**: The Government Allies\n"
-                "{}\n".format("\n".join(rank_members.get("⚓️- Warlords - ⚓️", ["No members"])))
+                "{}\n".format("\n".join(rank_members.get("⚓️- Warlords - ⚓️", ["No members"]))) +
                 "⚡ **Worst Generation**: The Rising Stars\n"
-                "{}\n".format("\n".join(rank_members.get("⚡️ - Worst Generation - ⚡️", ["No members"])))
+                "{}\n".format("\n".join(rank_members.get("⚡️ - Worst Generation - ⚡️", ["No members"]))) +
                 "----------------------------------------------------------------------------------\n"
             ),
             inline=False
