@@ -122,14 +122,17 @@ class OnePieceInfo(commands.Cog):
         
         await ctx.send(embed=embed)
 
-    @commands.command()
+   @commands.command()
     async def ping(self, ctx):
         """Initiate an epic battle between Aokiji and Akainu!"""
+        print("Ping command started")  # Debug print
         start = time.perf_counter()
         message = await ctx.send("The tension rises on Punk Hazard...")
         end = time.perf_counter()
         message_latency = (end - start) * 1000
         websocket_latency = round(self.bot.latency * 1000, 2)
+
+        print(f"Latencies calculated: Message: {message_latency}, WebSocket: {websocket_latency}")  # Debug print
 
         embed = discord.Embed(title="Battle on Punk Hazard: Aokiji vs Akainu", color=discord.Color.orange())
         embed.set_thumbnail(url="https://example.com/punk_hazard.jpg")
@@ -146,9 +149,12 @@ class OnePieceInfo(commands.Cog):
         aokiji_power_up, aokiji_boost = self.get_power_up(websocket_latency)
         akainu_power_up, akainu_boost = self.get_power_up(message_latency)
 
+        print(f"Power-ups calculated: Aokiji: {aokiji_power_up}, Akainu: {akainu_power_up}")  # Debug print
+
         embed.add_field(name="Power-Ups", value=f"Aokiji: {aokiji_power_up} (+{aokiji_boost} damage)\nAkainu: {akainu_power_up} (+{akainu_boost} damage)", inline=False)
 
         for round in range(1, rounds + 1):
+            print(f"Starting round {round}")  # Debug print
             embed.add_field(name=f"Round {round}", value="The battle rages on!", inline=False)
             
             aokiji_attack = random.choice(attacks["Aokiji"])
@@ -176,6 +182,8 @@ class OnePieceInfo(commands.Cog):
                 await message.edit(embed=embed)
                 await asyncio.sleep(2)
 
+        print("Battle rounds completed")  # Debug print
+
         if aokiji_health > akainu_health:
             winner = "Aokiji"
             outcome = "The azure admiral freezes his opponent solid!"
@@ -188,6 +196,8 @@ class OnePieceInfo(commands.Cog):
             winner = "Tie"
             outcome = "Both admirals stand at an impasse, neither willing to yield!"
             await self.config.ties.set(await self.config.ties() + 1)
+
+        print(f"Battle outcome: {winner}")  # Debug print
 
         embed.add_field(name="Battle Outcome", value=f"{winner}: {outcome}", inline=False)
         
@@ -213,6 +223,7 @@ class OnePieceInfo(commands.Cog):
         embed.add_field(name="One Piece Trivia", value=random.choice(trivia_questions), inline=False)
 
         await message.edit(embed=embed)
+        print("Ping command completed")  # Debug print
 
     @commands.command()
     async def credits(self, ctx):
