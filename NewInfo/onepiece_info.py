@@ -5,6 +5,7 @@ from redbot import __version__ as red_version
 import sys
 import psutil
 import platform
+import asyncio
 
 old_info = None
 old_ping = None
