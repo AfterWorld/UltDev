@@ -7,12 +7,16 @@ from redbot.core import commands
 from redbot.core.utils.chat_formatting import box, pagify
 from redbot.core.utils.menus import menu, DEFAULT_CONTROLS
 
-class OnePieceHelp(commands.HelpFormatter):
+class OnePieceHelp(commands.HelpCommand):
     def __init__(self):
-        super().__init__()
+        super().__init__(command_attrs={
+            "help": "Shows help about the bot, a command, or a category",
+            "cooldown": commands.Cooldown(1, 3, commands.BucketType.user),
+        })
         self.devil_fruits = {}
 
-    async def format_bot_help(self, ctx):
+    async def send_bot_help(self, mapping):
+        ctx = self.context
         description = (
             "Ahoy, brave pirate! Welcome aboard the Thousand Sunny. "
             "I'm your trusty navigator through the Grand Line of commands. "
@@ -37,7 +41,8 @@ class OnePieceHelp(commands.HelpFormatter):
 
         await ctx.send(embed=embed)
 
-    async def format_command_help(self, ctx, command):
+    async def send_command_help(self, command):
+        ctx = self.context
         devil_fruit = self.devil_fruits.get(command.qualified_name, "Unknown Devil Fruit")
         
         embed = discord.Embed(
@@ -62,10 +67,11 @@ class OnePieceHelp(commands.HelpFormatter):
         
         await ctx.send(embed=embed)
 
-    async def format_group_help(self, ctx, group):
+    async def send_group_help(self, group):
+        ctx = self.context
         subcommands = group.commands
         if len(subcommands) == 0:
-            return await self.format_command_help(ctx, group)
+            return await self.send_command_help(group)
 
         entries = await self.filter_commands(subcommands, sort=True)
         pages = []
@@ -88,7 +94,8 @@ class OnePieceHelp(commands.HelpFormatter):
         else:
             await menu(ctx, pages, DEFAULT_CONTROLS)
 
-    async def format_cog_help(self, ctx, cog):
+    async def send_cog_help(self, cog):
+        ctx = self.context
         cog_name = cog.qualified_name or "No Category"
         
         embed = discord.Embed(
@@ -120,38 +127,13 @@ class OnePieceHelp(commands.HelpFormatter):
         self.devil_fruits[command_name] = devil_fruit_type
         await ctx.send(f"Devil Fruit type for {command_name} set to {devil_fruit_type}.")
 
-class OnePieceHelpCommand(commands.HelpCommand):
-    def __init__(self):
-        super().__init__(command_attrs={
-            "help": "Shows help about the bot, a command, or a category",
-            "cooldown": commands.Cooldown(1, 3, commands.BucketType.user),
-        })
-        self.formatter = OnePieceHelp()
-
-    async def send_bot_help(self, mapping):
-        ctx = self.context
-        await self.formatter.format_bot_help(ctx)
-
-    async def send_command_help(self, command):
-        ctx = self.context
-        await self.formatter.format_command_help(ctx, command)
-
-    async def send_group_help(self, group):
-        ctx = self.context
-        await self.formatter.format_group_help(ctx, group)
-
-    async def send_cog_help(self, cog):
-        ctx = self.context
-        await self.formatter.format_cog_help(ctx, cog)
-
 def setup(bot):
-    help_command = OnePieceHelpCommand()
-    help_command.formatter.devil_fruits = getattr(bot, "_devil_fruits", {})
+    help_command = OnePieceHelp()
+    help_command.devil_fruits = getattr(bot, "_devil_fruits", {})
     old_help = bot.help_command
     bot.help_command = help_command
-    bot._devil_fruits = help_command.formatter.devil_fruits
+    bot._devil_fruits = help_command.devil_fruits
 
-    # Adding the setdevilfruit command to the bot
     @bot.command()
     @commands.is_owner()
     async def setdevilfruit(ctx, command_name: str, *, devil_fruit_type: str):
