@@ -99,30 +99,47 @@ class OnePieceInfo(commands.Cog):
 
     @commands.command()
     async def ping(self, ctx):
-        """Shows Aokiji's ping with an ice freezing animation"""
+        """Shows a battle between Aokiji and Akainu with ping information"""
         start = ctx.message.created_at
-        message = await ctx.send("Aokiji is preparing his attack...")
+        message = await ctx.send("A fierce battle is about to begin on Punk Hazard...")
         
         # Animation frames
-        frames = [
-            "❄️ Ice Age is forming...",
-            "❄️ The air is getting colder...",
-            "❄️❄️ Frost is spreading...",
-            "❄️❄️❄️ Everything is freezing...",
-            "❄️❄️❄️❄️ The world is turning to ice...",
+        battle_frames = [
+            "Aokiji and Akainu face each other...",
+            "Aokiji: 'I won't let you pass!' Akainu: 'Stand aside, or face absolute justice!'",
+            "❄️ Aokiji prepares his ice powers!",
+            "🌋 Akainu's fist turns to magma!",
+            "❄️➡️➡️➡️🌋 Aokiji attacks! Ice Age!",
+            "💨💨💨 Steam fills the air as ice meets magma!",
+            "🌋➡️➡️➡️❄️ Akainu counterattacks! Great Eruption!",
+            "💥💥💥 The attacks collide in a massive explosion!",
+            "The smoke clears, revealing the outcome...",
         ]
         
-        for frame in frames:
-            await asyncio.sleep(0.6)
+        for frame in battle_frames:
+            await asyncio.sleep(1)
             await message.edit(content=frame)
         
         end = discord.utils.utcnow()
         ping_time = (end - start).total_seconds() * 1000
         
+        # Determine the winner based on ping time
+        if ping_time < 100:
+            winner = "Aokiji"
+            outcome = "Aokiji's ice freezes even Akainu's magma!"
+        elif ping_time < 200:
+            winner = "Tie"
+            outcome = "Neither admiral can overcome the other. It's a draw!"
+        else:
+            winner = "Akainu"
+            outcome = "Akainu's magma melts through Aokiji's ice!"
+        
         final_message = (
-            "❄️❄️❄️❄️❄️ Ice Age Complete! ❄️❄️❄️❄️❄️\n"
-            f"I've frozen your message at a speed of **{ping_time:.2f}ms**.\n"
-            "Looks like my Devil Fruit powers are as cool as ever!"
+            f"**Battle Outcome:** {winner} {'wins' if winner != 'Tie' else ''}\n"
+            f"{outcome}\n\n"
+            f"⏱️ Battle duration: **{ping_time:.2f}ms**\n"
+            f"🌡️ WebSocket latency: **{round(self.bot.latency * 1000, 2)}ms**\n\n"
+            "The fight on Punk Hazard rages on, changing the very nature of the island!"
         )
         
         await message.edit(content=final_message)
