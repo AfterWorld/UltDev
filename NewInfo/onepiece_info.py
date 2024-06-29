@@ -64,8 +64,9 @@ class OnePieceInfo(commands.Cog):
             value=(
                 f"**🏴‍☠️ Crew Members:** {ctx.guild.member_count}\n"
                 f"**🌊 Sailing on:** {guild_count} / {max_guilds} seas\n"
-                f"**⚓ Docked:** {ctx.guild.name}\n"
-                f"**🐉 Captain:** {ctx.guild.owner.mention}"
+                f"**⚓ Docked at:** {ctx.guild.name}\n"
+                f"**🐉 Captain:** {ctx.guild.owner.mention}\n"
+                "-----------------------------------------"
             ),
             inline=True
         )
@@ -76,7 +77,8 @@ class OnePieceInfo(commands.Cog):
                 f"**🐏 Ram:** {memory.percent}% occupied\n"
                 f"**⚙️ Engine Load:** {cpu_usage}%\n"
                 f"**🗺️ Chart Storage:** {disk.percent}% full\n"
-                f"**🌡️ Ocean Temperature:** {ping}ms"
+                f"**🌡️ Ocean Temperature:** {ping}ms\n"
+                "-----------------------------------------"
             ),
             inline=True
         )
@@ -92,7 +94,8 @@ class OnePieceInfo(commands.Cog):
                 "🩺 **Chopper:** The Helping Doctor (Support Features)\n"
                 "📚 **Robin:** The Historian (Logging and Database)\n"
                 "🛠️ **Franky:** The SUPER Technician (Utility Commands)\n"
-                "🎻 **Brook:** The Soul King of Music (Music Commands)"
+                "🎻 **Brook:** The Soul King of Music (Music Commands)\n"
+                "-----------------------------------------"
             ),
             inline=False
         )
