@@ -278,4 +278,4 @@ async def setup(bot):
     old_info = bot.get_command("info")
     old_ping = bot.get_command("ping")
     if old_info:
-        bot.remove_command(old_info
+        bot.remove_command(old_info)
