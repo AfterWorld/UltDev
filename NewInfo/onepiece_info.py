@@ -1,13 +1,11 @@
 import discord
-from redbot.core import commands, Config
+from redbot.core import commands
 from redbot.core.bot import Red
 from redbot import __version__ as red_version
 import sys
 import psutil
 import platform
-import random
 import asyncio
-import time
 
 old_info = None
 old_ping = None
@@ -17,8 +15,6 @@ class OnePieceInfo(commands.Cog):
 
     def __init__(self, bot: Red):
         self.bot = bot
-        self.config = Config.get_conf(self, identifier=1234567890)
-        self.config.register_global(**default_global)
 
     def cog_unload(self):
         global old_info, old_ping
@@ -103,62 +99,33 @@ class OnePieceInfo(commands.Cog):
 
     @commands.command()
     async def ping(self, ctx):
-        """Shows a battle between Aokiji and Akainu, with detailed ping information!"""
-        start = time.perf_counter()
-        message = await ctx.send("A fierce battle is about to begin on Punk Hazard...")
-        end = time.perf_counter()
-        message_latency = (end - start) * 1000
-
-        websocket_latency = round(self.bot.latency * 1000, 2)
-
-        battle_frames = [
-            "🌋 Akainu: 'I'll show you the power of absolute justice!' ❄️ Aokiji: 'Not if I freeze you first!'",
-            "❄️ Aokiji unleashes his Ice Age! 🌋 Akainu counters with his Meteor Volcano!",
-            "🌋❄️ The attacks collide, creating a massive steam cloud!",
-            "💨💨💨 The steam clears, revealing the outcome...",
-        ]
-
-        embed = discord.Embed(title="Battle on Punk Hazard: Aokiji vs Akainu", color=discord.Color.orange())
-        embed.set_footer(text="May the strongest prevail!")
-
-        for frame in battle_frames:
-            embed.description = frame
-            await message.edit(content=None, embed=embed)
-            await asyncio.sleep(1.5)
-
-        # Randomly determine the battle outcome
-        winner = random.choice(["Aokiji", "Akainu", "Tie"])
-
-        if winner == "Aokiji":
-            color = discord.Color.blue()
-            outcome = "Aokiji's ice freezes Akainu's magma! The azure admiral emerges victorious!"
-        elif winner == "Akainu":
-            color = discord.Color.red()
-            outcome = "Akainu's magma overpowers Aokiji's ice! The crimson admiral stands triumphant!"
-        else:
-            color = discord.Color.purple()
-            outcome = "It's a draw! Punk Hazard is left half frozen, half burning! Neither admiral could overpower the other!"
-
-        embed.color = color
-        embed.description = outcome
-        embed.add_field(name="Battle Winner", value=winner, inline=False)
-        embed.add_field(name="WebSocket Latency", value=f"{websocket_latency:.2f}ms", inline=True)
-        embed.add_field(name="Message Latency", value=f"{message_latency:.2f}ms", inline=True)
+        """Shows Aokiji's ping with an ice freezing animation"""
+        start = ctx.message.created_at
+        message = await ctx.send("Aokiji is preparing his attack...")
         
-        # Calculate average latency
-        avg_latency = (websocket_latency + message_latency) / 2
-        embed.add_field(name="Average Latency", value=f"{avg_latency:.2f}ms", inline=True)
-
-        if avg_latency < 100:
-            speed_comment = "As swift as Kizaru's light!"
-        elif avg_latency < 200:
-            speed_comment = "Moving at the speed of Gear Second!"
-        else:
-            speed_comment = "Slower than Foxy's Noro Noro Beam..."
-
-        embed.set_footer(text=f"Connection Speed: {speed_comment}")
-
-        await message.edit(embed=embed)
+        # Animation frames
+        frames = [
+            "❄️ Ice Age is forming...",
+            "❄️ The air is getting colder...",
+            "❄️❄️ Frost is spreading...",
+            "❄️❄️❄️ Everything is freezing...",
+            "❄️❄️❄️❄️ The world is turning to ice...",
+        ]
+        
+        for frame in frames:
+            await asyncio.sleep(0.6)
+            await message.edit(content=frame)
+        
+        end = discord.utils.utcnow()
+        ping_time = (end - start).total_seconds() * 1000
+        
+        final_message = (
+            "❄️❄️❄️❄️❄️ Ice Age Complete! ❄️❄️❄️❄️❄️\n"
+            f"I've frozen your message at a speed of **{ping_time:.2f}ms**.\n"
+            "Looks like my Devil Fruit powers are as cool as ever!"
+        )
+        
+        await message.edit(content=final_message)
 
     @commands.command()
     async def credits(self, ctx):
@@ -224,4 +191,9 @@ async def setup(bot):
     old_info = bot.get_command("info")
     old_ping = bot.get_command("ping")
     if old_info:
-        bot.remove_command(old_info)
+        bot.remove_command(old_info.name)
+    if old_ping:
+        bot.remove_command(old_ping.name)
+
+    cog = OnePieceInfo(bot)
+    await bot.add_cog(cog)
