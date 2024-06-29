@@ -1,23 +1,40 @@
 import discord
-from redbot.core import commands
+from redbot.core import commands, Config
 from redbot.core.bot import Red
 from redbot import __version__ as red_version
 import sys
 import psutil
 import platform
+import random
 import asyncio
 import time
-import random
 
 old_info = None
 old_ping = None
 
 class OnePieceInfo(commands.Cog):
-    def __init__(self, bot):
+    """Provides One Piece themed info and ping commands."""
+
+    def __init__(self, bot: Red):
         self.bot = bot
         self.config = Config.get_conf(self, identifier=1234567890)
         default_global = {"aokiji_wins": 0, "akainu_wins": 0, "ties": 0}
         self.config.register_global(**default_global)
+
+    def cog_unload(self):
+        global old_info, old_ping
+        if old_info:
+            try:
+                self.bot.remove_command("info")
+            except:
+                pass
+            self.bot.add_command(old_info)
+        if old_ping:
+            try:
+                self.bot.remove_command("ping")
+            except:
+                pass
+            self.bot.add_command(old_ping)
 
     def get_latency_description(self, latency):
         if latency < 50:
@@ -38,21 +55,6 @@ class OnePieceInfo(commands.Cog):
             return "Moderate Power-Up", 10
         else:
             return "Weak Power-Up", 5
-            
-    def cog_unload(self):
-        global old_info, old_ping
-        if old_info:
-            try:
-                self.bot.remove_command("info")
-            except:
-                pass
-            self.bot.add_command(old_info)
-        if old_ping:
-            try:
-                self.bot.remove_command("ping")
-            except:
-                pass
-            self.bot.add_command(old_ping)
 
     @commands.command()
     async def info(self, ctx):
@@ -211,7 +213,7 @@ class OnePieceInfo(commands.Cog):
         embed.add_field(name="One Piece Trivia", value=random.choice(trivia_questions), inline=False)
 
         await message.edit(embed=embed)
-        
+
     @commands.command()
     async def credits(self, ctx):
         """Shows the credits for Sunny and the server."""
@@ -276,9 +278,4 @@ async def setup(bot):
     old_info = bot.get_command("info")
     old_ping = bot.get_command("ping")
     if old_info:
-        bot.remove_command(old_info.name)
-    if old_ping:
-        bot.remove_command(old_ping.name)
-
-    cog = OnePieceInfo(bot)
-    await bot.add_cog(cog)
+        bot.remove_command(old_info
