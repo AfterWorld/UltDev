@@ -97,36 +97,57 @@ class OnePieceInfo(commands.Cog):
         
         await ctx.send(embed=embed)
 
+    import random
+
+class OnePieceInfo(commands.Cog):
+    # ... (previous methods remain unchanged)
+
     @commands.command()
     async def ping(self, ctx):
-        """Shows Aokiji's ping with an ice freezing animation"""
-        start = ctx.message.created_at
-        message = await ctx.send("Aokiji is preparing his attack...")
-        
-        # Calculate the WebSocket latency
+        """Shows a battle between Aokiji and Akainu, with the ping as the deciding factor!"""
         websocket_latency = round(self.bot.latency * 1000, 2)
-        
-        # Animation frames
-        frames = [
-            "❄️ Ice Age is forming...",
-            "❄️ The air is getting colder...",
-            "❄️❄️ Frost is spreading...",
-            "❄️❄️❄️ Everything is freezing...",
-            "❄️❄️❄️❄️ The world is turning to ice...",
-        ]
-        
-        for frame in frames:
-            await asyncio.sleep(0.6)
-            await message.edit(content=frame)
-        
-        final_message = (
-            "❄️❄️❄️❄️❄️ Ice Age Complete! ❄️❄️❄️❄️❄️\n"
-            f"I've frozen your message at a speed of **{websocket_latency}ms**.\n"
-            "Looks like my Devil Fruit powers are as cool as ever!"
-        )
-        
-        await message.edit(content=final_message)
+        message = await ctx.send("A fierce battle is about to begin on Punk Hazard...")
 
+        battle_frames = [
+            "🌋 Akainu: 'I'll show you the power of absolute justice!' ❄️ Aokiji: 'Not if I freeze you first!'",
+            "❄️ Aokiji unleashes his Ice Age! 🌋 Akainu counters with his Meteor Volcano!",
+            "🌋❄️ The attacks collide, creating a massive steam cloud!",
+            "💨💨💨 The steam clears, revealing the outcome...",
+        ]
+
+        for frame in battle_frames:
+            await asyncio.sleep(1)
+            await message.edit(content=frame)
+
+        await asyncio.sleep(1)
+
+        if websocket_latency < 100:
+            winner = "Aokiji"
+            outcome = (
+                f"❄️ Aokiji's ice freezes Akainu's magma in **{websocket_latency}ms**!\n"
+                "The bot's connection is as cool as Aokiji's ice powers!"
+            )
+        elif websocket_latency < 200:
+            winner = "Tie"
+            outcome = (
+                f"🌫️ After **{websocket_latency}ms**, it's a draw! Punk Hazard is half frozen, half burning!\n"
+                "The bot's connection is balanced, like the aftermath of their battle!"
+            )
+        else:
+            winner = "Akainu"
+            outcome = (
+                f"🌋 Akainu's magma overpowers Aokiji's ice in **{websocket_latency}ms**!\n"
+                "The bot's connection is as hot as Akainu's magma!"
+            )
+
+        final_message = (
+            f"**Battle Outcome:** {winner} {'wins' if winner != 'Tie' else ''}\n\n"
+            f"{outcome}\n\n"
+            f"Websocket Latency: {websocket_latency}ms"
+        )
+
+        await message.edit(content=final_message)
+        
     @commands.command()
     async def credits(self, ctx):
         """Shows the credits for Sunny and the server."""
