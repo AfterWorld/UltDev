@@ -64,7 +64,7 @@ class OnePieceInfo(commands.Cog):
             value=(
                 f"**🏴‍☠️ Crew Members:** {ctx.guild.member_count}\n"
                 f"**🌊 Sailing on:** {guild_count} / {max_guilds} seas\n"
-                f"**⚓ Docked at:** {ctx.guild.name}\n"
+                f"**⚓ Docked:** {ctx.guild.name}\n"
                 f"**🐉 Captain:** {ctx.guild.owner.mention}"
             ),
             inline=True
