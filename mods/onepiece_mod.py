@@ -1,12 +1,29 @@
 import discord
 from redbot.core import commands, checks, modlog
-from redbot.core.utils.chat_formatting import box, pagify
-from datetime import timedelta
+from redbot.core.utils.chat_formatting import box
 import asyncio
+
+# Store the original commands
+original_commands = {}
 
 class OnePieceMod(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.log_channel_id = 1245208777003634698
+
+    def cog_unload(self):
+        # Restore original commands
+        for cmd_name, cmd in original_commands.items():
+            if self.bot.get_command(cmd_name):
+                self.bot.remove_command(cmd_name)
+            if cmd:
+                self.bot.add_command(cmd)
+
+    async def log_action(self, ctx, member: discord.Member, action: str, reason: str):
+        log_channel = self.bot.get_channel(self.log_channel_id)
+        if log_channel:
+            log_message = f"- {member.name} (ID: {member.id})\n- {action}\n- Reason: {reason}"
+            await log_channel.send(box(log_message))
 
     @commands.command()
     @checks.admin_or_permissions(kick_members=True)
@@ -16,8 +33,9 @@ class OnePieceMod(commands.Cog):
             reason = "Disrespecting the captain's orders!"
 
         try:
-            await member.kick(reason=reason)
+            await ctx.guild.kick(member, reason=reason)
             await ctx.send(f"🦵 {member.name} has been kicked off the ship! They'll have to find another crew.")
+            await self.log_action(ctx, member, "Kicked", reason)
             
             case = await modlog.create_case(
                 ctx.bot, ctx.guild, ctx.message.created_at, action_type="kick",
@@ -38,8 +56,9 @@ class OnePieceMod(commands.Cog):
             reason = "Mutiny against the crew!"
 
         try:
-            await member.ban(reason=reason, delete_message_days=days)
+            await ctx.guild.ban(member, reason=reason, delete_message_days=days)
             await ctx.send(f"⛓️ {member.name} has been banished to Impel Down for their crimes against the crew!")
+            await self.log_action(ctx, member, "Banned", reason)
             
             case = await modlog.create_case(
                 ctx.bot, ctx.guild, ctx.message.created_at, action_type="ban",
@@ -67,6 +86,7 @@ class OnePieceMod(commands.Cog):
         try:
             await member.add_roles(mute_role, reason=reason)
             await ctx.send(f"🔇 {member.name} has been silenced with Sea Prism handcuffs!")
+            await self.log_action(ctx, member, f"Muted for {duration} minutes" if duration > 0 else "Muted", reason)
             
             case = await modlog.create_case(
                 ctx.bot, ctx.guild, ctx.message.created_at, action_type="mute",
@@ -80,10 +100,32 @@ class OnePieceMod(commands.Cog):
                 await asyncio.sleep(duration * 60)
                 await member.remove_roles(mute_role, reason="Sea Prism effect wore off")
                 await ctx.send(f"🔊 The Sea Prism effect has worn off. {member.name} can speak again!")
+                await self.log_action(ctx, member, "Unmuted", "Sea Prism effect wore off")
         except discord.Forbidden:
             await ctx.send("I don't have the authority to use Sea Prism handcuffs on that crew member!")
         except discord.HTTPException:
             await ctx.send("There was an error while trying to silence that crew member. The Sea Kings must be interfering with our Den Den Mushi!")
 
-def setup(bot):
-    bot.add_cog(OnePieceMod(bot))
+async def setup(bot):
+    global original_commands
+    cog = OnePieceMod(bot)
+
+    # Store and replace original commands
+    command_names = ["kick", "ban", "mute"]
+    for cmd_name in command_names:
+        original_cmd = bot.get_command(cmd_name)
+        if original_cmd:
+            original_commands[cmd_name] = original_cmd
+            bot.remove_command(cmd_name)
+
+    await bot.add_cog(cog)
+
+async def teardown(bot):
+    global original_commands
+    # Restore original commands
+    for cmd_name, cmd in original_commands.items():
+        if bot.get_command(cmd_name):
+            bot.remove_command(cmd_name)
+        if cmd:
+            bot.add_command(cmd)
+    original_commands.clear()
