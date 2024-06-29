@@ -103,6 +103,9 @@ class OnePieceInfo(commands.Cog):
         start = ctx.message.created_at
         message = await ctx.send("Aokiji is preparing his attack...")
         
+        # Calculate the WebSocket latency
+        websocket_latency = round(self.bot.latency * 1000, 2)
+        
         # Animation frames
         frames = [
             "❄️ Ice Age is forming...",
@@ -116,12 +119,9 @@ class OnePieceInfo(commands.Cog):
             await asyncio.sleep(0.6)
             await message.edit(content=frame)
         
-        end = discord.utils.utcnow()
-        ping_time = (end - start).total_seconds() * 1000
-        
         final_message = (
             "❄️❄️❄️❄️❄️ Ice Age Complete! ❄️❄️❄️❄️❄️\n"
-            f"I've frozen your message at a speed of **{ping_time:.2f}ms**.\n"
+            f"I've frozen your message at a speed of **{websocket_latency}ms**.\n"
             "Looks like my Devil Fruit powers are as cool as ever!"
         )
         
