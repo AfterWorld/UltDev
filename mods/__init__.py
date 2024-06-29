@@ -1,4 +1,3 @@
-from .onepiece_mod import OnePieceMod
+from .onepiece_mod import setup, teardown
 
-async def setup(bot):
-    await bot.add_cog(OnePieceMod(bot))
+__all__ = ["setup", "teardown"]
