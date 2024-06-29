@@ -98,9 +98,33 @@ class OnePieceInfo(commands.Cog):
 
     @commands.command()
     async def ping(self, ctx):
-        """Shows Aokiji's ping"""
-        ping = round(self.bot.latency * 1000)
-        await ctx.send(f"Ice Age! I've frozen your message at a speed of **{ping}ms**. Looks like my Devil Fruit powers are as cool as ever!")
+        """Shows Aokiji's ping with an ice freezing animation"""
+        start = ctx.message.created_at
+        message = await ctx.send("Aokiji is preparing his attack...")
+        
+        # Animation frames
+        frames = [
+            "❄️ Ice Age is forming...",
+            "❄️ The air is getting colder...",
+            "❄️❄️ Frost is spreading...",
+            "❄️❄️❄️ Everything is freezing...",
+            "❄️❄️❄️❄️ The world is turning to ice...",
+        ]
+        
+        for frame in frames:
+            await asyncio.sleep(0.6)
+            await message.edit(content=frame)
+        
+        end = discord.utils.utcnow()
+        ping_time = (end - start).total_seconds() * 1000
+        
+        final_message = (
+            "❄️❄️❄️❄️❄️ Ice Age Complete! ❄️❄️❄️❄️❄️\n"
+            f"I've frozen your message at a speed of **{ping_time:.2f}ms**.\n"
+            "Looks like my Devil Fruit powers are as cool as ever!"
+        )
+        
+        await message.edit(content=final_message)
 
     @commands.command()
     async def credits(self, ctx):
