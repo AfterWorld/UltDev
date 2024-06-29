@@ -7,9 +7,9 @@ import psutil
 import platform
 import asyncio
 import random
-from datetime import datetime
+from datetime import datetime, timezone
+import textwrap
 
-# Global variables for old commands
 old_info = None
 old_ping = None
 old_serverinfo = None
@@ -74,9 +74,8 @@ class OnePieceInfo(commands.Cog):
         )
         embed.set_thumbnail(url="https://example.com/thousand_sunny.png")
 
-        # Add inline fields for Ship's Log and Ship's Specs side by side
         embed.add_field(
-            name="🧭 **Ship's Log**",
+            name="🧭 Ship's Log",
             value=(
                 f"**🏴‍☠️ Crew Members:** {ctx.guild.member_count}\n"
                 f"**🌊 Sailing on:** {guild_count} / {max_guilds} seas\n"
@@ -87,7 +86,7 @@ class OnePieceInfo(commands.Cog):
         )
 
         embed.add_field(
-            name="🔧 **Ship's Specs**",
+            name="🔧 Ship's Specs",
             value=(
                 f"**🐏 Ram:** {memory.percent}% occupied\n"
                 f"**⚙️ Engine Load:** {cpu_usage}%\n"
@@ -97,46 +96,35 @@ class OnePieceInfo(commands.Cog):
             inline=True
         )
 
-        embed.add_field(
-            name="\u200B",  # Empty field for spacing
-            value="\u200B",
-            inline=False
-        )
+        embed.add_field(name="\u200B", value="\u200B", inline=False)
 
-        # Add fields for each rank with titles only
         embed.add_field(
-            name="🏴‍☠️ **Pirate Crew**",
+            name="🏴‍☠️ Pirate Crew",
             value=(
-                "----------------------------------------------------------------------------------\n"
                 "⚔️ **Sun God Nika**: The Supreme Deity\n"
                 "🛡️ **GodHand**: The Divine Protectors\n"
                 "👑 **Gorosei**: The Elders of Wisdom\n"
                 "⭐️ **Yonko**: The Emperors of the Sea\n"
                 "⚓ **Warlords**: The Government Allies\n"
-                "⚡ **Worst Generation**: The Rising Stars\n"
-                "----------------------------------------------------------------------------------\n"
+                "⚡ **Worst Generation**: The Rising Stars"
             ),
             inline=False
         )
 
-        embed.add_field(
-            name="\u200B",  # Empty field for spacing
-            value="\u200B",
-            inline=False
-        )
+        embed.add_field(name="\u200B", value="\u200B", inline=False)
 
         embed.add_field(
-            name="🗝️ **Devil Fruit Powers**",
+            name="🗝️ Devil Fruit Powers",
             value=(
-                "🐍 **Python:** {}\n"
-                "🤖 **Discord.py:** {}\n"
-                "🔴 **Red-DiscordBot:** {}".format(python_version, dpy_version, red_version)
+                f"🐍 **Python:** {python_version}\n"
+                f"🤖 **Discord.py:** {dpy_version}\n"
+                f"🔴 **Red-DiscordBot:** {red_version}"
             ),
             inline=True
         )
 
         embed.add_field(
-            name="🧭 **Navigation**",
+            name="🧭 Navigation",
             value=(
                 "`[p]help`: View all commands\n"
                 "`[p]info`: Display this ship's log\n"
@@ -156,7 +144,6 @@ class OnePieceInfo(commands.Cog):
         embed = discord.Embed(title="Battle on Punk Hazard: Aokiji vs Akainu", color=discord.Color.orange())
         message = await ctx.send(embed=embed)
         
-        # Animation frames
         battle_frames = [
             "Aokiji and Akainu face each other...",
             "Aokiji: 'I won't let you pass!' Akainu: 'Stand aside, or face absolute justice!'",
@@ -169,7 +156,6 @@ class OnePieceInfo(commands.Cog):
             "The smoke clears, revealing the outcome..."
         ]
         
-        # Easter egg interruptions
         easter_eggs = [
             "Suddenly, Garp appears and knocks both admirals out!",
             "A wild Luffy appears, mistaking the battle for a meat-cooking contest!",
@@ -182,7 +168,6 @@ class OnePieceInfo(commands.Cog):
             embed.description = frame
             await asyncio.sleep(1)
             
-            # 5% chance for an Easter egg to occur
             if random.random() < 0.05:
                 embed.add_field(name="Unexpected Interruption!", value=random.choice(easter_eggs), inline=False)
             
@@ -191,7 +176,6 @@ class OnePieceInfo(commands.Cog):
         end = discord.utils.utcnow()
         ping_time = (end - start).total_seconds() * 1000
         
-        # Determine the winner based on ping time
         if ping_time < 100:
             winner = "Aokiji"
             outcome = "Aokiji's ice freezes even Akainu's magma!"
@@ -221,39 +205,57 @@ class OnePieceInfo(commands.Cog):
         guild = ctx.guild
         
         if guild.member_count < 50:
-            island_type = "Small island village"
+            island_type = "🏝️ Small island village"
         elif guild.member_count < 200:
-            island_type = "Bustling port town"
+            island_type = "🏙️ Bustling port town"
         elif guild.member_count < 1000:
-            island_type = "Grand Line island"
+            island_type = "🌴 Grand Line island"
         else:
-            island_type = "New World stronghold"
+            island_type = "🌋 New World stronghold"
 
         bot_count = sum(1 for m in guild.members if m.bot)
+        human_count = guild.member_count - bot_count
         
         embed = discord.Embed(title=f"📍 Island Log: {guild.name}", color=discord.Color.blue())
         embed.set_thumbnail(url=guild.icon.url if guild.icon else "https://example.com/default_island.png")
         
+        # Basic Info
         embed.add_field(name="🏝️ Island Type", value=island_type, inline=False)
         embed.add_field(name="🏴‍☠️ Pirate Captain", value=guild.owner.mention, inline=True)
         embed.add_field(name="🗺️ Region", value=str(guild.region).title() if hasattr(guild, 'region') else "Unknown Seas", inline=True)
         embed.add_field(name="⚓ Founding Date", value=guild.created_at.strftime("%B %d, %Y"), inline=True)
         
-        embed.add_field(name="👥 Population", value=f"{guild.member_count} inhabitants", inline=True)
-        embed.add_field(name="🤖 Den Den Mushi", value=f"{bot_count} snails", inline=True)
+        # Population
+        embed.add_field(name="👥 Population", value=f"Total: {guild.member_count}\nPirates: {human_count}\nDen Den Mushi: {bot_count}", inline=False)
         
+        # Channels
         channel_info = (
             f"🗣️ Taverns (Text): {len(guild.text_channels)}\n"
             f"🎙️ Crow's Nests (Voice): {len(guild.voice_channels)}\n"
-            f"📜 Announcements: {len(guild.categories)}"
+            f"📜 Notice Boards (Categories): {len(guild.categories)}"
         )
         embed.add_field(name="🏘️ Locations", value=channel_info, inline=False)
         
+        # Roles
         role_info = (
             f"🎭 Total Roles: {len(guild.roles)}\n"
             f"👑 Highest Role: {guild.roles[-1].name}"
         )
         embed.add_field(name="🏅 Crew Positions", value=role_info, inline=False)
+        
+        # Server Features
+        if guild.features:
+            features = ", ".join(f"`{feature}`" for feature in guild.features)
+            embed.add_field(name="🌟 Special Features", value=features, inline=False)
+        
+        # Security Level
+        verification_level = str(guild.verification_level).capitalize()
+        embed.add_field(name="🔒 Security Level", value=f"Marine Inspection Level: {verification_level}", inline=False)
+        
+        # Server Boosting
+        if guild.premium_tier > 0:
+            boost_info = f"Level {guild.premium_tier} with {guild.premium_subscription_count} boosters"
+            embed.add_field(name="⚡ Devil Fruit Boost", value=boost_info, inline=False)
         
         embed.set_footer(text="May the winds of adventure guide your ship to this island!")
         
@@ -264,30 +266,41 @@ class OnePieceInfo(commands.Cog):
         """Display information about a crewmate (user)."""
         member = member or ctx.author
         
-        days_on_server = (datetime.utcnow() - member.joined_at).days
+        now = datetime.now(timezone.utc)
+        joined_at = member.joined_at.replace(tzinfo=timezone.utc)
+        days_on_server = (now - joined_at).days
+        
         if days_on_server < 7:
-            rank = "Cabin Boy"
+            rank = "🐣 Cabin Boy"
         elif days_on_server < 30:
-            rank = "Deckhand"
+            rank = "🧭 Deckhand"
         elif days_on_server < 90:
-            rank = "Quarter Master"
+            rank = "🎭 Quarter Master"
         elif days_on_server < 180:
-            rank = "First Mate"
+            rank = "🏴‍☠️ First Mate"
         else:
-            rank = "Veteran Pirate"
+            rank = "🦜 Veteran Pirate"
 
         embed = discord.Embed(title=f"🏴‍☠️ Pirate Profile: {member.name}", color=member.color)
         embed.set_thumbnail(url=member.avatar.url)
         
         embed.add_field(name="🎭 Pirate Alias", value=member.display_name, inline=True)
         embed.add_field(name="🏅 Crew Rank", value=rank, inline=True)
-        embed.add_field(name="🗺️ Joined Crew", value=member.joined_at.strftime("%B %d, %Y"), inline=True)
+        embed.add_field(name="🗺️ Joined Crew", value=f"{member.joined_at.strftime('%B %d, %Y')}\n({days_on_server} days ago)", inline=True)
         embed.add_field(name="🌊 Sailed Discord Seas Since", value=member.created_at.strftime("%B %d, %Y"), inline=True)
         
         roles = [role.mention for role in reversed(member.roles) if role.name != "@everyone"]
-        embed.add_field(name=f"🎨 Colors of Allegiance ({len(roles)})", value=" ".join(roles) if roles else "No colors", inline=False)
+        embed.add_field(name=f"🎨 Colors of Allegiance ({len(roles)})", 
+                        value=textwrap.shorten(" ".join(roles) if roles else "No colors", width=1024, placeholder="..."), 
+                        inline=False)
         
-        pirate_status = f"{'🟢 On Deck' if member.status == discord.Status.online else '🔴 Below Deck'}"
+        status_emoji = {
+            discord.Status.online: "🟢",
+            discord.Status.idle: "🟡",
+            discord.Status.dnd: "🔴",
+            discord.Status.offline: "⚫"
+        }
+        pirate_status = f"{status_emoji.get(member.status, '⚪')} {str(member.status).capitalize()}"
         if member.is_on_mobile():
             pirate_status += " (via Den Den Mushi)"
         embed.add_field(name="⚓ Current Status", value=pirate_status, inline=False)
@@ -297,6 +310,8 @@ class OnePieceInfo(commands.Cog):
                 embed.add_field(name="🎮 Current Adventure", value=f"Playing {member.activity.name}", inline=False)
             elif isinstance(member.activity, discord.Streaming):
                 embed.add_field(name="📡 Broadcasting Adventure", value=f"Streaming {member.activity.name}", inline=False)
+            elif isinstance(member.activity, discord.Spotify):
+                embed.add_field(name="🎵 Pirate Shanty", value=f"Listening to {member.activity.title} by {member.activity.artist}", inline=False)
         
         embed.set_footer(text="A true nakama, through calm seas and stormy weather!")
         
@@ -359,7 +374,7 @@ class OnePieceInfo(commands.Cog):
         )
 
         await ctx.send(embed=embed)
-        
+
 async def setup(bot):
     global old_info, old_ping, old_serverinfo, old_userinfo
     old_info = bot.get_command("info")
