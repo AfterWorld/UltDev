@@ -190,7 +190,7 @@ class OnePieceMod(commands.Cog):
             await ctx.send(f"⚠️ {member.name}'s bounty has exceeded 500 Berries! The Marines are on high alert!")
 
     async def generate_wanted_poster(self, member: discord.Member, bounty: int):
-    async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession() as session:
         # Get the member's avatar
         async with session.get(str(member.avatar_url)) as resp:
             avatar_data = io.BytesIO(await resp.read())
