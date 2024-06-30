@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 import json
 import time
 from tenacity import retry, stop_after_attempt, wait_random_exponential, retry_if_exception_type
+import tiktoken
 
 log = logging.getLogger("red.onepieceai")
 
@@ -228,9 +229,26 @@ class OnePieceAI(commands.Cog):
     @commands.is_owner()
     async def check_openai_usage(self, ctx):
         """Check current OpenAI API usage"""
+        if not self.client:
+            await ctx.send("OpenAI client is not initialized.")
+            return
+
         try:
-            usage = await self.bot.loop.run_in_executor(None, lambda: self.client.usage.retrieve())
-            await ctx.send(f"Current usage: {usage.total_usage} tokens")
+            # Get the current date in YYYY-MM-DD format
+            current_date = datetime.now().strftime("%Y-%m-%d")
+            
+            # Retrieve usage for the current day
+            usage = self.client.billing.usage(start_date=current_date, end_date=current_date)
+            
+            # Calculate total tokens used
+            total_tokens = usage.total_usage / 100  # Usage is reported in hundredths of cents
+            
+            # Estimate cost (this may vary depending on the model used)
+            estimated_cost = usage.total_usage / 100  # Convert to dollars
+            
+            await ctx.send(f"Usage for {current_date}:\n"
+                           f"Total tokens: {total_tokens:.2f}\n"
+                           f"Estimated cost: ${estimated_cost:.2f}")
         except Exception as e:
             await ctx.send(f"Error checking usage: {str(e)}")
 
