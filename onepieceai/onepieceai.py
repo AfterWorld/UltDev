@@ -136,11 +136,11 @@ class OnePieceAI(commands.Cog):
         # Update the last conversation time
         await self.config.guild(message.guild).last_conversation.set(datetime.now().isoformat())
 
-   @retry(
-        wait=wait_random_exponential(min=4, max=60),
-        stop=stop_after_attempt(6),
-        retry=retry_if_exception_type(RateLimitError)
-    )
+    @retry(
+            wait=wait_random_exponential(min=4, max=60),
+            stop=stop_after_attempt(6),
+            retry=retry_if_exception_type(RateLimitError)
+        )
 
     async def generate_chatgpt_response(self, context: str, message_content: str):
         if not self.client:
