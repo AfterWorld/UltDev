@@ -409,7 +409,6 @@ async def setup(bot):
             bot.remove_command(cmd_name)
 
     await bot.add_cog(cog)
-    bot.loop.create_task(cog.check_timed_announcements())
 
 async def teardown(bot):
     global original_commands
