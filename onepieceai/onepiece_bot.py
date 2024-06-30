@@ -10,7 +10,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # Set your OpenAI API key
-OPENAI_API_KEY = "your_openai_api_key"
+OPENAI_API_KEY = "sk-proj-iANYacs2gXzi3rQi2iejT3BlbkFJ21XIYb08j2Gb4JMVqTsR"
 openai.api_key = OPENAI_API_KEY
 
 class OnePieceBot(commands.Cog):
