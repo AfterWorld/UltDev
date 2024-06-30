@@ -234,38 +234,42 @@ class OnePieceAI(commands.Cog):
             return
 
         try:
-            # Get the current date in YYYY-MM-DD format
-            current_date = datetime.now().strftime("%Y-%m-%d")
-            
-            # Retrieve usage for the current day
-            usage = self.client.billing.usage(start_date=current_date, end_date=current_date)
-            
-            # Calculate total cost
-            total_cost = usage.total_usage  # Already in dollars
+            # Get the current date and the first day of the current month
+            end_date = datetime.now()
+            start_date = end_date.replace(day=1)
 
-            # Estimate tokens used (assuming gpt-3.5-turbo which is $0.002 per 1K tokens)
-            estimated_tokens = int(total_cost * 500000)  # 500,000 tokens per dollar
+            # Format dates for the API
+            start_date_str = start_date.strftime("%Y-%m-%d")
+            end_date_str = end_date.strftime("%Y-%m-%d")
+
+            # Retrieve usage data
+            usage_data = self.client.dashboard.usage(start_date=start_date_str, end_date=end_date_str)
+            
+            # Calculate total cost and tokens
+            total_cost = sum(daily.total_usage for daily in usage_data.daily_costs)
+            total_tokens = sum(daily.n_requests * 1000 for daily in usage_data.daily_costs)  # Assuming average of 1000 tokens per request
 
             # Get the encoding for gpt-3.5-turbo
             encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
 
-            # Example of how many tokens are left (assuming a daily limit of 1 million tokens)
-            daily_limit = 1000000  # Adjust this based on your actual limit
-            tokens_left = daily_limit - estimated_tokens
+            # Example of how many tokens are left (assuming a monthly limit of 10 million tokens)
+            monthly_limit = 10000000  # Adjust this based on your actual limit
+            tokens_left = monthly_limit - total_tokens
 
             # Create a sample message to show token usage
             sample_message = "This is a sample message to show token usage."
             sample_tokens = len(encoding.encode(sample_message))
 
-            await ctx.send(f"Usage for {current_date}:\n"
-                           f"Estimated tokens used: {estimated_tokens:,}\n"
-                           f"Estimated cost: ${total_cost:.2f}\n"
+            await ctx.send(f"Usage from {start_date_str} to {end_date_str}:\n"
+                           f"Total tokens used: {total_tokens:,}\n"
+                           f"Total cost: ${total_cost:.2f}\n"
                            f"Estimated tokens left: {tokens_left:,}\n"
                            f"\nSample message: '{sample_message}'\n"
                            f"Token count: {sample_tokens}")
 
         except Exception as e:
             await ctx.send(f"Error checking usage: {str(e)}")
+            raise  # This will print the full error traceback in the console
 
     @commands.command()
     @commands.cooldown(1, 3600, commands.BucketType.user)
