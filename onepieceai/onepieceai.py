@@ -228,7 +228,7 @@ class OnePieceAI(commands.Cog):
     @commands.command()
     @commands.is_owner()
     async def check_openai_usage(self, ctx):
-        """Check current OpenAI API usage"""
+        """Check current OpenAI API usage and estimate remaining tokens"""
         if not self.client:
             await ctx.send("OpenAI client is not initialized.")
             return
@@ -240,15 +240,30 @@ class OnePieceAI(commands.Cog):
             # Retrieve usage for the current day
             usage = self.client.billing.usage(start_date=current_date, end_date=current_date)
             
-            # Calculate total tokens used
-            total_tokens = usage.total_usage / 100  # Usage is reported in hundredths of cents
-            
-            # Estimate cost (this may vary depending on the model used)
-            estimated_cost = usage.total_usage / 100  # Convert to dollars
-            
+            # Calculate total cost
+            total_cost = usage.total_usage  # Already in dollars
+
+            # Estimate tokens used (assuming gpt-3.5-turbo which is $0.002 per 1K tokens)
+            estimated_tokens = int(total_cost * 500000)  # 500,000 tokens per dollar
+
+            # Get the encoding for gpt-3.5-turbo
+            encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
+
+            # Example of how many tokens are left (assuming a daily limit of 1 million tokens)
+            daily_limit = 1000000  # Adjust this based on your actual limit
+            tokens_left = daily_limit - estimated_tokens
+
+            # Create a sample message to show token usage
+            sample_message = "This is a sample message to show token usage."
+            sample_tokens = len(encoding.encode(sample_message))
+
             await ctx.send(f"Usage for {current_date}:\n"
-                           f"Total tokens: {total_tokens:.2f}\n"
-                           f"Estimated cost: ${estimated_cost:.2f}")
+                           f"Estimated tokens used: {estimated_tokens:,}\n"
+                           f"Estimated cost: ${total_cost:.2f}\n"
+                           f"Estimated tokens left: {tokens_left:,}\n"
+                           f"\nSample message: '{sample_message}'\n"
+                           f"Token count: {sample_tokens}")
+
         except Exception as e:
             await ctx.send(f"Error checking usage: {str(e)}")
 
