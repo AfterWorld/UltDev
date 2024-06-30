@@ -374,9 +374,22 @@ class OnePieceMod(commands.Cog):
     async def seaking(self, ctx, *, banned_patterns):
         """Set up auto-moderation for specific patterns using regex, themed as Sea Kings patrolling the waters."""
         pattern_list = [pattern.strip() for pattern in banned_patterns.split(',')]
-        await self.config.guild(ctx.guild).banned_words.set(pattern_list)
-        self.banned_patterns = [re.compile(pattern, re.IGNORECASE) for pattern in pattern_list]
-        await ctx.send(f"🐉 Sea Kings are now patrolling for these patterns: {', '.join(pattern_list)}")
+        invalid_patterns = []
+        valid_patterns = []
+
+        for pattern in pattern_list:
+            try:
+                re.compile(pattern)
+                valid_patterns.append(pattern)
+            except re.error:
+                invalid_patterns.append(pattern)
+
+        if invalid_patterns:
+            await ctx.send(f"The following patterns are invalid and were not added: {', '.join(invalid_patterns)}")
+        
+        await self.config.guild(ctx.guild).banned_words.set(valid_patterns)
+        self.banned_patterns = [re.compile(pattern, re.IGNORECASE) for pattern in valid_patterns]
+        await ctx.send(f"🐉 Sea Kings are now patrolling for these patterns: {', '.join(valid_patterns)}")
 
     @commands.command()
     @checks.admin_or_permissions(manage_guild=True)
