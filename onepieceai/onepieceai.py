@@ -82,21 +82,23 @@ class OnePieceAI(commands.Cog):
         self.storyline_task.cancel()
         # No need to close the client, as it doesn't have a close method
     
-    @commands.Cog.listener()
+   @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         if message.author.bot or not message.guild:
             return
-
+    
         chat_channels = await self.config.guild(message.guild).chat_channels()
         if message.channel.id not in chat_channels:
             return
-
+    
+        chatgpt_enabled = await self.config.guild(message.guild).chatgpt_enabled()
+        if not chatgpt_enabled:
+            return  # Don't process messages if AI is disabled
+    
         bot_mentioned = self.bot.user in message.mentions
-        last_conversation = await self.config.guild(message.guild).last_conversation()
-        recent_conversation = last_conversation and (datetime.now() - datetime.fromisoformat(last_conversation)).total_seconds() < 300
-
-        if bot_mentioned or recent_conversation:
+        if bot_mentioned:
             await self.process_message(message)
+
 
     async def process_message(self, message: discord.Message):
         user_data = await self.config.member(message.author).all()
@@ -144,11 +146,10 @@ class OnePieceAI(commands.Cog):
         retry=retry_if_exception_type(RateLimitError)
     )
     async def generate_chatgpt_response(self, context: str, message_content: str):
-        if not self.client:
-            await self.initialize_client()
-            if not self.client:
-                return "Yohohoho! It seems my Den Den Mushi is out of order. I can't respond right now!"
-
+        chatgpt_enabled = await self.config.guild(message.guild).chatgpt_enabled()
+        if not chatgpt_enabled:
+            return "AI responses are currently disabled."
+        
         # Implement stricter rate limiting
         current_time = time.time()
         time_since_last_request = current_time - self.last_request_time
@@ -260,9 +261,6 @@ class OnePieceAI(commands.Cog):
             await ctx.send(f"Error checking usage: {str(e)}")
             raise  # This will print the full error traceback in the console
 
-    async def generate_chatgpt_response(self, context: str, message_content: str):
-        # ... (existing code)
-
         try:
             response = await self.bot.loop.run_in_executor(None, lambda: self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
@@ -282,6 +280,7 @@ class OnePieceAI(commands.Cog):
         except Exception as e:
             log.error(f"Unexpected error in generate_chatgpt_response: {str(e)}")
             return "Ah, the Grand Line is interfering with our communication. Let's try again later!"
+            
     @commands.command()
     @commands.cooldown(1, 3600, commands.BucketType.user)
     async def op_adventure(self, ctx):
