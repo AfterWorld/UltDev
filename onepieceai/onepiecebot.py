@@ -1,8 +1,16 @@
 from redbot.core import commands, Config, checks
 from redbot.core.bot import Red
+from redbot.core.utils.chat_formatting import pagify
+from redbot.core.utils.menus import menu, DEFAULT_CONTROLS
 import discord
 import random
 import asyncio
+import aiohttp
+import logging
+from collections import defaultdict
+from datetime import datetime, timedelta
+
+log = logging.getLogger("red.onepiecebot")
 
 class OnePieceBot(commands.Cog):
     def __init__(self, bot: Red):
@@ -12,58 +20,105 @@ class OnePieceBot(commands.Cog):
             "trivia_channel": None,
             "conversation_channels": [],
             "trivia_frequency": 3600,  # Default: every hour
+            "chatgpt_enabled": False,
+            "chatgpt_daily_limit": 100,  # Default daily limit per user
         }
         default_member = {
             "belis": 0,
+            "last_chatgpt_use": None,
+            "chatgpt_uses_today": 0,
         }
         self.config.register_guild(**default_guild)
         self.config.register_member(**default_member)
-        self.trivia_task = self.bot.loop.create_task(self.trivia_loop())
+        self.trivia_task = None
+        self.session = aiohttp.ClientSession()
+        self.chatgpt_cooldown = commands.CooldownMapping.from_cooldown(1, 30, commands.BucketType.user)
+        self.user_trivia_scores = defaultdict(int)
 
     def cog_unload(self):
-        self.trivia_task.cancel()
+        if self.trivia_task:
+            self.trivia_task.cancel()
+        asyncio.create_task(self.session.close())
 
-    @commands.command()
+    async def initialize(self):
+        self.trivia_task = self.bot.loop.create_task(self.trivia_loop())
+
+    @commands.group()
     @checks.admin_or_permissions(manage_guild=True)
-    async def setopbot(self, ctx, setting: str, *, value: str):
+    async def opbot(self, ctx):
         """Configure One Piece Bot settings"""
-        guild = ctx.guild
-        if setting == "trivia_channel":
-            channel = await commands.TextChannelConverter().convert(ctx, value)
-            await self.config.guild(guild).trivia_channel.set(channel.id)
+        if ctx.invoked_subcommand is None:
+            await ctx.send_help(ctx.command)
+
+    @opbot.command(name="setchannel")
+    async def set_channel(self, ctx, channel_type: str, channel: discord.TextChannel):
+        """Set channel for trivia or conversations"""
+        if channel_type not in ["trivia", "conversation"]:
+            return await ctx.send("Invalid channel type. Use 'trivia' or 'conversation'.")
+        
+        if channel_type == "trivia":
+            await self.config.guild(ctx.guild).trivia_channel.set(channel.id)
             await ctx.send(f"Trivia channel set to {channel.mention}")
-        elif setting == "add_conversation_channel":
-            channel = await commands.TextChannelConverter().convert(ctx, value)
-            async with self.config.guild(guild).conversation_channels() as channels:
+        else:
+            async with self.config.guild(ctx.guild).conversation_channels() as channels:
                 if channel.id not in channels:
                     channels.append(channel.id)
             await ctx.send(f"Added {channel.mention} to conversation channels")
-        elif setting == "trivia_frequency":
-            frequency = int(value)
-            await self.config.guild(guild).trivia_frequency.set(frequency)
-            await ctx.send(f"Trivia frequency set to every {frequency} seconds")
-        else:
-            await ctx.send("Invalid setting. Available settings: trivia_channel, add_conversation_channel, trivia_frequency")
+
+    @opbot.command(name="setfrequency")
+    async def set_frequency(self, ctx, seconds: int):
+        """Set trivia frequency in seconds"""
+        await self.config.guild(ctx.guild).trivia_frequency.set(seconds)
+        await ctx.send(f"Trivia frequency set to every {seconds} seconds")
+
+    @opbot.command(name="togglechatgpt")
+    async def toggle_chatgpt(self, ctx):
+        """Toggle ChatGPT integration"""
+        current = await self.config.guild(ctx.guild).chatgpt_enabled()
+        await self.config.guild(ctx.guild).chatgpt_enabled.set(not current)
+        state = "enabled" if not current else "disabled"
+        await ctx.send(f"ChatGPT integration has been {state}.")
+
+    @opbot.command(name="setdailylimit")
+    async def set_daily_limit(self, ctx, limit: int):
+        """Set daily ChatGPT usage limit per user"""
+        await self.config.guild(ctx.guild).chatgpt_daily_limit.set(limit)
+        await ctx.send(f"Daily ChatGPT usage limit set to {limit} per user.")
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
-        if message.author.bot:
+        if message.author.bot or not message.guild:
             return
 
-        guild = message.guild
-        if not guild:
-            return
-
-        channel_ids = await self.config.guild(guild).conversation_channels()
+        channel_ids = await self.config.guild(message.guild).conversation_channels()
         if message.channel.id in channel_ids:
-            # Process the message and generate a response
-            response = await self.generate_response(message.content)
+            chatgpt_enabled = await self.config.guild(message.guild).chatgpt_enabled()
+            if chatgpt_enabled:
+                bucket = self.chatgpt_cooldown.get_bucket(message)
+                retry_after = bucket.update_rate_limit()
+                if retry_after:
+                    return await message.channel.send(f"Please wait {retry_after:.0f} seconds before using ChatGPT again.")
+                
+                daily_limit = await self.config.guild(message.guild).chatgpt_daily_limit()
+                user_data = await self.config.member(message.author).all()
+                
+                if user_data["last_chatgpt_use"] is None or (datetime.now() - datetime.fromisoformat(user_data["last_chatgpt_use"])).days > 0:
+                    await self.config.member(message.author).last_chatgpt_use.set(datetime.now().isoformat())
+                    await self.config.member(message.author).chatgpt_uses_today.set(1)
+                elif user_data["chatgpt_uses_today"] >= daily_limit:
+                    return await message.channel.send("You've reached your daily ChatGPT usage limit. Please try again tomorrow.")
+                else:
+                    await self.config.member(message.author).chatgpt_uses_today.set(user_data["chatgpt_uses_today"] + 1)
+                
+                response = await self.generate_chatgpt_response(message.content)
+            else:
+                response = await self.generate_response(message.content)
+            
             if response:
                 await message.channel.send(response)
 
     async def generate_response(self, message_content: str):
-        # This is where you'd integrate with an AI model to generate responses
-        # For this example, we'll use a simple randomized response
+        # Simple response generation (replace with more sophisticated logic if needed)
         responses = [
             "Yohohoho! That's interesting!",
             "Gomu Gomu no... response!",
@@ -73,6 +128,30 @@ class OnePieceBot(commands.Cog):
         ]
         return random.choice(responses)
 
+    async def generate_chatgpt_response(self, message_content: str):
+        api_key = await self.bot.get_shared_api_tokens("openai")
+        if not api_key.get("api_key"):
+            log.error("OpenAI API key not found.")
+            return "Sorry, I can't respond right now. Ask an admin to set up the OpenAI API key."
+
+        headers = {
+            "Authorization": f"Bearer {api_key['api_key']}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": "gpt-3.5-turbo",
+            "messages": [{"role": "system", "content": "You are a One Piece themed AI assistant."},
+                         {"role": "user", "content": message_content}]
+        }
+
+        async with self.session.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                return data['choices'][0]['message']['content']
+            else:
+                log.error(f"Error from OpenAI API: {resp.status}")
+                return "Sorry, I couldn't generate a response. Please try again later."
+
     async def trivia_loop(self):
         await self.bot.wait_until_ready()
         while not self.bot.is_closed():
@@ -81,30 +160,63 @@ class OnePieceBot(commands.Cog):
                 if channel_id:
                     channel = self.bot.get_channel(channel_id)
                     if channel:
-                        question, answer = self.get_random_trivia()
+                        question, answer = await self.get_random_trivia()
                         await channel.send(f"One Piece Trivia Time! {question}")
-                        await asyncio.sleep(30)  # Wait for 30 seconds before revealing the answer
-                        await channel.send(f"The answer is: {answer}")
+                        
+                        def check(m):
+                            return m.channel == channel and not m.author.bot
+
+                        try:
+                            guess = await self.bot.wait_for('message', timeout=30.0, check=check)
+                            if guess.content.lower() == answer.lower():
+                                self.user_trivia_scores[guess.author.id] += 1
+                                belis_earned = random.randint(10, 50)
+                                await self.award_belis(guess.author, belis_earned)
+                                await channel.send(f"Correct, {guess.author.mention}! You've earned {belis_earned} Belis.")
+                            else:
+                                await channel.send(f"Time's up! The correct answer was: {answer}")
+                        except asyncio.TimeoutError:
+                            await channel.send(f"Time's up! The correct answer was: {answer}")
 
             frequency = await self.config.guild(guild).trivia_frequency()
             await asyncio.sleep(frequency)
 
-    def get_random_trivia(self):
-        # This is where you'd implement your trivia system
-        # For this example, we'll use a simple list
+    async def get_random_trivia(self):
+        # In a real implementation, you might want to fetch this from a database or API
         trivia_list = [
             ("What is the name of Luffy's pirate crew?", "The Straw Hat Pirates"),
             ("Who is known as the 'Pirate Hunter'?", "Roronoa Zoro"),
             ("What is the name of the legendary treasure in One Piece?", "The One Piece"),
+            ("What is the name of Luffy's signature attack?", "Gomu Gomu no"),
+            ("Who is the cook of the Straw Hat Pirates?", "Sanji"),
         ]
         return random.choice(trivia_list)
 
     @commands.command()
+    @commands.cooldown(1, 60, commands.BucketType.user)
     async def belis(self, ctx):
         """Check your current Belis balance"""
         member = ctx.author
         belis = await self.config.member(member).belis()
         await ctx.send(f"{member.display_name}, you have {belis} Belis!")
+
+    @commands.command()
+    @commands.cooldown(1, 300, commands.BucketType.user)
+    async def leaderboard(self, ctx):
+        """Display the trivia leaderboard"""
+        sorted_scores = sorted(self.user_trivia_scores.items(), key=lambda x: x[1], reverse=True)
+        leaderboard = []
+        for i, (user_id, score) in enumerate(sorted_scores[:10], start=1):
+            user = self.bot.get_user(user_id)
+            if user:
+                leaderboard.append(f"{i}. {user.name}: {score} points")
+        
+        if leaderboard:
+            embed = discord.Embed(title="Trivia Leaderboard", color=discord.Color.gold())
+            embed.description = "\n".join(leaderboard)
+            await ctx.send(embed=embed)
+        else:
+            await ctx.send("No trivia scores recorded yet!")
 
     @commands.command()
     @checks.admin_or_permissions(manage_guild=True)
@@ -114,5 +226,17 @@ class OnePieceBot(commands.Cog):
             belis += amount
         await ctx.send(f"Awarded {amount} Belis to {member.display_name}!")
 
-def setup(bot):
-    bot.add_cog(OnePieceBot(bot))
+    @commands.command()
+    @commands.cooldown(1, 3600, commands.BucketType.user)
+    async def daily(self, ctx):
+        """Claim your daily Belis reward"""
+        member = ctx.author
+        belis_reward = random.randint(50, 100)
+        async with self.config.member(member).belis() as belis:
+            belis += belis_reward
+        await ctx.send(f"{member.display_name}, you've claimed your daily reward of {belis_reward} Belis!")
+
+async def setup(bot):
+    cog = OnePieceBot(bot)
+    await bot.add_cog(cog)
+    await cog.initialize()
