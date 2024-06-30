@@ -1,10 +1,10 @@
+import logging
 from redbot.core import commands, Config
 from redbot.core.bot import Red
 import discord
 import random
 import asyncio
 import aiohttp
-import logging
 from datetime import datetime, timedelta
 import json
 
@@ -147,7 +147,8 @@ class OnePieceAI(commands.Cog):
                 data = await resp.json()
                 return data['choices'][0]['message']['content']
             else:
-                log.error(f"Error from OpenAI API: {resp.status}")
+                error_data = await resp.json()
+                log.error(f"Error from OpenAI API: {resp.status} - {error_data}")
                 return "Ah, the Grand Line is interfering with our communication. Let's try again later!"
 
     async def assign_random_crew(self, member: discord.Member):
@@ -408,7 +409,7 @@ class OnePieceAI(commands.Cog):
                 break
 
         # Resolve group adventure
-        success_chance = sum(self.config.member(p).experience() for p in participants) / (100 * len(participants)) - adventure['difficulty'] + random.random()
+        success_chance = sum(await self.config.member(p).experience() for p in participants) / (100 * len(participants)) - adventure['difficulty'] + random.random()
         success = success_chance > 0.5
 
         embed = discord.Embed(title="Group Adventure Result", color=discord.Color.green() if success else discord.Color.red())
