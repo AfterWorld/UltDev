@@ -242,7 +242,7 @@ class OnePieceAI(commands.Cog):
             estimated_cost = (self.total_tokens_used / 1000) * 0.002
 
             # Example of how many tokens are left (assuming a monthly limit of 10 million tokens)
-            monthly_limit = 10000000  # Adjust this based on your actual limit
+            monthly_limit = 30000  # Adjust this based on your actual limit
             tokens_left = monthly_limit - self.total_tokens_used
 
             # Create a sample message to show token usage
