@@ -313,7 +313,7 @@ class OnePieceAI(commands.Cog):
         new_crew = {
             "name": crew_name,
             "captain": ctx.author.id,
-            ""members": [ctx.author.id],
+            "members": [ctx.author.id],
             "level": 1,
             "experience": 0,
         }
