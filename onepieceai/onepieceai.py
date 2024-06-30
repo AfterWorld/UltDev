@@ -4,11 +4,11 @@ from redbot.core.bot import Red
 import discord
 import random
 import asyncio
-from openai import OpenAI
+from openai import OpenAI, RateLimitError
 from datetime import datetime, timedelta
 import json
 import time
-from tenacity import retry, stop_after_attempt, wait_random_exponential
+from tenacity import retry, stop_after_attempt, wait_random_exponential, retry_if_exception_type
 
 log = logging.getLogger("red.onepieceai")
 
@@ -137,11 +137,10 @@ class OnePieceAI(commands.Cog):
         await self.config.guild(message.guild).last_conversation.set(datetime.now().isoformat())
 
     @retry(
-            wait=wait_random_exponential(min=4, max=60),
-            stop=stop_after_attempt(6),
-            retry=retry_if_exception_type(RateLimitError)
-        )
-
+        wait=wait_random_exponential(min=4, max=60),
+        stop=stop_after_attempt(6),
+        retry=retry_if_exception_type(RateLimitError)
+    )
     async def generate_chatgpt_response(self, context: str, message_content: str):
         if not self.client:
             await self.initialize_client()
