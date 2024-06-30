@@ -217,6 +217,18 @@ class OnePieceMod(commands.Cog):
         if new_bounty >= 500:  # Example threshold
             await ctx.send(f"⚠️ {member.name}'s bounty has exceeded 500 Berries! The Marines are on high alert!")
 
+    @commands.command()
+    async def viewbounties(self, ctx):
+        """View all pirates' bounties."""
+        bounties = await self.config.guild(ctx.guild).bounties()
+        if not bounties:
+            await ctx.send("No bounties have been set yet.")
+            return
+
+        bounty_list = "\n".join([f"{ctx.guild.get_member(int(user_id)).display_name}: {bounty} Berries" for user_id, bounty in bounties.items()])
+        for page in pagify(bounty_list):
+            await ctx.send(f"🏴‍☠️ **Pirate Bounties**\n\n{page}")
+
     async def generate_wanted_poster(self, member: discord.Member, bounty: int):
         async with aiohttp.ClientSession() as session:
             # Get the member's avatar
