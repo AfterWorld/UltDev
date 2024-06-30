@@ -8,9 +8,9 @@ import logging
 from datetime import datetime, timedelta
 import json
 
-log = logging.getLogger("red.onepiecebot")
+log = logging.getLogger("red.onepieceai")
 
-class OnePieceBot(commands.Cog):
+class OnePieceAI(commands.Cog):
     def __init__(self, bot: Red):
         self.bot = bot
         self.config = Config.get_conf(self, identifier=1234567890, force_registration=True)
@@ -21,6 +21,7 @@ class OnePieceBot(commands.Cog):
             "last_event": None,
             "world_state": {"marine_influence": 50, "pirate_influence": 50},
             "active_crews": {},
+            "storylines": [],
         }
         default_member = {
             "crew": None,
@@ -31,20 +32,24 @@ class OnePieceBot(commands.Cog):
             "achievements": [],
             "adventure_cooldown": None,
             "current_crew": None,
+            "devil_fruit": None,
         }
         self.config.register_guild(**default_guild)
         self.config.register_member(**default_member)
         self.session = aiohttp.ClientSession()
         self.crews = ["Straw Hat Pirates", "Heart Pirates", "Red Hair Pirates", "Whitebeard Pirates", "Marine"]
         self.personalities = ["brave", "cunning", "loyal", "ambitious", "carefree"]
+        self.devil_fruits = ["Gomu Gomu no Mi", "Mera Mera no Mi", "Hie Hie no Mi", "Gura Gura no Mi", "Ope Ope no Mi"]
         self.interjection_task = self.bot.loop.create_task(self.periodic_interjection())
         self.event_task = self.bot.loop.create_task(self.periodic_event())
         self.world_event_task = self.bot.loop.create_task(self.check_world_events())
+        self.storyline_task = self.bot.loop.create_task(self.advance_storylines())
 
     def cog_unload(self):
         self.interjection_task.cancel()
         self.event_task.cancel()
         self.world_event_task.cancel()
+        self.storyline_task.cancel()
         asyncio.create_task(self.session.close())
 
     @commands.Cog.listener()
@@ -86,7 +91,8 @@ class OnePieceBot(commands.Cog):
             f"The user, {message.author.display_name}, is part of the {user_data['crew']} "
             f"and has a {user_data['personality']} personality. "
             f"Their experience level is {user_data['experience']}. "
-            f"Respond in character, incorporating One Piece themes and the user's crew and personality. "
+            f"Their Devil Fruit power (if any) is: {user_data['devil_fruit']}. "
+            f"Respond in character, incorporating One Piece themes and the user's crew, personality, and abilities. "
             f"Recent conversation: {json.dumps(conversation_history)}"
         )
 
@@ -181,7 +187,7 @@ class OnePieceBot(commands.Cog):
 
     @commands.command()
     @commands.cooldown(1, 3600, commands.BucketType.user)
-    async def adventure(self, ctx):
+    async def op_adventure(self, ctx):
         """Embark on a One Piece adventure!"""
         user_data = await self.config.member(ctx.author).all()
         
@@ -307,7 +313,7 @@ class OnePieceBot(commands.Cog):
         new_crew = {
             "name": crew_name,
             "captain": ctx.author.id,
-            "members": [ctx.author.id],
+            ""members": [ctx.author.id],
             "level": 1,
             "experience": 0,
         }
@@ -418,34 +424,82 @@ class OnePieceBot(commands.Cog):
         return embed
 
     @commands.command()
-    async def craft(self, ctx, *, item_name: str):
-        """Craft an item using materials in your inventory"""
+    async def eat_devil_fruit(self, ctx):
+        """Eat a random Devil Fruit and gain its power"""
         user_data = await self.config.member(ctx.author).all()
+        if user_data['devil_fruit']:
+            return await ctx.send("You've already eaten a Devil Fruit! You can't eat another one.")
+
+        devil_fruit = random.choice(self.devil_fruits)
+        await self.config.member(ctx.author).devil_fruit.set(devil_fruit)
+        await ctx.send(f"You've eaten the {devil_fruit}! You now possess its power, but remember, you can no longer swim!")
+
+    @commands.command()
+    async def use_power(self, ctx, *, action: str):
+        """Use your Devil Fruit power"""
+        user_data = await self.config.member(ctx.author).all()
+        if not user_data['devil_fruit']:
+            return await ctx.send("You don't have a Devil Fruit power. Use the `eat_devil_fruit` command to get one!")
+
+        context = (
+            f"You are roleplaying as {ctx.author.display_name}, who has eaten the {user_data['devil_fruit']}. "
+            f"Describe how you use your Devil Fruit power to {action}. Be creative and true to the One Piece universe."
+        )
+
+        response = await self.generate_chatgpt_response(context, action)
+        await ctx.send(response)
+
+    @commands.command()
+    async def generate_quest(self, ctx):
+        """Generate a personalized quest"""
+        user_data = await self.config.member(ctx.author).all()
+        context = (
+            f"You are a One Piece quest giver. Create a unique and engaging quest for {ctx.author.display_name}, "
+            f"who is part of the {user_data['crew']}, has a {user_data['personality']} personality, "
+            f"and possesses the power of the {user_data['devil_fruit'] or 'no Devil Fruit'}. "
+            f"The quest should be tailored to their abilities and backstory."
+        )
+
+        response = await self.generate_chatgpt_response(context, "Generate a personalized quest")
+        await ctx.send(response)
+
+    async def advance_storylines(self):
+        await self.bot.wait_until_ready()
+        while not self.bot.is_closed():
+            await asyncio.sleep(86400)  # Advance storylines daily
+            for guild in self.bot.guilds:
+                storylines = await self.config.guild(guild).storylines()
+                if storylines:
+                    current_storyline = storylines[0]
+                    context = (
+                        f"You are a One Piece storyline narrator. Advance the following storyline: {current_storyline}. "
+                        f"Create an exciting new development that moves the plot forward."
+                    )
+                    new_development = await self.generate_chatgpt_response(context, "Advance the storyline")
+                    
+                    channels = await self.config.guild(guild).chat_channels()
+                    if channels:
+                        channel = self.bot.get_channel(random.choice(channels))
+                        if channel:
+                            await channel.send(f"**Storyline Update**\n{new_development}")
+                    
+                    storylines[0] = new_development
+                    await self.config.guild(guild).storylines.set(storylines)
+
+    @commands.command()
+    async def start_storyline(self, ctx):
+        """Start a new storyline for the server"""
+        context = (
+            "You are a One Piece storyline creator. Create an exciting new storyline that involves "
+            "pirates, marines, and adventure. This storyline should have potential for multiple developments "
+            "and involve the players in the server."
+        )
+        new_storyline = await self.generate_chatgpt_response(context, "Create a new One Piece storyline")
         
-        recipes = {
-            "Log Pose": {"materials": ["Iron Ingot", "Glass Orb"], "result": "Log Pose"},
-            "Clima-Tact": {"materials": ["Metal Pipe", "Weather Orb", "Dials"], "result": "Clima-Tact"},
-            "Adam Wood Plank": {"materials": ["Adam Wood", "Carpenter Tools"], "result": "Adam Wood Plank"},
-        }
-
-        if item_name not in recipes:
-            return await ctx.send(f"No recipe found for {item_name}. Available recipes: {', '.join(recipes.keys())}")
-
-        recipe = recipes[item_name]
-        user_inventory = user_data['items']
-
-        # Check if user has all required materials
-        for material in recipe['materials']:
-            if material not in user_inventory:
-                return await ctx.send(f"You're missing {material} to craft {item_name}.")
-
-        # Remove materials from inventory
-        async with self.config.member(ctx.author).items() as items:
-            for material in recipe['materials']:
-                items.remove(material)
-            items.append(recipe['result'])
-
-        await ctx.send(f"You've successfully crafted {item_name}!")
+        async with self.config.guild(ctx.guild).storylines() as storylines:
+            storylines.append(new_storyline)
+        
+        await ctx.send(f"New storyline started:\n{new_storyline}")
 
     async def check_world_events(self):
         await self.bot.wait_until_ready()
@@ -524,5 +578,5 @@ class OnePieceBot(commands.Cog):
         await ctx.send(f"AI responses have been {state}.")
 
 async def setup(bot):
-    cog = OnePieceBot(bot)
+    cog = OnePieceAI(bot)
     await bot.add_cog(cog)
