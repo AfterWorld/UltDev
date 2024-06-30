@@ -7,6 +7,8 @@ import asyncio
 from openai import OpenAI
 from datetime import datetime, timedelta
 import json
+import time
+from tenacity import retry, stop_after_attempt, wait_random_exponential
 
 log = logging.getLogger("red.onepieceai")
 
@@ -16,6 +18,8 @@ class OnePieceAI(commands.Cog):
         self.config = Config.get_conf(self, identifier=1234567890, force_registration=True)
         self.client = None
         self.bot.loop.create_task(self.initialize_client())
+        self.last_request_time = 0
+        self.request_interval = 1  # Minimum time between requests in seconds
         default_guild = {
             "chat_channels": [],
             "chatgpt_enabled": True,
@@ -75,7 +79,7 @@ class OnePieceAI(commands.Cog):
         self.world_event_task.cancel()
         self.storyline_task.cancel()
         # No need to close the client, as it doesn't have a close method
-
+    
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         if message.author.bot or not message.guild:
@@ -132,11 +136,18 @@ class OnePieceAI(commands.Cog):
         # Update the last conversation time
         await self.config.guild(message.guild).last_conversation.set(datetime.now().isoformat())
 
+    @retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(6))
     async def generate_chatgpt_response(self, context: str, message_content: str):
         if not self.client:
             await self.initialize_client()
             if not self.client:
                 return "Yohohoho! It seems my Den Den Mushi is out of order. I can't respond right now!"
+
+        # Implement rate limiting
+        current_time = time.time()
+        if current_time - self.last_request_time < self.request_interval:
+            await asyncio.sleep(self.request_interval - (current_time - self.last_request_time))
+        self.last_request_time = time.time()
 
         try:
             response = await self.bot.loop.run_in_executor(None, lambda: self.client.chat.completions.create(
@@ -149,7 +160,7 @@ class OnePieceAI(commands.Cog):
             return response.choices[0].message.content
         except Exception as e:
             log.error(f"Error in generate_chatgpt_response: {str(e)}")
-            return "Ah, the Grand Line is interfering with our communication. Let's try again later!"
+            raise  # Re-raise the exception for the retry decorator to catch
 
     async def assign_random_crew(self, member: discord.Member):
         crew = random.choice(self.crews)
