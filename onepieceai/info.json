@@ -1,6 +1,6 @@
 {
     "name": "OnePieceBot",
-    "author": ["Your Name"],
+    "author": ["UltPanda"],
     "description": "A One Piece themed bot with AI interactions, roleplay, voice interaction, interactive storytelling, dynamic events, and automated analytics.",
     "version": "1.0.0",
     "requirements": ["openai", "SpeechRecognition", "gTTS", "pandas", "matplotlib"],
