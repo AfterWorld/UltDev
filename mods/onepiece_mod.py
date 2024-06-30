@@ -26,7 +26,11 @@ class OnePieceMod(commands.Cog):
             "log_book": {},
             "timed_announcements": []
         }
+        default_member = {
+            "warnings": 0,
+        }
         self.config.register_guild(**default_guild)
+        self.config.register_member(**default_member)
         self.log_channel_id = 1245208777003634698
         self.mute_role_id = 808869058476769312
         self.banned_patterns = []  # List to store compiled regex patterns
@@ -50,9 +54,32 @@ class OnePieceMod(commands.Cog):
             if re.search(pattern, message.content, re.IGNORECASE):
                 try:
                     await message.delete()
+                    await self.warn_member(message.author, guild)
                     await message.channel.send(f"{message.author.mention}, your message contained a banned word or pattern and was removed.", delete_after=5)
                 except discord.Forbidden:
                     pass  # Handle lack of permissions
+
+    async def warn_member(self, member, guild):
+        warnings = await self.config.member(member).warnings()
+        warnings += 1
+        await self.config.member(member).warnings.set(warnings)
+
+        if warnings >= 3:
+            await self.mute_member(member, guild)
+            await self.config.member(member).warnings.set(0)  # Reset warnings after muting
+            await member.send("You have been muted for repeatedly violating the rules. \"When do you think people die? When they are shot with a bullet? No! It's when they are forgotten.\" - Dr. Hiluluk")
+        else:
+            await member.send(f"This is your warning #{warnings}. After 3 warnings, you will be muted.")
+
+    async def mute_member(self, member, guild):
+        mute_role = guild.get_role(self.mute_role_id)
+        if not mute_role:
+            return
+        try:
+            await member.add_roles(mute_role, reason="Exceeded warning limit")
+            await self.log_action(guild, member, "Muted", "Exceeded warning limit")
+        except discord.Forbidden:
+            pass
 
     @commands.command()
     async def modhelp(self, ctx):
