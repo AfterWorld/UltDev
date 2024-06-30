@@ -232,7 +232,7 @@ class OnePieceMod(commands.Cog):
     async def generate_wanted_poster(self, member: discord.Member, bounty: int):
         async with aiohttp.ClientSession() as session:
             # Get the member's avatar
-            async with session.get(str(member.avatar.url)) as resp:
+            async with session.get(str(member.avatar_url)) as resp:
                 avatar_data = io.BytesIO(await resp.read())
             
             # Get the wanted poster template
@@ -245,15 +245,14 @@ class OnePieceMod(commands.Cog):
             avatar = Image.open(avatar_data).resize((300, 300))
         
             # Paste the avatar onto the template
-            template.paste(avatar, (100, 200))
+            template.paste(avatar, (150, 200))
         
             # Add text to the image
             draw = ImageDraw.Draw(template)
             font_url = "https://raw.githubusercontent.com/AfterWorld/UltDev/main/mods/wanted%20poster/one_piece_font.ttf"
-            async with aiohttp.ClientSession() as session:
-                async with session.get(font_url) as resp:
-                    font_data = io.BytesIO(await resp.read())
-            font = ImageFont.truetype(font_data, 60)
+            async with session.get(font_url) as resp:
+                font_data = io.BytesIO(await resp.read())
+            font = ImageFont.truetype(io.BytesIO(font_data.getvalue()), 60)
             draw.text((250, 550), member.name, font=font, fill=(0, 0, 0))
             draw.text((250, 650), f"{bounty:,} Berries", font=font, fill=(0, 0, 0))
         
@@ -263,6 +262,17 @@ class OnePieceMod(commands.Cog):
             buffer.seek(0)
             return buffer
     
+    @commands.command()
+    @checks.admin_or_permissions(manage_guild=True)
+    async def setbounty(self, ctx, member: discord.Member, amount: int):
+        """Set a pirate's bounty and generate a wanted poster."""
+        async with self.config.guild(ctx.guild).bounties() as bounties:
+            bounties[str(member.id)] = amount
+
+        buffer = await self.generate_wanted_poster(member, amount)
+        file = discord.File(fp=buffer, filename="wanted_poster.png")
+        await ctx.send(file=file, content=f"🏴‍☠️ {member.name}'s bounty has been set to {amount} Berries! Wanted poster generated!")
+
     @commands.command()
     @checks.admin_or_permissions(manage_guild=True)
     async def raidmode(self, ctx, state: bool):
