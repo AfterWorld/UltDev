@@ -33,13 +33,29 @@ class OnePieceAI(commands.Cog):
             "adventure_cooldown": None,
             "current_crew": None,
             "devil_fruit": None,
+            "haki_levels": {"Observation Haki": 0, "Armament Haki": 0, "Conqueror's Haki": 0},
+            "bounty": 0,
         }
         self.config.register_guild(**default_guild)
         self.config.register_member(**default_member)
         self.session = aiohttp.ClientSession()
         self.crews = ["Straw Hat Pirates", "Heart Pirates", "Red Hair Pirates", "Whitebeard Pirates", "Marine"]
         self.personalities = ["brave", "cunning", "loyal", "ambitious", "carefree"]
-        self.devil_fruits = ["Gomu Gomu no Mi", "Mera Mera no Mi", "Hie Hie no Mi", "Gura Gura no Mi", "Ope Ope no Mi"]
+        self.devil_fruits = [
+            "Gomu Gomu no Mi", "Mera Mera no Mi", "Hie Hie no Mi", "Gura Gura no Mi", "Ope Ope no Mi",
+            "Yami Yami no Mi", "Tori Tori no Mi, Model: Phoenix", "Hito Hito no Mi", "Bara Bara no Mi",
+            "Suna Suna no Mi", "Moku Moku no Mi", "Goro Goro no Mi", "Doku Doku no Mi", "Kage Kage no Mi"
+        ]
+        self.locations = [
+            "Alabasta", "Water 7", "Thriller Bark", "Sabaody Archipelago", "Fishman Island",
+            "Dressrosa", "Whole Cake Island", "Wano Country", "Marineford", "Impel Down",
+            "Skypiea", "Enies Lobby", "Punk Hazard", "Zou", "Raftel"
+        ]
+        self.notable_characters = [
+            "Monkey D. Luffy", "Roronoa Zoro", "Nami", "Usopp", "Sanji", "Tony Tony Chopper",
+            "Nico Robin", "Franky", "Brook", "Jinbe", "Gol D. Roger", "Whitebeard", "Shanks",
+            "Blackbeard", "Kaido", "Big Mom", "Akainu", "Aokiji", "Kizaru", "Garp", "Sengoku"
+        ]
         self.interjection_task = self.bot.loop.create_task(self.periodic_interjection())
         self.event_task = self.bot.loop.create_task(self.periodic_event())
         self.world_event_task = self.bot.loop.create_task(self.check_world_events())
@@ -92,6 +108,8 @@ class OnePieceAI(commands.Cog):
             f"and has a {user_data['personality']} personality. "
             f"Their experience level is {user_data['experience']}. "
             f"Their Devil Fruit power (if any) is: {user_data['devil_fruit']}. "
+            f"Their Haki levels are: {user_data['haki_levels']}. "
+            f"Their current bounty is: {user_data['bounty']} Berries. "
             f"Respond in character, incorporating One Piece themes and the user's crew, personality, and abilities. "
             f"Recent conversation: {json.dumps(conversation_history)}"
         )
@@ -228,34 +246,34 @@ class OnePieceAI(commands.Cog):
     async def generate_adventure(self, user: discord.Member, user_data: dict):
         adventures = [
             {
-                "description": "You've stumbled upon a Marine outpost!",
-                "challenge": "Will you fight the Marines, try to sneak past, or attempt to negotiate?",
-                "reward": "Valuable intelligence and a chance to influence the world.",
-                "difficulty": 3,
-            },
-            {
-                "description": "A rival pirate crew is attacking a nearby island!",
-                "challenge": "Will you engage in ship-to-ship combat, try to out-maneuver them, or attempt to form an alliance?",
-                "reward": "Increased reputation and potential new crew members.",
+                "description": "You've stumbled upon a Marine base led by Vice Admiral Smoker!",
+                "challenge": "Will you engage in combat, attempt to sneak past using your skills, or try to negotiate your way through?",
+                "reward": "Valuable intelligence about Marine movements and a chance to influence the world.",
                 "difficulty": 4,
             },
             {
-                "description": "You've discovered a hidden cave that might contain a Poneglyph!",
-                "challenge": "Will you brave the dangerous traps, try to decipher the ancient writings, or look for an alternative entrance?",
-                "reward": "Ancient knowledge and a rare artifact.",
+                "description": "A Celestial Dragon's ship is docking at the nearby port!",
+                "challenge": "Will you attempt to rob the ship, protect the locals from the Celestial Dragon's whims, or try to gather intel without being noticed?",
+                "reward": "Rare treasures and potential world-changing information.",
                 "difficulty": 5,
             },
             {
-                "description": "A powerful storm is approaching, and a small village needs evacuation!",
-                "challenge": "Will you use your ship to evacuate the villagers, try to redirect the storm, or fortify the village?",
-                "reward": "Gratitude of the villagers and potential allies.",
+                "description": "You've discovered a hidden cave that might contain a Road Poneglyph!",
+                "challenge": "Will you brave the dangerous traps, try to decipher the ancient writings, or look for an alternative entrance?",
+                "reward": "Critical information about the location of Raftel and the One Piece.",
+                "difficulty": 6,
+            },
+            {
+                "description": "A powerful storm created by a Weather Empire is approaching a small island!",
+                "challenge": "Will you use your ship to evacuate the villagers, try to disrupt the Weather Empire's technology, or attempt to redirect the storm using your abilities?",
+                "reward": "Gratitude of the villagers, potential allies, and advanced weather control technology.",
                 "difficulty": 4,
             },
             {
-                "description": "You've received intel about a secret World Government facility!",
-                "challenge": "Will you infiltrate the facility, gather outside intelligence, or spread disinformation?",
-                "reward": "Top-secret information and advanced technology.",
-                "difficulty": 6,
+                "description": "You've received intel about a secret Revolutionary Army base!",
+                "challenge": "Will you infiltrate the base to gather information, alert the Marines for a potential reward, or attempt to join forces with the revolutionaries?",
+                "reward": "Game-changing political information and potential powerful allies.",
+                "difficulty": 5,
             },
         ]
         
@@ -265,7 +283,6 @@ class OnePieceAI(commands.Cog):
     async def resolve_adventure(self, user: discord.Member, user_data: dict, adventure: dict, choice: str):
         success_chance = (user_data['experience'] / 100) - adventure['difficulty'] + random.random()
         success = success_chance > 0.5
-
         embed = discord.Embed(title="Adventure Result", color=discord.Color.green() if success else discord.Color.red())
 
         if choice == "⚔️":  # Combat
@@ -463,6 +480,106 @@ class OnePieceAI(commands.Cog):
         response = await self.generate_chatgpt_response(context, "Generate a personalized quest")
         await ctx.send(response)
 
+    @commands.command()
+    async def haki_training(self, ctx):
+        """Train your Haki abilities"""
+        user_data = await self.config.member(ctx.author).all()
+        haki_types = ["Observation Haki", "Armament Haki", "Conqueror's Haki"]
+        
+        haki_to_train = random.choice(haki_types)
+        success = random.random() > 0.5  # 50% chance of successful training
+        
+        if success:
+            user_data["haki_levels"][haki_to_train] += 1
+            await self.config.member(ctx.author).haki_levels.set(user_data["haki_levels"])
+            await ctx.send(f"Your {haki_to_train} has improved! It's now at level {user_data['haki_levels'][haki_to_train]}.")
+        else:
+            await ctx.send(f"You trained hard, but couldn't improve your {haki_to_train} this time. Keep trying!")
+
+    @commands.command()
+    async def bounty(self, ctx, member: discord.Member = None):
+        """Check your bounty or another member's bounty"""
+        target = member or ctx.author
+        user_data = await self.config.member(target).all()
+        
+        bounty = user_data["bounty"]
+        await ctx.send(f"{target.display_name}'s bounty is {bounty:,} Berries!")
+
+    @commands.command()
+    async def increase_bounty(self, ctx, amount: int):
+        """Increase your bounty (for testing purposes)"""
+        user_data = await self.config.member(ctx.author).all()
+        
+        user_data["bounty"] += amount
+        await self.config.member(ctx.author).bounty.set(user_data["bounty"])
+        await ctx.send(f"Your bounty has increased by {amount:,} Berries! Your new bounty is {user_data['bounty']:,} Berries!")
+
+    @commands.command()
+    async def pirate_trivia(self, ctx):
+        """Test your One Piece knowledge with a trivia question"""
+        trivia_questions = [
+            {
+                "question": "What is the name of Luffy's signature attack?",
+                "answer": "Gomu Gomu no Pistol"
+            },
+            {
+                "question": "Who is known as the 'Surgeon of Death'?",
+                "answer": "Trafalgar Law"
+            },
+            {
+                "question": "What is the name of the island where the Straw Hat Pirates trained for two years?",
+                "answer": "Rusukaina"
+            },
+            {
+                "question": "Who is the captain of the Heart Pirates?",
+                "answer": "Trafalgar Law"
+            },
+            {
+                "question": "What is the name of Zoro's black blade?",
+                "answer": "Shusui"
+            }
+        ]
+        
+        question = random.choice(trivia_questions)
+        await ctx.send(f"One Piece Trivia: {question['question']}")
+        
+        def check(m):
+            return m.author == ctx.author and m.channel == ctx.channel
+        
+        try:
+            answer = await self.bot.wait_for('message', check=check, timeout=30.0)
+        except asyncio.TimeoutError:
+            await ctx.send(f"Time's up! The correct answer was: {question['answer']}")
+        else:
+            if answer.content.lower() == question['answer'].lower():
+                await ctx.send("Correct! You really know your One Piece!")
+            else:
+                await ctx.send(f"Sorry, that's not correct. The right answer was: {question['answer']}")
+
+    @commands.command()
+    async def create_wanted_poster(self, ctx, member: discord.Member = None):
+        """Create a wanted poster for yourself or another member"""
+        target = member or ctx.author
+        user_data = await self.config.member(target).all()
+        
+        bounty = user_data["bounty"]
+        
+        # Create a simple text-based wanted poster
+        poster = f"""
+        ╔══════════════════════════════╗
+        ║          WANTED               ║
+        ║                               ║
+        ║        {target.display_name.center(23)}║
+        ║                               ║
+        ║         DEAD OR ALIVE         ║
+        ║                               ║
+        ║    {f'{bounty:,} Berries'.center(23)} ║
+        ║                               ║
+        ╚══════════════════════════════╝
+        """
+        
+        await ctx.send(f"```{poster}```")
+
     async def advance_storylines(self):
         await self.bot.wait_until_ready()
         while not self.bot.is_closed():
@@ -578,5 +695,4 @@ class OnePieceAI(commands.Cog):
         await ctx.send(f"AI responses have been {state}.")
 
 async def setup(bot):
-    cog = OnePieceAI(bot)
-    await bot.add_cog(cog)
+    await bot.add_cog(OnePieceAI(bot))
