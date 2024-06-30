@@ -136,17 +136,24 @@ class OnePieceAI(commands.Cog):
         # Update the last conversation time
         await self.config.guild(message.guild).last_conversation.set(datetime.now().isoformat())
 
-    @retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(6))
+   @retry(
+        wait=wait_random_exponential(min=4, max=60),
+        stop=stop_after_attempt(6),
+        retry=retry_if_exception_type(RateLimitError)
+    )
+
     async def generate_chatgpt_response(self, context: str, message_content: str):
         if not self.client:
             await self.initialize_client()
             if not self.client:
                 return "Yohohoho! It seems my Den Den Mushi is out of order. I can't respond right now!"
 
-        # Implement rate limiting
+        # Implement stricter rate limiting
         current_time = time.time()
-        if current_time - self.last_request_time < self.request_interval:
-            await asyncio.sleep(self.request_interval - (current_time - self.last_request_time))
+        time_since_last_request = current_time - self.last_request_time
+        if time_since_last_request < self.request_interval:
+            await asyncio.sleep(self.request_interval - time_since_last_request)
+        
         self.last_request_time = time.time()
 
         try:
@@ -158,9 +165,12 @@ class OnePieceAI(commands.Cog):
                 ]
             ))
             return response.choices[0].message.content
+        except RateLimitError as e:
+            log.error(f"Rate limit error: {str(e)}")
+            raise  # Re-raise for retry
         except Exception as e:
-            log.error(f"Error in generate_chatgpt_response: {str(e)}")
-            raise  # Re-raise the exception for the retry decorator to catch
+            log.error(f"Unexpected error in generate_chatgpt_response: {str(e)}")
+            return "Ah, the Grand Line is interfering with our communication. Let's try again later!"
 
     async def assign_random_crew(self, member: discord.Member):
         crew = random.choice(self.crews)
@@ -214,6 +224,16 @@ class OnePieceAI(commands.Cog):
             "Rumors spread of a hidden poneglyph discovered in an ancient ruin. The race to find it begins now!",
         ]
         return f"**One Piece World Event**\n{random.choice(events)}\n\nHow will you respond to this event? Your actions may shape the future of the One Piece world!"
+
+    @commands.command()
+    @commands.is_owner()
+    async def check_openai_usage(self, ctx):
+        """Check current OpenAI API usage"""
+        try:
+            usage = await self.bot.loop.run_in_executor(None, lambda: self.client.usage.retrieve())
+            await ctx.send(f"Current usage: {usage.total_usage} tokens")
+        except Exception as e:
+            await ctx.send(f"Error checking usage: {str(e)}")
 
     @commands.command()
     @commands.cooldown(1, 3600, commands.BucketType.user)
