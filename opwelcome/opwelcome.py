@@ -1,8 +1,6 @@
 import discord
-from discord.ext import tasks
 from redbot.core import commands, Config
 from datetime import datetime
-import aiohttp
 
 class OPWelcome(commands.Cog):
     def __init__(self, bot):
@@ -11,12 +9,10 @@ class OPWelcome(commands.Cog):
         default_guild = {
             "welcome_channel": None,
             "welcome_enabled": False,
-            "welcome_message": (
-                "Ahoy, {mention}! Welcome aboard the {guild} crew! 🏴‍☠️\n\n"
-                "You've just set sail on an incredible adventure in the world of One Piece! 🌊"
-            ),
-            "welcome_role": None,
-            "mod_channel": None
+            "welcome_message": "Ahoy, {mention}! Welcome aboard the {guild} crew! 🏴‍☠️",
+            "rules_channel": None,
+            "roles_channel": None,
+            "general_channel": None
         }
         self.config.register_guild(**default_guild)
 
@@ -30,13 +26,7 @@ class OPWelcome(commands.Cog):
     async def channel(self, ctx, channel: discord.TextChannel):
         """Set the welcome channel."""
         await self.config.guild(ctx.guild).welcome_channel.set(channel.id)
-        await ctx.send(f"Welcome channel set to {channel.mention} 🌟")
-
-    @welcome.command()
-    async def modchannel(self, ctx, channel: discord.TextChannel):
-        """Set the moderation alert channel."""
-        await self.config.guild(ctx.guild).mod_channel.set(channel.id)
-        await ctx.send(f"Moderation alert channel set to {channel.mention} 🛡️")
+        await ctx.send(f"Welcome channel set to {channel.mention}")
 
     @welcome.command()
     async def toggle(self, ctx):
@@ -44,102 +34,24 @@ class OPWelcome(commands.Cog):
         current = await self.config.guild(ctx.guild).welcome_enabled()
         await self.config.guild(ctx.guild).welcome_enabled.set(not current)
         state = "enabled" if not current else "disabled"
-        await ctx.send(f"Welcome message {state}. 🟢" if state == "enabled" else f"Welcome message {state}. 🔴")
+        await ctx.send(f"Welcome message {state}.")
 
     @welcome.command()
     async def message(self, ctx, *, welcome_message: str = None):
         """Set a custom welcome message or reset to default if no message is provided."""
-        default_message = (
-            "Ahoy, {mention}! Welcome aboard the {guild} crew! 🏴‍☠️\n\n"
-            "You've just set sail on an incredible adventure in the world of One Piece! 🌊"
-        )
+        default_message = "Ahoy, {mention}! Welcome aboard the {guild} crew! 🏴‍☠️"
         if not welcome_message:
             welcome_message = default_message
-            await self.config.guild(ctx.guild).welcome_message.set(default_message)
-            await ctx.send("Welcome message has been reset to the default. 📝")
-        else:
-            await self.config.guild(ctx.guild).welcome_message.set(welcome_message)
-            await ctx.send("Welcome message updated! 📝")
+        await self.config.guild(ctx.guild).welcome_message.set(welcome_message)
+        await ctx.send("Welcome message updated!")
 
     @welcome.command()
-    async def role(self, ctx, role: discord.Role):
-        """Set a welcome role to be assigned to new members."""
-        await self.config.guild(ctx.guild).welcome_role.set(role.id)
-        await ctx.send(f"Welcome role set to {role.name} 🌟")
-
-    @welcome.command()
-    async def preview(self, ctx):
-        """Preview the current welcome message."""
-        welcome_message_template = await self.config.guild(ctx.guild).welcome_message()
-        welcome_message = welcome_message_template.format(
-            mention=ctx.author.mention,
-            guild=ctx.guild.name
-        )
-        embed = discord.Embed(
-            title="Ahoy, New Crew Member!",
-            description=welcome_message,
-            color=discord.Color.blue(),
-            timestamp=datetime.utcnow()
-        )
-        embed.set_thumbnail(url=ctx.author.display_avatar.url)
-        embed.set_image(url="https://example.com/path/to/welcome/banner.png")  # Add a relevant welcome banner URL
-        embed.set_author(name=ctx.guild.name, icon_url=ctx.guild.icon.url)
-
-        embed.add_field(
-            name="About One Piece",
-            value=(
-                "One Piece is an epic tale of pirates, adventure, and the search for the ultimate treasure - the One Piece. "
-                "Join Monkey D. Luffy and his diverse crew as they navigate treacherous seas, face powerful enemies, "
-                "and uncover the mysteries of the Grand Line."
-            ),
-            inline=False
-        )
-
-        embed.add_field(
-            name="Server Information",
-            value=(
-                "🏴‍☠️ **Crew Quarters (channels):**\n"
-                "• <#425068612542398476> - General 💬\n"
-                "• <#590972222366023718> - Rules 📜\n"
-                "• <#597528644432166948> - Roles 🏷️"
-            ),
-            inline=False
-        )
-
-        embed.add_field(
-            name="Adventure Awaits!",
-            value=(
-                "• Join battles with `.battle @opponent ⚔️`\n"
-                "• Start team battles with `.teambattle @teammate vs @opponent1 @opponent2 ⚔️`\n"
-                "• Check your profile with `.profile 📜`\n"
-                "• Train your skills with `.train strength` (or defense/speed) 🏋️‍♂️\n"
-                "• Explore islands with `.explore 🏝️`\n"
-                "• Join crews with `.join_crew <crew_name> ⚓`\n"
-                "• Eat Devil Fruits with `.eat_devil_fruit <fruit_name> 🍎`\n\n"
-                "Set sail, make friends, and carve your legend in the world of One Piece! 🌟"
-            ),
-            inline=False
-        )
-
-        embed.set_footer(text=f"Member #{ctx.guild.member_count}")
-
-        await ctx.send(embed=embed)
-
-    @welcome.command()
-    async def test(self, ctx):
-        """Test the welcome message."""
-        await self.on_member_join(ctx.author)
-
-    async def fetch_amari_xp(self, guild_id, user_id):
-        url = f"https://amaribot.com/api/v1/guild/{guild_id}/member/{user_id}"
-        headers = {"Authorization": "79aa90dbcf5267516433b828.71cc12.9bf4a8a3663d9213aa3a6f6c3da"}  # Replace with your actual Amari API token
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return data.get("total_exp", 0), data.get("level", 0)
-                else:
-                    return None, None
+    async def setchannels(self, ctx, rules: discord.TextChannel, roles: discord.TextChannel, general: discord.TextChannel):
+        """Set the rules, roles, and general channels."""
+        await self.config.guild(ctx.guild).rules_channel.set(rules.id)
+        await self.config.guild(ctx.guild).roles_channel.set(roles.id)
+        await self.config.guild(ctx.guild).general_channel.set(general.id)
+        await ctx.send(f"Channels set: Rules: {rules.mention}, Roles: {roles.mention}, General: {general.mention}")
 
     @commands.Cog.listener()
     async def on_member_join(self, member):
@@ -155,85 +67,36 @@ class OPWelcome(commands.Cog):
         if not channel:
             return
 
-        welcome_message_template = await self.config.guild(guild).welcome_message()
-        welcome_message = welcome_message_template.format(
-            mention=member.mention,
-            guild=guild.name
-        )
+        welcome_message = await self.config.guild(guild).welcome_message()
+        rules_channel = guild.get_channel(await self.config.guild(guild).rules_channel())
+        roles_channel = guild.get_channel(await self.config.guild(guild).roles_channel())
+        general_channel = guild.get_channel(await self.config.guild(guild).general_channel())
 
         embed = discord.Embed(
-            title="Ahoy, New Crew Member!",
-            description=welcome_message,
+            title="Welcome to the Crew!",
+            description=welcome_message.format(mention=member.mention, guild=guild.name),
             color=discord.Color.blue(),
             timestamp=datetime.utcnow()
         )
 
         embed.set_thumbnail(url=member.display_avatar.url)
-        embed.set_image(url="https://example.com/path/to/welcome/banner.png")  # Add a relevant welcome banner URL
-        embed.set_author(name=guild.name, icon_url=guild.icon.url)
+        embed.set_author(name=guild.name, icon_url=guild.icon.url if guild.icon else None)
 
-        embed.add_field(
-            name="About One Piece",
-            value=(
-                "One Piece is an epic tale of pirates, adventure, and the search for the ultimate treasure - the One Piece. "
-                "Join Monkey D. Luffy and his diverse crew as they navigate treacherous seas, face powerful enemies, "
-                "and uncover the mysteries of the Grand Line."
-            ),
-            inline=False
-        )
-
-        embed.add_field(
-            name="Server Information",
-            value=(
-                "🏴‍☠️ **Crew Quarters (channels):**\n"
-                "• <#425068612542398476> - General 💬\n"
-                "• <#590972222366023718> - Rules 📜\n"
-                "• <#597528644432166948> - Roles 🏷️"
-            ),
-            inline=False
-        )
-
-        embed.add_field(
-            name="Adventure Awaits!",
-            value=(
-                "• Join battles with `.battle @opponent ⚔️`\n"
-                "• Start team battles with `.teambattle @teammate vs @opponent1 @opponent2 ⚔️`\n"
-                "• Check your profile with `.profile 📜`\n"
-                "• Train your skills with `.train strength` (or defense/speed) 🏋️‍♂️\n"
-                "• Explore islands with `.explore 🏝️`\n"
-                "• Join crews with `.join_crew <crew_name> ⚓`\n"
-                "• Eat Devil Fruits with `.eat_devil_fruit <fruit_name> 🍎`\n\n"
-                "Set sail, make friends, and carve your legend in the world of One Piece! 🌟"
-            ),
-            inline=False
-        )
-
-        # Join Date and XP
-        join_date = member.joined_at.strftime("%Y-%m-%d %H:%M:%S")
-        xp, level = await self.fetch_amari_xp(guild.id, member.id)
-        xp_info = f"**Level:** {level}" if level is not None else "XP system not configured."
-        embed.add_field(
-            name="Member Info",
-            value=f"**Join Date:** {join_date}\n{xp_info}",
-            inline=False
-        )
+        if rules_channel and roles_channel and general_channel:
+            embed.add_field(
+                name="Getting Started",
+                value=(
+                    f"1. Read the rules in {rules_channel.mention}\n"
+                    f"2. Get your roles in {roles_channel.mention}\n"
+                    f"3. Join the conversation in {general_channel.mention}"
+                ),
+                inline=False
+            )
 
         embed.set_footer(text=f"Member #{guild.member_count}")
 
         try:
-            welcome_message = await channel.send(embed=embed)
-            welcome_role_id = await self.config.guild(guild).welcome_role()
-            if welcome_role_id:
-                welcome_role = guild.get_role(welcome_role_id)
-                if welcome_role:
-                    await member.add_roles(welcome_role)
-
-            # Moderation Alerts
-            mod_channel_id = await self.config.guild(guild).mod_channel()
-            if mod_channel_id:
-                mod_channel = guild.get_channel(mod_channel_id)
-                if mod_channel:
-                    await mod_channel.send(f"{member.mention} has joined the server.")
+            await channel.send(embed=embed)
         except discord.Forbidden:
             await guild.owner.send(f"I don't have permission to send messages in {channel.mention}")
 
