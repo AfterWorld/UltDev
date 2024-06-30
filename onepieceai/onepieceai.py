@@ -4,7 +4,7 @@ from redbot.core.bot import Red
 import discord
 import random
 import asyncio
-import aiohttp
+from openai import OpenAI
 from datetime import datetime, timedelta
 import json
 
@@ -14,8 +14,8 @@ class OnePieceAI(commands.Cog):
     def __init__(self, bot: Red):
         self.bot = bot
         self.config = Config.get_conf(self, identifier=1234567890, force_registration=True)
-        self.session = None
-        self.bot.loop.create_task(self.initialize_session())
+        self.client = None
+        self.bot.loop.create_task(self.initialize_client())
         default_guild = {
             "chat_channels": [],
             "chatgpt_enabled": True,
@@ -62,17 +62,19 @@ class OnePieceAI(commands.Cog):
         self.world_event_task = self.bot.loop.create_task(self.check_world_events())
         self.storyline_task = self.bot.loop.create_task(self.advance_storylines())
 
-    async def initialize_session(self):
-        if self.session is None or self.session.closed:
-            self.session = aiohttp.ClientSession()
+    async def initialize_client(self):
+        api_key = (await self.bot.get_shared_api_tokens("openai")).get("api_key")
+        if api_key:
+            self.client = OpenAI(api_key=api_key)
+        else:
+            log.error("OpenAI API key not found.")
 
     def cog_unload(self):
         self.interjection_task.cancel()
         self.event_task.cancel()
         self.world_event_task.cancel()
         self.storyline_task.cancel()
-        if self.session and not self.session.closed:
-            asyncio.create_task(self.session.close())
+        # No need to close the client, as it doesn't have a close method
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -131,38 +133,23 @@ class OnePieceAI(commands.Cog):
         await self.config.guild(message.guild).last_conversation.set(datetime.now().isoformat())
 
     async def generate_chatgpt_response(self, context: str, message_content: str):
-        api_key = await self.bot.get_shared_api_tokens("openai")
-        if not api_key.get("api_key"):
-            log.error("OpenAI API key not found.")
-            return "Yohohoho! It seems my Den Den Mushi is out of order. I can't respond right now!"
-    
-        headers = {
-            "Authorization": f"Bearer {api_key['api_key']}",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "model": "gpt-3.5-turbo",
-            "messages": [
-                {"role": "system", "content": context},
-                {"role": "user", "content": message_content}
-            ]
-        }
-    
+        if not self.client:
+            await self.initialize_client()
+            if not self.client:
+                return "Yohohoho! It seems my Den Den Mushi is out of order. I can't respond right now!"
+
         try:
-            if not self.session or self.session.closed:
-                self.session = aiohttp.ClientSession()
-    
-            async with self.session.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    return data['choices'][0]['message']['content']
-                else:
-                    error_data = await resp.json()
-                    log.error(f"Error from OpenAI API: {resp.status} - {error_data}")
-                    return "Ah, the Grand Line is interfering with our communication. Let's try again later!"
+            response = await self.bot.loop.run_in_executor(None, lambda: self.client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": context},
+                    {"role": "user", "content": message_content}
+                ]
+            ))
+            return response.choices[0].message.content
         except Exception as e:
             log.error(f"Error in generate_chatgpt_response: {str(e)}")
-            return "I've encountered an unexpected storm. Let's try again when the seas are calmer!"
+            return "Ah, the Grand Line is interfering with our communication. Let's try again later!"
 
     async def assign_random_crew(self, member: discord.Member):
         crew = random.choice(self.crews)
