@@ -189,51 +189,40 @@ class OnePieceMod(commands.Cog):
         if new_bounty >= 500:  # Example threshold
             await ctx.send(f"⚠️ {member.name}'s bounty has exceeded 500 Berries! The Marines are on high alert!")
 
-    @commands.command()
-    @checks.admin_or_permissions(manage_messages=True)
-    async def setbounty(self, ctx, member: discord.Member, amount: int):
-        """Set a bounty for a pirate and generate a wanted poster."""
-        async with self.config.guild(ctx.guild).bounties() as bounties:
-            bounties[str(member.id)] = amount
-
-        # Generate and send wanted poster
-        poster = await self.generate_wanted_poster(member, amount)
-        await ctx.send(file=discord.File(poster, filename="wanted.png"))
-
     async def generate_wanted_poster(self, member: discord.Member, bounty: int):
-        async with aiohttp.ClientSession() as session:
-            # Get the member's avatar
-            async with session.get(str(member.avatar_url)) as resp:
-                avatar_data = io.BytesIO(await resp.read())
-            
-            # Get the wanted poster template
-            template_url = "https://raw.githubusercontent.com/YourUsername/YourRepo/main/wanted_poster_template.png"
-            async with session.get(template_url) as resp:
-                template_data = io.BytesIO(await resp.read())
+    async with aiohttp.ClientSession() as session:
+        # Get the member's avatar
+        async with session.get(str(member.avatar_url)) as resp:
+            avatar_data = io.BytesIO(await resp.read())
+        
+        # Get the wanted poster template
+        template_url = "https://raw.githubusercontent.com/AfterWorld/UltDev/main/mods/wanted%20poster/wanted_poster_template.png"
+        async with session.get(template_url) as resp:
+            template_data = io.BytesIO(await resp.read())
 
         # Open images
         template = Image.open(template_data)
         avatar = Image.open(avatar_data).resize((300, 300))
-
+    
         # Paste the avatar onto the template
         template.paste(avatar, (100, 200))
-
+    
         # Add text to the image
         draw = ImageDraw.Draw(template)
-        font_url = "https://raw.githubusercontent.com/YourUsername/YourRepo/main/your_font.ttf"
+        font_url = "https://raw.githubusercontent.com/AfterWorld/UltDev/main/mods/wanted%20poster/one_piece_font.ttf"
         async with aiohttp.ClientSession() as session:
             async with session.get(font_url) as resp:
                 font_data = io.BytesIO(await resp.read())
         font = ImageFont.truetype(font_data, 60)
         draw.text((250, 550), member.name, font=font, fill=(0, 0, 0))
         draw.text((250, 650), f"{bounty:,} Berries", font=font, fill=(0, 0, 0))
-
+    
         # Save the image to a buffer
         buffer = io.BytesIO()
         template.save(buffer, format='PNG')
         buffer.seek(0)
         return buffer
-
+    
     @commands.command()
     @checks.admin_or_permissions(manage_guild=True)
     async def raidmode(self, ctx, state: bool):
