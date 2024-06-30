@@ -1,38 +1,72 @@
 import discord
-from redbot.core import commands, checks, modlog, Config
+from redbot.core import commands, checks, Config, modlog
+from redbot.core.utils.menus import menu, DEFAULT_CONTROLS
 from redbot.core.utils.chat_formatting import pagify
-from datetime import timedelta
+from PIL import Image, ImageDraw, ImageFont
+import io
+import aiohttp
 import asyncio
-import re
-
-original_commands = {}
+import random
+from datetime import timedelta
 
 class OnePieceMod(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.log_channel_id = 1245208777003634698
-        self.mute_role_id = 808869058476769312
         self.config = Config.get_conf(self, identifier=1234567890, force_registration=True)
         default_guild = {
             "bounties": {},
+            "alliances": {},
+            "transponder_snails": {},
+            "banned_words": [],
             "raid_mode": False,
             "log_book": {},
             "timed_announcements": []
         }
         self.config.register_guild(**default_guild)
+        self.log_channel_id = 1245208777003634698
+        self.mute_role_id = 808869058476769312
 
-    def cog_unload(self):
-        for cmd_name, cmd in original_commands.items():
-            if self.bot.get_command(cmd_name):
-                self.bot.remove_command(cmd_name)
-            if cmd:
-                self.bot.add_command(cmd)
+    @commands.command()
+    async def modhelp(self, ctx):
+        """Display information about OnePieceMod commands."""
+        commands_info = {
+            "kick": "Kick a crew member off the ship.\nUsage: `.kick @member [reason]`",
+            "ban": "Banish a pirate to Impel Down.\nUsage: `.ban @member [days] [reason]`",
+            "impeldown": "Temporarily banish a pirate.\nUsage: `.impeldown @member <days> [reason]`",
+            "mute": "Silence a crew member.\nUsage: `.mute @member [duration] [reason]`",
+            "unmute": "Remove Sea Prism handcuffs.\nUsage: `.unmute @member [reason]`",
+            "addbounty": "Increase a pirate's bounty.\nUsage: `.addbounty @member <amount>`",
+            "setbounty": "Set a pirate's bounty and generate a wanted poster.\nUsage: `.setbounty @member <amount>`",
+            "raidmode": "Activate/deactivate Raid Mode.\nUsage: `.raidmode <true/false>`",
+            "logbook": "Add a log book entry.\nUsage: `.logbook @member <entry>`",
+            "viewlogbook": "View a pirate's log book.\nUsage: `.viewlogbook @member`",
+            "promote": "Promote a crew member.\nUsage: `.promote @member @role`",
+            "demote": "Demote a crew member.\nUsage: `.demote @member @role`",
+            "calmbelt": "Enable slow mode in a channel.\nUsage: `.calmbelt <seconds>`",
+            "redline": "Prevent new members from joining.\nUsage: `.redline`",
+            "bustercall": "Delete multiple messages.\nUsage: `.bustercall <number>`",
+            "seaking": "Set up auto-moderation.\nUsage: `.seaking <word1, word2, ...>`",
+            "dendenmushi": "Schedule an announcement.\nUsage: `.dendenmushi HH:MM <message>`",
+            "viewbounties": "View all pirates' bounties.\nUsage: `.viewbounties`",
+            "alliance form": "Form a pirate alliance.\nUsage: `.alliance form <code>`",
+            "alliance join": "Join a pirate alliance.\nUsage: `.alliance join <code>`",
+            "alliance list": "List all alliances.\nUsage: `.alliance list`",
+            "snailcall": "Send a message to allies.\nUsage: `.snailcall <alliance_code> <message>`",
+            "snailbox": "Set up Transponder Snail box.\nUsage: `.snailbox <true/false>`",
+        }
 
-    async def log_action(self, ctx, member: discord.Member, action: str, reason: str):
-        log_channel = self.bot.get_channel(self.log_channel_id)
-        if log_channel:
-            log_message = f"- {member.name} (ID: {member.id})\n- {action}\n- Reason: {reason}"
-            await log_channel.send(log_message)
+        def generate_embed(commands_subset):
+            embed = discord.Embed(title="🏴‍☠️ OnePieceMod Command Guide", 
+                                  description="Ahoy! Here's a list of available commands for managing your crew:",
+                                  color=discord.Color.gold())
+            for cmd, desc in commands_subset:
+                embed.add_field(name=cmd, value=desc, inline=True)
+            return embed
+
+        command_groups = [list(commands_info.items())[i:i+6] for i in range(0, len(commands_info), 6)]
+        pages = [generate_embed(group) for group in command_groups]
+
+        await menu(ctx, pages, DEFAULT_CONTROLS)
 
     @commands.command()
     @checks.admin_or_permissions(kick_members=True)
@@ -75,33 +109,6 @@ class OnePieceMod(commands.Cog):
             await ctx.send("There was an error while trying to banish that pirate. The Marines must be jamming our signals!")
 
     @commands.command()
-    @checks.admin_or_permissions(ban_members=True)
-    async def impeldown(self, ctx, member: discord.Member, days: int, *, reason: str = "Temporary imprisonment in Impel Down!"):
-        """Temporarily banish a pirate to Impel Down."""
-        try:
-            await ctx.guild.ban(member, reason=reason)
-            await ctx.send(f"⛓️ {member.name} has been imprisoned in Impel Down for {days} days!")
-            await self.log_action(ctx, member, f"Temporarily Banned for {days} days", reason)
-            
-            case = await modlog.create_case(
-                ctx.bot, ctx.guild, ctx.message.created_at, action_type="tempban",
-                user=member, moderator=ctx.author, reason=reason
-            )
-            if case:
-                await ctx.send(f"The sentence has been recorded in the World Government's records. Case number: {case.case_number}")
-
-            # Schedule unban
-            await asyncio.sleep(days * 86400)  # Convert days to seconds
-            await ctx.guild.unban(member, reason="Impel Down sentence completed")
-            await ctx.send(f"🔓 {member.name} has been released from Impel Down after serving their sentence!")
-            await self.log_action(ctx, member, "Unbanned", "Impel Down sentence completed")
-
-        except discord.Forbidden:
-            await ctx.send("I don't have the authority to imprison that pirate!")
-        except discord.HTTPException:
-            await ctx.send("There was an error while trying to imprison that pirate. The Marines must be jamming our signals!")
-
-    @commands.command()
     @checks.admin_or_permissions(manage_roles=True)
     async def mute(self, ctx, member: discord.Member, duration: str = None, *, reason: str = "Speaking out of turn during a crew meeting!"):
         """Silence a crew member with Sea Prism handcuffs."""
@@ -111,8 +118,7 @@ class OnePieceMod(commands.Cog):
             return
 
         try:
-            # Remove all roles and add mute role
-            await member.edit(roles=[mute_role])
+            await member.add_roles(mute_role, reason=reason)
             await ctx.send(f"🔇 {member.name} has been silenced with Sea Prism handcuffs!")
             
             if duration:
@@ -182,6 +188,51 @@ class OnePieceMod(commands.Cog):
 
         if new_bounty >= 500:  # Example threshold
             await ctx.send(f"⚠️ {member.name}'s bounty has exceeded 500 Berries! The Marines are on high alert!")
+
+    @commands.command()
+    @checks.admin_or_permissions(manage_messages=True)
+    async def setbounty(self, ctx, member: discord.Member, amount: int):
+        """Set a bounty for a pirate and generate a wanted poster."""
+        async with self.config.guild(ctx.guild).bounties() as bounties:
+            bounties[str(member.id)] = amount
+
+        # Generate and send wanted poster
+        poster = await self.generate_wanted_poster(member, amount)
+        await ctx.send(file=discord.File(poster, filename="wanted.png"))
+
+    async def generate_wanted_poster(self, member: discord.Member, bounty: int):
+        async with aiohttp.ClientSession() as session:
+            # Get the member's avatar
+            async with session.get(str(member.avatar_url)) as resp:
+                avatar_data = io.BytesIO(await resp.read())
+            
+            # Get the wanted poster template
+            template_url = "https://raw.githubusercontent.com/YourUsername/YourRepo/main/wanted_poster_template.png"
+            async with session.get(template_url) as resp:
+                template_data = io.BytesIO(await resp.read())
+
+        # Open images
+        template = Image.open(template_data)
+        avatar = Image.open(avatar_data).resize((300, 300))
+
+        # Paste the avatar onto the template
+        template.paste(avatar, (100, 200))
+
+        # Add text to the image
+        draw = ImageDraw.Draw(template)
+        font_url = "https://raw.githubusercontent.com/YourUsername/YourRepo/main/your_font.ttf"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(font_url) as resp:
+                font_data = io.BytesIO(await resp.read())
+        font = ImageFont.truetype(font_data, 60)
+        draw.text((250, 550), member.name, font=font, fill=(0, 0, 0))
+        draw.text((250, 650), f"{bounty:,} Berries", font=font, fill=(0, 0, 0))
+
+        # Save the image to a buffer
+        buffer = io.BytesIO()
+        template.save(buffer, format='PNG')
+        buffer.seek(0)
+        return buffer
 
     @commands.command()
     @checks.admin_or_permissions(manage_guild=True)
@@ -277,117 +328,75 @@ class OnePieceMod(commands.Cog):
 
         await ctx.send(f"📢 A Den Den Mushi broadcast has been scheduled for {time}.")
 
-    @commands.Cog.listener()
-    async def on_message(self, message):
-        if message.author.bot:
+    @commands.group()
+    @checks.admin_or_permissions(manage_guild=True)
+    async def alliance(self, ctx):
+        """Manage pirate alliances."""
+        pass
+
+    @alliance.command(name="form")
+    async def alliance_form(self, ctx, ally_code: str):
+        """Form an alliance with another server."""
+        async with self.config.guild(ctx.guild).alliances() as alliances:
+            alliances[ally_code] = {"name": ctx.guild.name, "id": ctx.guild.id}
+        await ctx.send(f"Alliance formed! Other servers can now join using the code: {ally_code}")
+
+    @alliance.command(name="join")
+    async def alliance_join(self, ctx, ally_code: str):
+        """Join an existing alliance."""
+        all_guilds = await self.config.all_guilds()
+        for guild_id, guild_data in all_guilds.items():
+            if ally_code in guild_data.get("alliances", {}):
+                async with self.config.guild(ctx.guild).alliances() as alliances:
+                    alliances[ally_code] = {"name": guild_data["alliances"][ally_code]["name"], "id": guild_id}
+                await ctx.send(f"You've joined the alliance with {guild_data['alliances'][ally_code]['name']}!")
+                return
+        await ctx.send("Alliance not found. Check the code and try again.")
+
+    @alliance.command(name="list")
+    async def alliance_list(self, ctx):
+        """List all alliances this server is part of."""
+        alliances = await self.config.guild(ctx.guild).alliances()
+        if not alliances:
+            await ctx.send("This server is not part of any alliances.")
             return
-
-        # Check for banned words (Sea Kings auto-moderation)
-        banned_words = await self.config.guild(message.guild).banned_words()
-        if any(word in message.content.lower() for word in banned_words):
-            await message.delete@commands.Cog.listener()
-    async def on_message(self, message):
-        if message.author.bot:
-            return
-
-        # Check for banned words (Sea Kings auto-moderation)
-        banned_words = await self.config.guild(message.guild).banned_words()
-        if any(word in message.content.lower() for word in banned_words):
-            await message.delete()
-            await message.channel.send(f"{message.author.mention}, watch your language! The Sea Kings are patrolling these waters!", delete_after=10)
-
-        # Check if raid mode is active
-        raid_mode = await self.config.guild(message.guild).raid_mode()
-        if raid_mode and message.author.joined_at is not None:
-            if (discord.utils.utcnow() - message.author.joined_at).total_seconds() < 300:  # If member joined less than 5 minutes ago
-                await message.delete()
-                await message.author.send("Our ship is currently in Raid Mode. New crew members cannot send messages until the threat has passed.")
-
-    async def check_timed_announcements(self):
-        while self is self.bot.get_cog("OnePieceMod"):
-            for guild in self.bot.guilds:
-                announcements = await self.config.guild(guild).timed_announcements()
-                current_time = discord.utils.utcnow().strftime("%H:%M")
-                for announcement in announcements:
-                    if announcement["time"] == current_time:
-                        channel = guild.system_channel or guild.text_channels[0]
-                        await channel.send(f"📢 Den Den Mushi Broadcast: {announcement['message']}")
-            await asyncio.sleep(60)  # Check every minute
+        alliance_list = "\n".join([f"{code}: {data['name']}" for code, data in alliances.items()])
+        await ctx.send(f"Current alliances:\n{alliance_list}")
 
     @commands.command()
-    @checks.admin_or_permissions(manage_messages=True)
-    async def viewlogbook(self, ctx, member: discord.Member):
-        """View the log book entries for a specific pirate."""
-        log_book = await self.config.guild(ctx.guild).log_book()
-        entries = log_book.get(str(member.id), [])
-        if not entries:
-            await ctx.send(f"📖 The log book for {member.name} is empty.")
-        else:
-            pages = []
-            for i, entry in enumerate(entries, 1):
-                pages.append(f"Entry {i}: {entry}")
-            await self.send_pages(ctx, pages)
+    async def snailcall(self, ctx, alliance_code: str, *, message: str):
+        """Send a Transponder Snail message to an allied server."""
+        alliances = await self.config.guild(ctx.guild).alliances()
+        if alliance_code not in alliances:
+            await ctx.send("You're not in an alliance with that code.")
+            return
 
-    async def send_pages(self, ctx, pages):
-        """Helper function to send paginated content."""
-        for page in pagify("\n".join(pages), delims=["\n"], page_length=1900):
-            await ctx.send(f"```\n{page}\n```")
+        target_guild = self.bot.get_guild(alliances[alliance_code]["id"])
+        if not target_guild:
+            await ctx.send("Couldn't reach the allied server. The Transponder Snail connection failed.")
+            return
+
+        channel = discord.utils.get(target_guild.text_channels, name="transponder-snail")
+        if not channel:
+            channel = target_guild.system_channel or target_guild.text_channels[0]
+
+        await channel.send(f"Transponder Snail Message from {ctx.guild.name}:\n{message}")
+        await ctx.send("Your message has been transmitted through the Transponder Snail!")
 
     @commands.command()
     @checks.admin_or_permissions(manage_guild=True)
-    async def viewbounties(self, ctx):
-        """View the bounties of all pirates in the crew."""
-        bounties = await self.config.guild(ctx.guild).bounties()
-        if not bounties:
-            await ctx.send("There are no bounties set for any pirates in this crew.")
-            return
-
-        sorted_bounties = sorted(bounties.items(), key=lambda x: x[1], reverse=True)
-        pages = []
-        for user_id, bounty in sorted_bounties:
-            member = ctx.guild.get_member(int(user_id))
-            if member:
-                pages.append(f"{member.name}: {bounty} Berries")
-
-        if pages:
-            await ctx.send("🏴‍☠️ Current Bounties:")
-            await self.send_pages(ctx, pages)
-        else:
-            await ctx.send("There are no active bounties for current crew members.")
-            
-    @commands.command()
-    async def modhelp(self, ctx):
-        """Display information about OnePieceMod commands."""
-        embed = discord.Embed(title="🏴‍☠️ OnePieceMod Command Guide", 
-                              description="Ahoy! Here's a list of all available commands for managing your crew:",
-                              color=discord.Color.gold())
-
-        commands_info = {
-            "kick": "Kick a crew member off the ship.\nUsage: `.kick @member [reason]`",
-            "ban": "Banish a pirate to Impel Down.\nUsage: `.ban @member [days] [reason]`",
-            "impeldown": "Temporarily banish a pirate.\nUsage: `.impeldown @member <days> [reason]`",
-            "mute": "Silence a crew member.\nUsage: `.mute @member [duration] [reason]`",
-            "unmute": "Remove Sea Prism handcuffs.\nUsage: `.unmute @member [reason]`",
-            "addbounty": "Increase a pirate's bounty.\nUsage: `.addbounty @member <amount>`",
-            "raidmode": "Activate/deactivate Raid Mode.\nUsage: `.raidmode <true/false>`",
-            "logbook": "Add a log book entry.\nUsage: `.logbook @member <entry>`",
-            "promote": "Promote a crew member.\nUsage: `.promote @member @role`",
-            "demote": "Demote a crew member.\nUsage: `.demote @member @role`",
-            "calmbelt": "Enable slow mode in a channel.\nUsage: `.calmbelt <seconds>`",
-            "redline": "Prevent new members from joining.\nUsage: `.redline`",
-            "bustercall": "Delete multiple messages.\nUsage: `.bustercall <number>`",
-            "seaking": "Set up auto-moderation.\nUsage: `.seaking <word1, word2, ...>`",
-            "dendenmushi": "Schedule an announcement.\nUsage: `.dendenmushi HH:MM <message>`",
-            "viewlogbook": "View a pirate's log book.\nUsage: `.viewlogbook @member`",
-            "viewbounties": "View all pirates' bounties.\nUsage: `.viewbounties`",
-        }
-
-        for cmd, desc in commands_info.items():
-            embed.add_field(name=cmd, value=desc, inline=False)
-
-        embed.set_footer(text="Remember, with great power comes great responsibility, pirate!")
-        
-        await ctx.send(embed=embed)
+    async def snailbox(self, ctx, status: bool):
+        """Set up or disable a Transponder Snail box for incoming messages."""
+        async with self.config.guild(ctx.guild).transponder_snails() as snails:
+            snails["active"] = status
+            if status:
+                channel = discord.utils.get(ctx.guild.text_channels, name="transponder-snail")
+                if not channel:
+                    channel = await ctx.guild.create_text_channel("transponder-snail")
+                snails["channel_id"] = channel.id
+                await ctx.send(f"Transponder Snail box set up in {channel.mention}!")
+            else:
+                await ctx.send("Transponder Snail box has been deactivated.")
 
 async def setup(bot):
     global original_commands
