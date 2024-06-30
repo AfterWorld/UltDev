@@ -354,6 +354,40 @@ class OnePieceMod(commands.Cog):
             await self.send_pages(ctx, pages)
         else:
             await ctx.send("There are no active bounties for current crew members.")
+            
+    @commands.command()
+    async def modhelp(self, ctx):
+        """Display information about OnePieceMod commands."""
+        embed = discord.Embed(title="🏴‍☠️ OnePieceMod Command Guide", 
+                              description="Ahoy! Here's a list of all available commands for managing your crew:",
+                              color=discord.Color.gold())
+
+        commands_info = {
+            "kick": "Kick a crew member off the ship.\nUsage: `.kick @member [reason]`",
+            "ban": "Banish a pirate to Impel Down.\nUsage: `.ban @member [days] [reason]`",
+            "impeldown": "Temporarily banish a pirate.\nUsage: `.impeldown @member <days> [reason]`",
+            "mute": "Silence a crew member.\nUsage: `.mute @member [duration] [reason]`",
+            "unmute": "Remove Sea Prism handcuffs.\nUsage: `.unmute @member [reason]`",
+            "addbounty": "Increase a pirate's bounty.\nUsage: `.addbounty @member <amount>`",
+            "raidmode": "Activate/deactivate Raid Mode.\nUsage: `.raidmode <true/false>`",
+            "logbook": "Add a log book entry.\nUsage: `.logbook @member <entry>`",
+            "promote": "Promote a crew member.\nUsage: `.promote @member @role`",
+            "demote": "Demote a crew member.\nUsage: `.demote @member @role`",
+            "calmbelt": "Enable slow mode in a channel.\nUsage: `.calmbelt <seconds>`",
+            "redline": "Prevent new members from joining.\nUsage: `.redline`",
+            "bustercall": "Delete multiple messages.\nUsage: `.bustercall <number>`",
+            "seaking": "Set up auto-moderation.\nUsage: `.seaking <word1, word2, ...>`",
+            "dendenmushi": "Schedule an announcement.\nUsage: `.dendenmushi HH:MM <message>`",
+            "viewlogbook": "View a pirate's log book.\nUsage: `.viewlogbook @member`",
+            "viewbounties": "View all pirates' bounties.\nUsage: `.viewbounties`",
+        }
+
+        for cmd, desc in commands_info.items():
+            embed.add_field(name=cmd, value=desc, inline=False)
+
+        embed.set_footer(text="Remember, with great power comes great responsibility, pirate!")
+        
+        await ctx.send(embed=embed)
 
 async def setup(bot):
     global original_commands
