@@ -1,4 +1,4 @@
-from .onepiece_bot import OnePieceBot
+from .onepiecebot import OnePieceBot
 
-def setup(bot):
-    bot.add_cog(OnePieceBot(bot))
+async def setup(bot):
+    await bot.add_cog(OnePieceBot(bot))
