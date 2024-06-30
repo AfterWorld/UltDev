@@ -26,6 +26,13 @@ class OnePieceMod(commands.Cog):
         self.log_channel_id = 1245208777003634698
         self.mute_role_id = 808869058476769312
 
+    async def cog_unload(self):
+        global original_commands
+        for cmd_name, original_cmd in original_commands.items():
+            self.bot.remove_command(cmd_name)
+            if original_cmd:
+                self.bot.add_command(original_cmd)
+
     @commands.command()
     async def modhelp(self, ctx):
         """Display information about OnePieceMod commands."""
