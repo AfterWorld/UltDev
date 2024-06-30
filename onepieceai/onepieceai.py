@@ -14,6 +14,8 @@ class OnePieceAI(commands.Cog):
     def __init__(self, bot: Red):
         self.bot = bot
         self.config = Config.get_conf(self, identifier=1234567890, force_registration=True)
+        self.session = None
+        self.bot.loop.create_task(self.initialize_session())
         default_guild = {
             "chat_channels": [],
             "chatgpt_enabled": True,
@@ -38,7 +40,6 @@ class OnePieceAI(commands.Cog):
         }
         self.config.register_guild(**default_guild)
         self.config.register_member(**default_member)
-        self.session = aiohttp.ClientSession()
         self.crews = ["Straw Hat Pirates", "Heart Pirates", "Red Hair Pirates", "Whitebeard Pirates", "Marine"]
         self.personalities = ["brave", "cunning", "loyal", "ambitious", "carefree"]
         self.devil_fruits = [
@@ -61,12 +62,17 @@ class OnePieceAI(commands.Cog):
         self.world_event_task = self.bot.loop.create_task(self.check_world_events())
         self.storyline_task = self.bot.loop.create_task(self.advance_storylines())
 
+    async def initialize_session(self):
+        if self.session is None or self.session.closed:
+            self.session = aiohttp.ClientSession()
+
     def cog_unload(self):
         self.interjection_task.cancel()
         self.event_task.cancel()
         self.world_event_task.cancel()
         self.storyline_task.cancel()
-        asyncio.create_task(self.session.close())
+        if self.session and not self.session.closed:
+            asyncio.create_task(self.session.close())
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
