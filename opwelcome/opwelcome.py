@@ -1,6 +1,6 @@
 import discord
 from redbot.core import commands, Config
-from datetime import datetime
+import random
 
 class OPWelcome(commands.Cog):
     def __init__(self, bot):
@@ -9,12 +9,17 @@ class OPWelcome(commands.Cog):
         default_guild = {
             "welcome_channel": None,
             "welcome_enabled": False,
-            "welcome_message": "Ahoy, {mention}! Welcome aboard the {guild} crew! 🏴‍☠️",
             "rules_channel": None,
             "roles_channel": None,
-            "general_channel": None
         }
         self.config.register_guild(**default_guild)
+        self.op_facts = [
+            "The One Piece world has more than 500 devil fruits!",
+            "Eiichiro Oda started writing One Piece in 1997.",
+            "Luffy's favorite food is meat!",
+            "The Going Merry was partly inspired by Viking ships.",
+            "Oda originally planned One Piece to last five years.",
+        ]
 
     @commands.group()
     @commands.admin_or_permissions(manage_guild=True)
@@ -37,21 +42,11 @@ class OPWelcome(commands.Cog):
         await ctx.send(f"Welcome message {state}.")
 
     @welcome.command()
-    async def message(self, ctx, *, welcome_message: str = None):
-        """Set a custom welcome message or reset to default if no message is provided."""
-        default_message = "Ahoy, {mention}! Welcome aboard the {guild} crew! 🏴‍☠️"
-        if not welcome_message:
-            welcome_message = default_message
-        await self.config.guild(ctx.guild).welcome_message.set(welcome_message)
-        await ctx.send("Welcome message updated!")
-
-    @welcome.command()
-    async def setchannels(self, ctx, rules: discord.TextChannel, roles: discord.TextChannel, general: discord.TextChannel):
-        """Set the rules, roles, and general channels."""
+    async def setchannels(self, ctx, rules: discord.TextChannel, roles: discord.TextChannel):
+        """Set the rules and roles channels."""
         await self.config.guild(ctx.guild).rules_channel.set(rules.id)
         await self.config.guild(ctx.guild).roles_channel.set(roles.id)
-        await self.config.guild(ctx.guild).general_channel.set(general.id)
-        await ctx.send(f"Channels set: Rules: {rules.mention}, Roles: {roles.mention}, General: {general.mention}")
+        await ctx.send(f"Channels set: Rules: {rules.mention}, Roles: {roles.mention}")
 
     @commands.Cog.listener()
     async def on_member_join(self, member):
@@ -67,33 +62,34 @@ class OPWelcome(commands.Cog):
         if not channel:
             return
 
-        welcome_message = await self.config.guild(guild).welcome_message()
         rules_channel = guild.get_channel(await self.config.guild(guild).rules_channel())
         roles_channel = guild.get_channel(await self.config.guild(guild).roles_channel())
-        general_channel = guild.get_channel(await self.config.guild(guild).general_channel())
 
         embed = discord.Embed(
-            title="Welcome to the Crew!",
-            description=welcome_message.format(mention=member.mention, guild=guild.name),
-            color=discord.Color.blue(),
-            timestamp=datetime.utcnow()
+            title=f"Welcome to the {guild.name} Crew!",
+            description=f"Ahoy, {member.mention}! You've just embarked on a grand adventure!",
+            color=discord.Color.blue()
         )
 
         embed.set_thumbnail(url=member.display_avatar.url)
-        embed.set_author(name=guild.name, icon_url=guild.icon.url if guild.icon else None)
 
-        if rules_channel and roles_channel and general_channel:
+        if rules_channel and roles_channel:
             embed.add_field(
-                name="Getting Started",
+                name="First Steps on Your Journey",
                 value=(
-                    f"1. Read the rules in {rules_channel.mention}\n"
-                    f"2. Get your roles in {roles_channel.mention}\n"
-                    f"3. Join the conversation in {general_channel.mention}"
+                    f"1. Read the pirate code in {rules_channel.mention}\n"
+                    f"2. Choose your role in {roles_channel.mention}"
                 ),
                 inline=False
             )
 
-        embed.set_footer(text=f"Member #{guild.member_count}")
+        embed.add_field(
+            name="Did You Know?",
+            value=random.choice(self.op_facts),
+            inline=False
+        )
+
+        embed.set_footer(text=f"You're our {guild.member_count}th crew member!")
 
         try:
             await channel.send(embed=embed)
