@@ -21,6 +21,7 @@ class OnePieceAI(commands.Cog):
         self.bot.loop.create_task(self.initialize_client())
         self.last_request_time = 0
         self.request_interval = 1  # Minimum time between requests in seconds
+        self.total_tokens_used = 0  # Add this line to track token usage
         default_guild = {
             "chat_channels": [],
             "chatgpt_enabled": True,
@@ -228,41 +229,29 @@ class OnePieceAI(commands.Cog):
     @commands.command()
     @commands.is_owner()
     async def check_openai_usage(self, ctx):
-        """Check current OpenAI API usage and estimate remaining tokens"""
+        """Check estimated OpenAI API usage based on token count"""
         if not self.client:
             await ctx.send("OpenAI client is not initialized.")
             return
 
         try:
-            # Get the current date and the first day of the current month
-            end_date = datetime.now()
-            start_date = end_date.replace(day=1)
-
-            # Format dates for the API
-            start_date_str = start_date.strftime("%Y-%m-%d")
-            end_date_str = end_date.strftime("%Y-%m-%d")
-
-            # Retrieve usage data
-            usage_data = self.client.dashboard.usage(start_date=start_date_str, end_date=end_date_str)
-            
-            # Calculate total cost and tokens
-            total_cost = sum(daily.total_usage for daily in usage_data.daily_costs)
-            total_tokens = sum(daily.n_requests * 1000 for daily in usage_data.daily_costs)  # Assuming average of 1000 tokens per request
-
             # Get the encoding for gpt-3.5-turbo
             encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
 
+            # Estimate cost (assuming $0.002 per 1K tokens for gpt-3.5-turbo)
+            estimated_cost = (self.total_tokens_used / 1000) * 0.002
+
             # Example of how many tokens are left (assuming a monthly limit of 10 million tokens)
             monthly_limit = 10000000  # Adjust this based on your actual limit
-            tokens_left = monthly_limit - total_tokens
+            tokens_left = monthly_limit - self.total_tokens_used
 
             # Create a sample message to show token usage
             sample_message = "This is a sample message to show token usage."
             sample_tokens = len(encoding.encode(sample_message))
 
-            await ctx.send(f"Usage from {start_date_str} to {end_date_str}:\n"
-                           f"Total tokens used: {total_tokens:,}\n"
-                           f"Total cost: ${total_cost:.2f}\n"
+            await ctx.send(f"Estimated usage since bot start:\n"
+                           f"Total tokens used: {self.total_tokens_used:,}\n"
+                           f"Estimated cost: ${estimated_cost:.2f}\n"
                            f"Estimated tokens left: {tokens_left:,}\n"
                            f"\nSample message: '{sample_message}'\n"
                            f"Token count: {sample_tokens}")
@@ -271,6 +260,28 @@ class OnePieceAI(commands.Cog):
             await ctx.send(f"Error checking usage: {str(e)}")
             raise  # This will print the full error traceback in the console
 
+    async def generate_chatgpt_response(self, context: str, message_content: str):
+        # ... (existing code)
+
+        try:
+            response = await self.bot.loop.run_in_executor(None, lambda: self.client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": context},
+                    {"role": "user", "content": message_content}
+                ]
+            ))
+            
+            # Update token usage
+            self.total_tokens_used += response.usage.total_tokens
+            
+            return response.choices[0].message.content
+        except RateLimitError as e:
+            log.error(f"Rate limit error: {str(e)}")
+            raise  # Re-raise for retry
+        except Exception as e:
+            log.error(f"Unexpected error in generate_chatgpt_response: {str(e)}")
+            return "Ah, the Grand Line is interfering with our communication. Let's try again later!"
     @commands.command()
     @commands.cooldown(1, 3600, commands.BucketType.user)
     async def op_adventure(self, ctx):
