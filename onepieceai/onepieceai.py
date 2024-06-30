@@ -129,7 +129,7 @@ class OnePieceAI(commands.Cog):
         if not api_key.get("api_key"):
             log.error("OpenAI API key not found.")
             return "Yohohoho! It seems my Den Den Mushi is out of order. I can't respond right now!"
-
+    
         headers = {
             "Authorization": f"Bearer {api_key['api_key']}",
             "Content-Type": "application/json"
@@ -141,15 +141,22 @@ class OnePieceAI(commands.Cog):
                 {"role": "user", "content": message_content}
             ]
         }
-
-        async with self.session.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload) as resp:
-            if resp.status == 200:
-                data = await resp.json()
-                return data['choices'][0]['message']['content']
-            else:
-                error_data = await resp.json()
-                log.error(f"Error from OpenAI API: {resp.status} - {error_data}")
-                return "Ah, the Grand Line is interfering with our communication. Let's try again later!"
+    
+        try:
+            if not self.session or self.session.closed:
+                self.session = aiohttp.ClientSession()
+    
+            async with self.session.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    return data['choices'][0]['message']['content']
+                else:
+                    error_data = await resp.json()
+                    log.error(f"Error from OpenAI API: {resp.status} - {error_data}")
+                    return "Ah, the Grand Line is interfering with our communication. Let's try again later!"
+        except Exception as e:
+            log.error(f"Error in generate_chatgpt_response: {str(e)}")
+            return "I've encountered an unexpected storm. Let's try again when the seas are calmer!"
 
     async def assign_random_crew(self, member: discord.Member):
         crew = random.choice(self.crews)
