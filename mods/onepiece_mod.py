@@ -7,6 +7,7 @@ import io
 import aiohttp
 import asyncio
 import random
+import re
 from datetime import timedelta
 
 # Initialize original_commands dictionary
@@ -28,6 +29,7 @@ class OnePieceMod(commands.Cog):
         self.config.register_guild(**default_guild)
         self.log_channel_id = 1245208777003634698
         self.mute_role_id = 808869058476769312
+        self.banned_patterns = []  # List to store compiled regex patterns
 
     async def cog_unload(self):
         global original_commands
@@ -35,6 +37,22 @@ class OnePieceMod(commands.Cog):
             self.bot.remove_command(cmd_name)
             if original_cmd:
                 self.bot.add_command(original_cmd)
+
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        if message.author.bot:
+            return
+        guild = message.guild
+        if not guild:
+            return
+        banned_patterns = await self.config.guild(guild).banned_words()
+        for pattern in banned_patterns:
+            if re.search(pattern, message.content, re.IGNORECASE):
+                try:
+                    await message.delete()
+                    await message.channel.send(f"{message.author.mention}, your message contained a banned word or pattern and was removed.", delete_after=5)
+                except discord.Forbidden:
+                    pass  # Handle lack of permissions
 
     @commands.command()
     async def modhelp(self, ctx):
@@ -55,7 +73,7 @@ class OnePieceMod(commands.Cog):
             "calmbelt": "Enable slow mode in a channel.\nUsage: `.calmbelt <seconds>`",
             "redline": "Prevent new members from joining.\nUsage: `.redline`",
             "bustercall": "Delete multiple messages.\nUsage: `.bustercall <number>`",
-            "seaking": "Set up auto-moderation.\nUsage: `.seaking <word1, word2, ...>`",
+            "seaking": "Set up auto-moderation.\nUsage: `.seaking <pattern1, pattern2, ...>`",
             "dendenmushi": "Schedule an announcement.\nUsage: `.dendenmushi HH:MM <message>`",
             "viewbounties": "View all pirates' bounties.\nUsage: `.viewbounties`",
             "alliance form": "Form a pirate alliance.\nUsage: `.alliance form <code>`",
@@ -304,11 +322,12 @@ class OnePieceMod(commands.Cog):
 
     @commands.command()
     @checks.admin_or_permissions(manage_messages=True)
-    async def seaking(self, ctx, *, banned_words):
-        """Set up auto-moderation for specific words, themed as Sea Kings patrolling the waters."""
-        banned_list = [word.strip() for word in banned_words.split(',')]
-        await self.config.guild(ctx.guild).banned_words.set(banned_list)
-        await ctx.send(f"🐉 Sea Kings are now patrolling for these words: {', '.join(banned_list)}")
+    async def seaking(self, ctx, *, banned_patterns):
+        """Set up auto-moderation for specific patterns using regex, themed as Sea Kings patrolling the waters."""
+        pattern_list = [pattern.strip() for pattern in banned_patterns.split(',')]
+        await self.config.guild(ctx.guild).banned_words.set(pattern_list)
+        self.banned_patterns = [re.compile(pattern, re.IGNORECASE) for pattern in pattern_list]
+        await ctx.send(f"🐉 Sea Kings are now patrolling for these patterns: {', '.join(pattern_list)}")
 
     @commands.command()
     @checks.admin_or_permissions(manage_guild=True)
