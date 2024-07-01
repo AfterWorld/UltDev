@@ -52,7 +52,7 @@ class OnePieceAI(commands.Cog):
         self.client = None
         # Remove the reference to evolve_story
         # self.story_task = self.bot.loop.create_task(self.evolve_story())
-        self.world_task = self.bot.loop.create_task(self.update_world())
+        # self.world_task = self.bot.loop.create_task(self.update_world())
         self.npc_task = self.bot.loop.create_task(self.npc_interactions())
         self.event_task = self.bot.loop.create_task(self.periodic_event())
         self.token_reset_task = self.bot.loop.create_task(self.reset_daily_tokens())
@@ -76,13 +76,14 @@ class OnePieceAI(commands.Cog):
     def cog_unload(self):
         # Remove the reference to story_task
         # self.story_task.cancel()
-        self.world_task.cancel()
+        # self.world_task.cancel()
         self.npc_task.cancel()
         self.event_task.cancel()
         self.token_reset_task.cancel()
         self.discussion_task.cancel()
         self.tournament_task.cancel()
         self.feature_reminder_task.cancel()
+        
     async def initialize_client(self):
         api_key = (await self.bot.get_shared_api_tokens("openai")).get("api_key")
         if api_key:
@@ -178,7 +179,6 @@ class OnePieceAI(commands.Cog):
 
     def build_context(self, message: discord.Message, user_data: dict, guild_data: dict):
         context = f"Current storyline: {self.storyline}\n"
-        context += f"World state: {json.dumps(guild_data['world_state'])}\n"
         context += f"User {message.author.display_name} ({user_data['character']['name']}) said: {message.content}\n"
         context += f"User traits: {', '.join(user_data['character']['traits'])}\n"
         context += f"User skills: {json.dumps(user_data['character']['skills'])}\n"
