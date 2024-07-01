@@ -35,6 +35,7 @@ class OnePieceAI(commands.Cog):
             "bounty": 0,
             "inventory": {},
             "personality_profile": {},
+            "relationships": {},
             "conversation_history": [],
             "emotional_state": "neutral",
             "formality_preference": 0.5  # 0 is very informal, 1 is very formal
@@ -57,24 +58,66 @@ class OnePieceAI(commands.Cog):
             "devil_fruit": "🍎", "sea": "🌊", "log_pose": "🧭", "wanted_poster": "📜"
         }
         self.recipes = {
-            "Meat on the Bone": {"ingredients": ["meat", "spices"], "difficulty": 1},
-            "Sea King Soup": {"ingredients": ["sea king meat", "vegetables", "salt"], "difficulty": 2},
-            "Takoyaki": {"ingredients": ["octopus", "flour", "eggs", "sauce"], "difficulty": 3},
-            "Bento Box": {"ingredients": ["rice", "fish", "vegetables", "eggs"], "difficulty": 4},
-            "Devil Fruit Cake": {"ingredients": ["flour", "sugar", "eggs", "devil fruit essence"], "difficulty": 5},
+            "Meat on the Bone": {"ingredients": {"meat": 2, "spices": 1}, "difficulty": 1},
+            "Sea King Soup": {"ingredients": {"sea king meat": 1, "vegetables": 2, "salt": 1}, "difficulty": 2},
+            "Takoyaki": {"ingredients": {"octopus": 1, "flour": 2, "eggs": 1, "sauce": 1}, "difficulty": 3},
+            "Bento Box": {"ingredients": {"rice": 2, "fish": 1, "vegetables": 2, "eggs": 1}, "difficulty": 4},
+            "Devil Fruit Cake": {"ingredients": {"flour": 2, "sugar": 2, "eggs": 2, "devil fruit essence": 1}, "difficulty": 5},
+            "Sanji's Special Curry": {"ingredients": {"rice": 2, "meat": 1, "vegetables": 3, "spices": 2}, "difficulty": 6},
+            "All Blue Sushi Platter": {"ingredients": {"fish": 3, "rice": 2, "seaweed": 1, "wasabi": 1}, "difficulty": 7},
         }
         self.seasonal_events = {
             # Real-life holidays
-            (12, 25): {"name": "Christmas", "description": "A festive time even on the Grand Line!"},
-            (1, 1): {"name": "New Year", "description": "Pirates and Marines alike celebrate the new year!"},
-            (10, 31): {"name": "Halloween", "description": "Spooky events occur across the seas!"},
+            (12, 25): {
+                "name": "Pirate Christmas",
+                "description": "A festive time even on the Grand Line!",
+                "quest": "Deliver gifts to every island in your current sea.",
+                "reward": {"beris": 10000, "item": "Festive Jolly Roger"}
+            },
+            (1, 1): {
+                "name": "New Year's Log Pose",
+                "description": "Pirates and Marines alike celebrate the new year!",
+                "quest": "Visit 5 different islands to 'reset' your Log Pose for the new year.",
+                "reward": {"beris": 15000, "item": "Golden Log Pose"}
+            },
+            (10, 31): {
+                "name": "Thriller Bark Halloween",
+                "description": "Spooky events occur across the seas!",
+                "quest": "Defeat Gecko Moria's shadow army (a series of challenging battles).",
+                "reward": {"beris": 20000, "item": "Shadow Amulet"}
+            },
             # One Piece events
-            (5, 5): {"name": "Luffy's Birthday", "description": "Celebrate the birthday of the future Pirate King!"},
-            (7, 3): {"name": "Tanabata", "description": "The Straw Hats celebrate the Star Festival!"},
-            (3, 2): {"name": "Belly Day", "description": "A day when treasure hunting is extra rewarding!"},
+            (5, 5): {
+                "name": "Luffy's Birthday Bash",
+                "description": "Celebrate the birthday of the future Pirate King!",
+                "quest": "Organize a grand feast with at least 10 different food items.",
+                "reward": {"beris": 25000, "item": "Straw Hat Replica"}
+            },
+            (7, 3): {
+                "name": "Tanabata Star Festival",
+                "description": "The Straw Hats celebrate the Star Festival!",
+                "quest": "Collect star-shaped items from 7 different islands.",
+                "reward": {"beris": 18000, "item": "Wishing Bamboo"}
+            },
+            (3, 2): {
+                "name": "Belly Day Bonanza",
+                "description": "A day when treasure hunting is extra rewarding!",
+                "quest": "Complete 5 treasure hunts in a single day.",
+                "reward": {"beris": 50000, "item": "Golden Den Den Mushi"}
+            },
         }
-        self.relationship_levels = ["Stranger", "Acquaintance", "Friend", "Nakama", "Best Friend"]
+        self.relationship_levels = [
+            "Stranger", "Acquaintance", "Friend", "Nakama", "Best Friend", "Sworn Sibling"
+        ]
+        self.relationship_benefits = {
+            "Acquaintance": "5% discount on trades",
+            "Friend": "10% discount on trades, occasional gift",
+            "Nakama": "15% discount on trades, frequent gifts, can request help in battles",
+            "Best Friend": "20% discount on trades, daily gifts, strong battle ally",
+            "Sworn Sibling": "25% discount on trades, shared resources, unbreakable battle bond"
+        }
         self.current_event = None
+        self.feature_reminder_task = self.bot.loop.create_task(self.send_feature_reminder())
         self.storyline = "The adventure begins in the East Blue..."
         
 
@@ -86,6 +129,7 @@ class OnePieceAI(commands.Cog):
         self.token_reset_task.cancel()
         self.discussion_task.cancel()
         self.seasonal_event_task.cancel()
+        self.feature_reminder_task.cancel()
 
     async def initialize_client(self):
         api_key = (await self.bot.get_shared_api_tokens("openai")).get("api_key")
@@ -275,26 +319,31 @@ class OnePieceAI(commands.Cog):
         return f"**One Piece World Event**\n\n{event}\n\nHow do you respond? (Use the `[p]respond` command)"
 
     @commands.command()
-    async def respond(self, ctx, *, response: str):
+    async def respond(self, ctx):
         """Respond to the current world event"""
         if not self.current_event:
             await ctx.send("There is no active world event to respond to.")
             return
-
-        # Generate AI response based on the user's response to the event
-        prompt = f"Event: {self.current_event}\nUser response: {response}\nGenerate a narrative of how this response affects the event and the overall storyline:"
-        result = await self.generate_ai_response(prompt)
-
-        # Update the storyline with the event and response
-        self.storyline += f"\n\nEvent: {self.current_event}\nResponse: {response}\nOutcome: {result}"
-
-        # Clear the current event
-        self.current_event = None
-
-        await ctx.send(f"Your response: {response}\n\nOutcome: {result}")
-
-        # Trigger a story update
-        await self.evolve_story()
+    
+        async with self.event_response_lock:
+            if not self.current_event:  # Check again in case another user just responded
+                await ctx.send("Sorry, someone else just responded to the event.")
+                return
+    
+            # Generate AI response based on the event
+            prompt = f"Event: {self.current_event}\nGenerate a narrative of how this event unfolds:"
+            result = await self.generate_ai_response(prompt)
+    
+            # Update the storyline with the event and response
+            self.storyline += f"\n\nEvent: {self.current_event}\nOutcome: {result}"
+    
+            # Clear the current event
+            self.current_event = None
+    
+            await ctx.send(f"Event outcome: {result}")
+    
+            # Trigger a story update
+            await self.evolve_story()
 
     async def evolve_story(self):
         await self.bot.wait_until_ready()
@@ -320,17 +369,18 @@ class OnePieceAI(commands.Cog):
         await ctx.send(f"**Current One Piece Adventure Storyline**\n\n{self.storyline}")
 
     async def periodic_event(self):
-        await self.bot.wait_until_ready()
-        while not self.bot.is_closed():
-            await asyncio.sleep(await self.config.guild(self.bot.guilds[0]).event_frequency())
-            if not self.current_event:  # Only generate a new event if there's no active event
-                for guild in self.bot.guilds:
-                    chat_channels = await self.config.guild(guild).chat_channels()
-                    if chat_channels:
-                        channel = self.bot.get_channel(random.choice(chat_channels))
-                        if channel:
-                            event = await self.generate_random_event()
-                            await channel.send(event)
+    await self.bot.wait_until_ready()
+    while not self.bot.is_closed():
+        await asyncio.sleep(await self.config.guild(self.bot.guilds[0]).event_frequency())
+        if not self.current_event:  # Only generate a new event if there's no active event
+            for guild in self.bot.guilds:
+                chat_channels = await self.config.guild(guild).chat_channels()
+                if chat_channels:
+                    channel = self.bot.get_channel(random.choice(chat_channels))
+                    if channel:
+                        event = await self.generate_random_event()
+                        await channel.send(f"{event}\n\nType `.respond` to continue this event!")
+                        self.event_response_lock = asyncio.Lock()  # Create a lock for this event
 
     async def update_world(self):
         await self.bot.wait_until_ready()
@@ -373,38 +423,72 @@ class OnePieceAI(commands.Cog):
                         topics.pop(0)
 
     @commands.command()
+    async def features(self, ctx):
+        """Display information about the One Piece AI Bot features"""
+        embed = discord.Embed(title="One Piece AI Bot Features", color=discord.Color.blue())
+        embed.add_field(name="World Events", value="Respond to random events with `.respond`", inline=False)
+        embed.add_field(name="Cooking", value="Cook One Piece recipes with `.cook <recipe_name>`", inline=False)
+        embed.add_field(name="Relationships", value="Interact with other users using `.interact @user`", inline=False)
+        embed.add_field(name="Quests", value="Check your quest progress with `.quest_progress`", inline=False)
+        embed.add_field(name="Profile", value="View your character profile with `.profile`", inline=False)
+        embed.add_field(name="Help", value="For more information, use `.help`", inline=False)
+        await ctx.send(embed=embed)
+
+    async def send_feature_reminder(self):
+    await self.bot.wait_until_ready()
+    while not self.bot.is_closed():
+        await asyncio.sleep(1800)  # 30 minutes
+        for guild in self.bot.guilds:
+            chat_channels = await self.config.guild(guild).chat_channels()
+            if chat_channels:
+                channel = self.bot.get_channel(random.choice(chat_channels))
+                if channel:
+                    embed = discord.Embed(title="One Piece AI Bot Features", color=discord.Color.blue())
+                    embed.add_field(name="World Events", value="Respond to random events with `.respond`", inline=False)
+                    embed.add_field(name="Cooking", value="Cook One Piece recipes with `.cook <recipe_name>`", inline=False)
+                    embed.add_field(name="Relationships", value="Interact with other users using `.interact @user`", inline=False)
+                    embed.add_field(name="Quests", value="Check your quest progress with `.quest_progress`", inline=False)
+                    embed.add_field(name="Profile", value="View your character profile with `.profile`", inline=False)
+                    embed.add_field(name="Help", value="For more information, use `.help`", inline=False)
+                    await channel.send(embed=embed)
+
+    @commands.command()
     async def cook(self, ctx, *, recipe: str):
         """Try to cook a recipe"""
         if recipe not in self.recipes:
             return await ctx.send(f"Recipe not found. Available recipes: {', '.join(self.recipes.keys())}")
         
-        user_data = await self.config.member(ctx.author).all()
-        inventory = user_data.get('inventory', {})
-        
-        recipe_data = self.recipes[recipe]
-        missing_ingredients = [ing for ing in recipe_data['ingredients'] if ing not in inventory]
-        
-        if missing_ingredients:
-            return await ctx.send(f"You're missing these ingredients: {', '.join(missing_ingredients)}")
-        
-        # Cooking attempt
-        success_chance = (user_data.get('cooking_skill', 0) + 1) / (recipe_data['difficulty'] * 2)
-        if random.random() < success_chance:
-            await ctx.send(f"Success! You've cooked a delicious {recipe}!")
-            # Improve cooking skill
-            await self.config.member(ctx.author).cooking_skill.set(user_data.get('cooking_skill', 0) + 1)
-            # Add cooked item to inventory
-            await self.add_item_to_inventory(ctx.author, recipe)
-        else:
-            await ctx.send(f"Oh no! Your attempt to cook {recipe} has failed. The ingredients are ruined!")
-        
-        # Remove used ingredients
-        for ingredient in recipe_data['ingredients']:
-            inventory[ingredient] -= 1
-            if inventory[ingredient] == 0:
-                del inventory[ingredient]
-        await self.config.member(ctx.author).inventory.set(inventory)
-
+        async with self.config.member(ctx.author).all() as user_data:
+            inventory = user_data.get('inventory', {})
+            
+            recipe_data = self.recipes[recipe]
+            missing_ingredients = []
+            for ingredient, amount in recipe_data['ingredients'].items():
+                if ingredient not in inventory or inventory[ingredient] < amount:
+                    missing_ingredients.append(f"{ingredient} (need {amount})")
+            
+            if missing_ingredients:
+                return await ctx.send(f"You're missing these ingredients: {', '.join(missing_ingredients)}")
+            
+            # Cooking attempt
+            success_chance = (user_data.get('cooking_skill', 0) + 1) / (recipe_data['difficulty'] * 2)
+            if random.random() < success_chance:
+                await ctx.send(f"Success! You've cooked a delicious {recipe}!")
+                # Improve cooking skill
+                user_data['cooking_skill'] = user_data.get('cooking_skill', 0) + 1
+                # Add cooked item to inventory
+                inventory[recipe] = inventory.get(recipe, 0) + 1
+            else:
+                await ctx.send(f"Oh no! Your attempt to cook {recipe} has failed. The ingredients are ruined!")
+            
+            # Remove used ingredients
+            for ingredient, amount in recipe_data['ingredients'].items():
+                inventory[ingredient] -= amount
+                if inventory[ingredient] == 0:
+                    del inventory[ingredient]
+            
+            user_data['inventory'] = inventory
+            
     @commands.command()
     async def relationship(self, ctx, member: discord.Member):
         """Check your relationship with another member"""
@@ -417,22 +501,28 @@ class OnePieceAI(commands.Cog):
         level = relationships.get(str(member.id), 0)
         relationship_status = self.relationship_levels[min(level, len(self.relationship_levels) - 1)]
         
-        await ctx.send(f"Your relationship with {member.display_name} is: {relationship_status}")
-
+        benefits = self.relationship_benefits.get(relationship_status, "No special benefits yet.")
+        await ctx.send(f"Your relationship with {member.display_name} is: {relationship_status}\nBenefits: {benefits}")
+    
     @commands.command()
     async def interact(self, ctx, member: discord.Member):
         """Interact with another member to improve your relationship"""
         if member == ctx.author:
             return await ctx.send("You can't interact with yourself!")
         
-        async with self.config.member(ctx.author).relationships() as relationships:
+        async with self.config.member(ctx.author).all() as user_data:
+            relationships = user_data.get('relationships', {})
             level = relationships.get(str(member.id), 0)
             if random.random() < 0.7:  # 70% chance to improve relationship
                 level = min(level + 1, len(self.relationship_levels) - 1)
                 relationships[str(member.id)] = level
-                await ctx.send(f"Your interaction was successful! Your relationship with {member.display_name} has improved!")
+                new_status = self.relationship_levels[level]
+                await ctx.send(f"Your interaction was successful! Your relationship with {member.display_name} has improved to {new_status}!")
+                if new_status in self.relationship_benefits:
+                    await ctx.send(f"New benefit unlocked: {self.relationship_benefits[new_status]}")
             else:
                 await ctx.send(f"Your interaction didn't go as planned. Your relationship with {member.display_name} remains unchanged.")
+            user_data['relationships'] = relationships
 
     async def check_seasonal_events(self):
         await self.bot.wait_until_ready()
@@ -447,11 +537,18 @@ class OnePieceAI(commands.Cog):
                     if chat_channels:
                         channel = self.bot.get_channel(random.choice(chat_channels))
                         if channel:
-                            await channel.send(f"**Seasonal Event: {event['name']}**\n{event['description']}")
+                            await channel.send(f"**Seasonal Event: {event['name']}**\n{event['description']}\n\nQuest: {event['quest']}\nReward: {event['reward']['beris']} beris and a {event['reward']['item']}!")
                             
-                            # Generate a special event or bonus for this seasonal event
-                            special_event = await self.generate_ai_response(f"Generate a special One Piece themed event or bonus for {event['name']}")
-                            await channel.send(special_event)
+                            # Start the event quest for all users
+                            for member in guild.members:
+                                if not member.bot:
+                                    async with self.config.member(member).all() as user_data:
+                                        user_data['active_quest'] = {
+                                            'name': event['name'],
+                                            'progress': 0,
+                                            'completed': False,
+                                            'end_time': (now + timedelta(days=1)).isoformat()  # 24-hour duration
+                                        }
             
             # Check once per day
             await asyncio.sleep(86400)
@@ -466,6 +563,38 @@ class OnePieceAI(commands.Cog):
         else:
             topic = topics.pop(0)
         await ctx.send(f"Let's discuss this One Piece topic:\n\n{topic}")
+
+    @commands.command()
+    async def quest_progress(self, ctx):
+        """Check your progress on the current seasonal quest"""
+        async with self.config.member(ctx.author).all() as user_data:
+            active_quest = user_data.get('active_quest')
+            if not active_quest or datetime.now() > datetime.fromisoformat(active_quest['end_time']):
+                return await ctx.send("You don't have an active seasonal quest.")
+            
+            if active_quest['completed']:
+                return await ctx.send(f"You've completed the '{active_quest['name']}' quest! Claim your reward with the `claim_reward` command.")
+            
+            await ctx.send(f"Current Quest: {active_quest['name']}\nProgress: {active_quest['progress']}/5\nTime left: {(datetime.fromisoformat(active_quest['end_time']) - datetime.now()).total_seconds() / 3600:.2f} hours")
+
+    @commands.command()
+    async def claim_reward(self, ctx):
+        """Claim the reward for a completed seasonal quest"""
+        async with self.config.member(ctx.author).all() as user_data:
+            active_quest = user_data.get('active_quest')
+            if not active_quest or not active_quest['completed']:
+                return await ctx.send("You don't have a completed quest to claim a reward for.")
+            
+            event = next((event for event in self.seasonal_events.values() if event['name'] == active_quest['name']), None)
+            if not event:
+                return await ctx.send("Error: Could not find the associated event. Please contact an administrator.")
+            
+            user_data['beris'] = user_data.get('beris', 0) + event['reward']['beris']
+            user_data['inventory'][event['reward']['item']] = user_data['inventory'].get(event['reward']['item'], 0) + 1
+            
+            await ctx.send(f"Congratulations! You've claimed your reward for the '{active_quest['name']}' quest. You received {event['reward']['beris']} beris and a {event['reward']['item']}!")
+            
+            user_data['active_quest'] = None
 
     @commands.command()
     async def roleplay(self, ctx, character: str):
