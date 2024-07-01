@@ -5,8 +5,8 @@ import random
 import asyncio
 from openai import OpenAI
 from datetime import datetime, timedelta
-import tiktoken
 import json
+import tiktoken
 
 class OnePieceAI(commands.Cog):
     def __init__(self, bot: Red):
@@ -21,20 +21,26 @@ class OnePieceAI(commands.Cog):
             "daily_token_limit": 50000,
             "daily_tokens_used": 0,
             "last_token_reset": None,
+            "world_state": {"weather": "calm", "current_island": "Foosha Village"},
+            "global_events": [],
         }
         default_member = {
-            "character_role": "",
-            "experience": 0,
+            "character": {"name": "", "traits": [], "skills": {}},
             "crew": "",
+            "experience": 0,
+            "beris": 1000,
             "devil_fruit": "",
             "bounty": 0,
+            "inventory": {},
         }
         self.config.register_guild(**default_guild)
         self.config.register_member(**default_member)
         self.client = None
+        self.story_task = self.bot.loop.create_task(self.evolve_story())
+        self.world_task = self.bot.loop.create_task(self.update_world())
+        self.npc_task = self.bot.loop.create_task(self.npc_interactions())
         self.event_task = self.bot.loop.create_task(self.periodic_event())
         self.treasure_task = self.bot.loop.create_task(self.periodic_treasure_clue())
-        self.ambient_task = self.bot.loop.create_task(self.periodic_ambient())
         self.token_reset_task = self.bot.loop.create_task(self.reset_daily_tokens())
         self.total_tokens_used = 0
         self.one_piece_characters = ["Monkey D. Luffy", "Roronoa Zoro", "Nami", "Usopp", "Sanji", "Tony Tony Chopper", "Nico Robin", "Franky", "Brook", "Jinbe"]
@@ -42,9 +48,11 @@ class OnePieceAI(commands.Cog):
         self.crews = ["Straw Hat Pirates", "Heart Pirates", "Red Hair Pirates", "Whitebeard Pirates", "Big Mom Pirates"]
 
     def cog_unload(self):
+        self.story_task.cancel()
+        self.world_task.cancel()
+        self.npc_task.cancel()
         self.event_task.cancel()
         self.treasure_task.cancel()
-        self.ambient_task.cancel()
         self.token_reset_task.cancel()
 
     async def initialize_client(self):
@@ -67,22 +75,69 @@ class OnePieceAI(commands.Cog):
         if not ai_enabled:
             return
 
+        await self.process_message(message)
+
+    async def process_message(self, message: discord.Message):
         user_data = await self.config.member(message.author).all()
-        if not user_data['character_role']:
-            user_data['character_role'] = random.choice(self.one_piece_characters)
-            user_data['crew'] = random.choice(self.crews)
-            user_data['devil_fruit'] = random.choice(self.devil_fruits)
-            await self.config.member(message.author).set(user_data)
+        guild_data = await self.config.guild(message.guild).all()
 
-        bot_mentioned = self.bot.user in message.mentions
-        if bot_mentioned:
-            response = await self.get_response(message.content, user_data)
-            await message.channel.send(response)
+        # Update user's experience and beris
+        exp_gain = len(message.content.split()) // 2  # Simple exp gain based on message length
+        beri_change = random.randint(-10, 20)  # Random beri change
+        
+        await self.config.member(message.author).experience.set(user_data['experience'] + exp_gain)
+        await self.config.member(message.author).beris.set(user_data['beris'] + beri_change)
 
-        await self.config.member(message.author).experience.set(user_data['experience'] + 1)
-        await self.update_bounty(message.author)
+        # Check for character creation
+        if not user_data['character']['name']:
+            await self.create_character(message.author)
+            user_data = await self.config.member(message.author).all()
 
-    async def get_response(self, prompt: str, user_data: dict):
+        # Generate AI response
+        context = f"Current storyline: {guild_data['current_storyline']}\n"
+        context += f"World state: {json.dumps(guild_data['world_state'])}\n"
+        context += f"User {message.author.display_name} ({user_data['character']['name']}) said: {message.content}\n"
+        context += f"User traits: {', '.join(user_data['character']['traits'])}\n"
+        context += f"User skills: {json.dumps(user_data['character']['skills'])}"
+
+        response = await self.generate_ai_response(context)
+        await message.channel.send(response)
+
+        # Update storyline
+        guild_data['current_storyline'] += f"\n{message.author.display_name}: {message.content}\nAI: {response}"
+        await self.config.guild(message.guild).current_storyline.set(guild_data['current_storyline'])
+
+        # Check for skill improvements
+        await self.check_skill_improvement(message.author, message.content)
+
+    async def create_character(self, user: discord.Member):
+        traits = random.sample(["brave", "cunning", "loyal", "ambitious", "carefree"], 2)
+        skills = {"strength": 1, "intelligence": 1, "charisma": 1}
+        character = {
+            "name": f"{user.display_name} the {traits[0].capitalize()}",
+            "traits": traits,
+            "skills": skills
+        }
+        await self.config.member(user).character.set(character)
+        await self.config.member(user).crew.set(random.choice(self.crews))
+        await self.config.member(user).devil_fruit.set(random.choice(self.devil_fruits))
+
+    async def check_skill_improvement(self, user: discord.Member, message_content: str):
+        skills = (await self.config.member(user).character())['skills']
+        if "fight" in message_content.lower() or "battle" in message_content.lower():
+            skills['strength'] += 1
+        if "read" in message_content.lower() or "study" in message_content.lower():
+            skills['intelligence'] += 1
+        if "talk" in message_content.lower() or "negotiate" in message_content.lower():
+            skills['charisma'] += 1
+        await self.config.member(user).character.skills.set(skills)
+
+    async def generate_ai_response(self, context: str):
+        if not self.client:
+            await self.initialize_client()
+            if not self.client:
+                return "The Den Den Mushi is out of order. Please try again later."
+
         guild = self.bot.guilds[0]
         guild_data = await self.config.guild(guild).all()
         
@@ -93,37 +148,12 @@ class OnePieceAI(commands.Cog):
                 "Even pirates need to rest sometimes. I'll be back later!"
             ])
 
-        if random.random() < 0.3:  # 30% chance of using a pre-written response
-            return self.get_prewritten_response(user_data)
-
-        response = await self.generate_ai_response(prompt, user_data)
-        return response
-
-    def get_prewritten_response(self, user_data: dict):
-        responses = [
-            f"Ahoy, {user_data['character_role']}! How's life aboard the {user_data['crew']}?",
-            f"I heard your {user_data['devil_fruit']} powers are getting stronger!",
-            "The Grand Line is full of mysteries. What adventure shall we embark on next?",
-            f"Your bounty of {user_data['bounty']} Berries is impressive! Keep up the good work!",
-            "I smell adventure on the horizon. Are you ready to set sail?",
-        ]
-        return random.choice(responses)
-
-    async def generate_ai_response(self, prompt: str, user_data: dict):
-        if not self.client:
-            await self.initialize_client()
-            if not self.client:
-                return "I'm not feeling well at the moment. Please try again later."
-
         try:
-            guild = self.bot.guilds[0]
-            guild_data = await self.config.guild(guild).all()
-            
             response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
-                    {"role": "system", "content": f"You are a One Piece themed AI assistant. The user has the role of {user_data['character_role']}, is part of the {user_data['crew']}, and has the {user_data['devil_fruit']} power. Current storyline: {guild_data['current_storyline']}. Respond in character, incorporating One Piece themes and lore."},
-                    {"role": "user", "content": prompt}
+                    {"role": "system", "content": "You are a One Piece themed AI assistant. Respond in character, incorporating One Piece themes and lore."},
+                    {"role": "user", "content": context}
                 ]
             )
             tokens_used = response.usage.total_tokens
@@ -133,10 +163,49 @@ class OnePieceAI(commands.Cog):
         except Exception as e:
             return f"Error generating response: {str(e)}"
 
-    async def update_bounty(self, user: discord.Member):
-        user_data = await self.config.member(user).all()
-        new_bounty = user_data['experience'] * 1000  # Simple bounty calculation
-        await self.config.member(user).bounty.set(new_bounty)
+    async def evolve_story(self):
+        await self.bot.wait_until_ready()
+        while not self.bot.is_closed():
+            await asyncio.sleep(3600)  # Evolve story every hour
+            for guild in self.bot.guilds:
+                storyline = await self.config.guild(guild).current_storyline()
+                new_development = await self.generate_ai_response(f"Evolve this One Piece storyline: {storyline}")
+                await self.config.guild(guild).current_storyline.set(new_development)
+                
+                chat_channels = await self.config.guild(guild).chat_channels()
+                if chat_channels:
+                    channel = self.bot.get_channel(random.choice(chat_channels))
+                    if channel:
+                        await channel.send(f"**Story Update**\n{new_development}")
+
+    async def update_world(self):
+        await self.bot.wait_until_ready()
+        while not self.bot.is_closed():
+            await asyncio.sleep(1800)  # Update world every 30 minutes
+            for guild in self.bot.guilds:
+                world_state = await self.config.guild(guild).world_state()
+                world_state['weather'] = random.choice(["calm", "stormy", "foggy", "sunny"])
+                await self.config.guild(guild).world_state.set(world_state)
+                
+                chat_channels = await self.config.guild(guild).chat_channels()
+                if chat_channels:
+                    channel = self.bot.get_channel(random.choice(chat_channels))
+                    if channel:
+                        await channel.send(f"**World Update**\nThe weather has changed to {world_state['weather']}!")
+
+    async def npc_interactions(self):
+        await self.bot.wait_until_ready()
+        while not self.bot.is_closed():
+            await asyncio.sleep(5400)  # NPC interaction every 1.5 hours
+            for guild in self.bot.guilds:
+                npc = random.choice(["Shanks", "Buggy", "Rayleigh", "Garp"])
+                interaction = await self.generate_ai_response(f"Generate a random interaction or quote from {npc} in the style of One Piece:")
+                
+                chat_channels = await self.config.guild(guild).chat_channels()
+                if chat_channels:
+                    channel = self.bot.get_channel(random.choice(chat_channels))
+                    if channel:
+                        await channel.send(f"**{npc} appears!**\n{interaction}")
 
     async def periodic_event(self):
         await self.bot.wait_until_ready()
@@ -183,28 +252,6 @@ class OnePieceAI(commands.Cog):
         ]
         return random.choice(clues)
 
-    async def periodic_ambient(self):
-        await self.bot.wait_until_ready()
-        while not self.bot.is_closed():
-            await asyncio.sleep(1800)  # Every 30 minutes
-            for guild in self.bot.guilds:
-                chat_channels = await self.config.guild(guild).chat_channels()
-                if chat_channels:
-                    channel = self.bot.get_channel(random.choice(chat_channels))
-                    if channel:
-                        ambient = self.get_ambient_snippet()
-                        await channel.send(ambient)
-
-    def get_ambient_snippet(self):
-        snippets = [
-            "A seagull lands on the crow's nest, carrying a message in its beak.",
-            "The smell of Sanji's cooking wafts across the deck, making everyone's mouths water.",
-            "Nami studies her maps intently, plotting the course to the next island.",
-            "Zoro's snores can be heard from the crow's nest as he naps during his watch.",
-            "Brook plays a melancholy tune on his violin, filling the air with sweet music."
-        ]
-        return random.choice(snippets)
-
     async def reset_daily_tokens(self):
         await self.bot.wait_until_ready()
         while not self.bot.is_closed():
@@ -216,36 +263,29 @@ class OnePieceAI(commands.Cog):
                 await self.config.guild(guild).daily_tokens_used.set(0)
                 await self.config.guild(guild).last_token_reset.set(next_reset.isoformat())
 
-    @commands.group(name="opaiadmin")
+    @commands.group(name="opaiadmin", invoke_without_command=True)
     @commands.admin_or_permissions(manage_guild=True)
     async def opaiadmin(self, ctx):
         """Admin commands for OnePieceAI settings"""
-        if ctx.invoked_subcommand is None:
-            await ctx.send_help(ctx.command)
+        await ctx.send_help(ctx.command)
 
     @opaiadmin.command(name="settings")
     async def show_settings(self, ctx):
         """Display current OnePieceAI settings"""
         guild_data = await self.config.guild(ctx.guild).all()
         
-        # Prepare embed
         embed = discord.Embed(title="OnePieceAI Settings", color=discord.Color.blue())
         
-        # AI Status
         embed.add_field(name="AI Status", value="Enabled" if guild_data['ai_enabled'] else "Disabled", inline=False)
         
-        # Chat Channels
         chat_channels = [ctx.guild.get_channel(channel_id).mention for channel_id in guild_data['chat_channels'] if ctx.guild.get_channel(channel_id)]
         embed.add_field(name="AI-enabled Channels", value=", ".join(chat_channels) if chat_channels else "None", inline=False)
         
-        # Event Frequency
         embed.add_field(name="Event Frequency", value=f"{guild_data['event_frequency']} seconds", inline=False)
         
-        # Token Usage
         embed.add_field(name="Daily Token Limit", value=guild_data['daily_token_limit'], inline=True)
         embed.add_field(name="Tokens Used Today", value=guild_data['daily_tokens_used'], inline=True)
         
-        # Last Token Reset
         last_reset = guild_data['last_token_reset']
         if last_reset:
             last_reset = datetime.fromisoformat(last_reset).strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -253,15 +293,15 @@ class OnePieceAI(commands.Cog):
             last_reset = "Never"
         embed.add_field(name="Last Token Reset", value=last_reset, inline=False)
         
-        # Current Storyline
         storyline = guild_data['current_storyline'][:1024]  # Discord embed field value limit
         embed.add_field(name="Current Storyline", value=storyline if storyline else "No active storyline", inline=False)
         
-        # Treasure Clues
         clues = "\n".join(guild_data['treasure_clues'][-3:])  # Show last 3 clues
         embed.add_field(name="Recent Treasure Clues", value=clues if clues else "No recent clues", inline=False)
         
-        # Send the embed
+        embed.add_field(name="Current Weather", value=guild_data['world_state']['weather'], inline=True)
+        embed.add_field(name="Current Island", value=guild_data['world_state']['current_island'], inline=True)
+        
         await ctx.send(embed=embed)
 
     @opaiadmin.command(name="setdailylimit")
@@ -277,8 +317,7 @@ class OnePieceAI(commands.Cog):
         await self.config.guild(ctx.guild).last_token_reset.set(datetime.utcnow().isoformat())
         await ctx.send("Daily token usage has been reset.")
 
-    @commands.command()
-    @commands.admin_or_permissions(manage_guild=True)
+    @opaiadmin.command(name="toggleai")
     async def toggleai(self, ctx):
         """Toggle AI responses on/off"""
         current = await self.config.guild(ctx.guild).ai_enabled()
@@ -286,15 +325,13 @@ class OnePieceAI(commands.Cog):
         state = "enabled" if not current else "disabled"
         await ctx.send(f"AI responses have been {state}.")
 
-    @commands.command()
-    @commands.admin_or_permissions(manage_guild=True)
+    @opaiadmin.command(name="seteventfrequency")
     async def seteventfrequency(self, ctx, seconds: int):
         """Set the frequency of random events in seconds"""
         await self.config.guild(ctx.guild).event_frequency.set(seconds)
         await ctx.send(f"Event frequency set to every {seconds} seconds.")
 
-    @commands.command()
-    @commands.admin_or_permissions(manage_guild=True)
+    @opaiadmin.command(name="addchannel")
     async def addchannel(self, ctx, channel: discord.TextChannel):
         """Add a channel for AI interactions and events"""
         async with self.config.guild(ctx.guild).chat_channels() as channels:
@@ -311,17 +348,10 @@ class OnePieceAI(commands.Cog):
             return
 
         try:
-            # Get the encoding for gpt-3.5-turbo
             encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
-
-            # Estimate cost (assuming $0.002 per 1K tokens for gpt-3.5-turbo)
             estimated_cost = (self.total_tokens_used / 1000) * 0.002
-
-            # Example of how many tokens are left (assuming a monthly limit of 10 million tokens)
             monthly_limit = 30000  # Adjust this based on your actual limit
             tokens_left = monthly_limit - self.total_tokens_used
-
-            # Create a sample message to show token usage
             sample_message = "This is a sample message to show token usage."
             sample_tokens = len(encoding.encode(sample_message))
 
@@ -334,7 +364,7 @@ class OnePieceAI(commands.Cog):
 
         except Exception as e:
             await ctx.send(f"Error checking usage: {str(e)}")
-            raise  # This will print the full error traceback in the console
+            raise
 
 async def setup(bot):
     cog = OnePieceAI(bot)
