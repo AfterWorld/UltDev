@@ -216,6 +216,67 @@ class OnePieceAI(commands.Cog):
                 await self.config.guild(guild).daily_tokens_used.set(0)
                 await self.config.guild(guild).last_token_reset.set(next_reset.isoformat())
 
+    @commands.group(name="opaiadmin")
+    @commands.admin_or_permissions(manage_guild=True)
+    async def opaiadmin(self, ctx):
+        """Admin commands for OnePieceAI settings"""
+        if ctx.invoked_subcommand is None:
+            await ctx.send_help(ctx.command)
+
+    @opaiadmin.command(name="settings")
+    async def show_settings(self, ctx):
+        """Display current OnePieceAI settings"""
+        guild_data = await self.config.guild(ctx.guild).all()
+        
+        # Prepare embed
+        embed = discord.Embed(title="OnePieceAI Settings", color=discord.Color.blue())
+        
+        # AI Status
+        embed.add_field(name="AI Status", value="Enabled" if guild_data['ai_enabled'] else "Disabled", inline=False)
+        
+        # Chat Channels
+        chat_channels = [ctx.guild.get_channel(channel_id).mention for channel_id in guild_data['chat_channels'] if ctx.guild.get_channel(channel_id)]
+        embed.add_field(name="AI-enabled Channels", value=", ".join(chat_channels) if chat_channels else "None", inline=False)
+        
+        # Event Frequency
+        embed.add_field(name="Event Frequency", value=f"{guild_data['event_frequency']} seconds", inline=False)
+        
+        # Token Usage
+        embed.add_field(name="Daily Token Limit", value=guild_data['daily_token_limit'], inline=True)
+        embed.add_field(name="Tokens Used Today", value=guild_data['daily_tokens_used'], inline=True)
+        
+        # Last Token Reset
+        last_reset = guild_data['last_token_reset']
+        if last_reset:
+            last_reset = datetime.fromisoformat(last_reset).strftime("%Y-%m-%d %H:%M:%S UTC")
+        else:
+            last_reset = "Never"
+        embed.add_field(name="Last Token Reset", value=last_reset, inline=False)
+        
+        # Current Storyline
+        storyline = guild_data['current_storyline'][:1024]  # Discord embed field value limit
+        embed.add_field(name="Current Storyline", value=storyline if storyline else "No active storyline", inline=False)
+        
+        # Treasure Clues
+        clues = "\n".join(guild_data['treasure_clues'][-3:])  # Show last 3 clues
+        embed.add_field(name="Recent Treasure Clues", value=clues if clues else "No recent clues", inline=False)
+        
+        # Send the embed
+        await ctx.send(embed=embed)
+
+    @opaiadmin.command(name="setdailylimit")
+    async def set_daily_limit(self, ctx, limit: int):
+        """Set the daily token usage limit"""
+        await self.config.guild(ctx.guild).daily_token_limit.set(limit)
+        await ctx.send(f"Daily token limit set to {limit}")
+
+    @opaiadmin.command(name="resetusage")
+    async def reset_usage(self, ctx):
+        """Reset the daily token usage"""
+        await self.config.guild(ctx.guild).daily_tokens_used.set(0)
+        await self.config.guild(ctx.guild).last_token_reset.set(datetime.utcnow().isoformat())
+        await ctx.send("Daily token usage has been reset.")
+
     @commands.command()
     @commands.admin_or_permissions(manage_guild=True)
     async def toggleai(self, ctx):
