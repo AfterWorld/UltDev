@@ -319,13 +319,13 @@ class OnePieceAI(commands.Cog):
             for guild in self.bot.guilds:
                 world_state = await self.config.guild(guild).world_state()
                 world_state['weather'] = random.choice(["calm", "stormy", "foggy", "sunny"])
-                                await self.config.guild(guild).world_state.set(world_state)
-                                
-                                chat_channels = await self.config.guild(guild).chat_channels()
-                                if chat_channels:
-                                    channel = self.bot.get_channel(random.choice(chat_channels))
-                                    if channel:
-                                        await channel.send(f"**World Update**\nThe weather has changed to {world_state['weather']}!")
+                await self.config.guild(guild).world_state.set(world_state)
+                
+                chat_channels = await self.config.guild(guild).chat_channels()
+                if chat_channels:
+                    channel = self.bot.get_channel(random.choice(chat_channels))
+                    if channel:
+                        await channel.send(f"**World Update**\nThe weather has changed to {world_state['weather']}!")
 
     async def npc_interactions(self):
         await self.bot.wait_until_ready()
