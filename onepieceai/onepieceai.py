@@ -49,6 +49,16 @@ class OnePieceAI(commands.Cog):
             response = await self.generate_ai_response(message.content)
             await message.channel.send(response)
 
+    # Assign a character role if the user doesn't have one
+        if message.author.id not in self.character_roles:
+            self.character_roles[message.author.id] = random.choice(self.one_piece_characters)
+
+        bot_mentioned = self.bot.user in message.mentions
+        if bot_mentioned:
+            user_character = self.character_roles[message.author.id]
+            response = await self.generate_ai_response(message.content, user_character)
+            await message.channel.send(response)
+            
     async def generate_ai_response(self, prompt: str):
         if not self.client:
             await self.initialize_client()
@@ -59,7 +69,7 @@ class OnePieceAI(commands.Cog):
             response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
-                    {"role": "system", "content": "You are a One Piece themed AI assistant. Respond in character, incorporating One Piece themes and lore."},
+                    {"role": "system", "content": f"You are a One Piece themed AI assistant. The user you're talking to has the role of {user_character}. Respond in character, incorporating One Piece themes and lore, and acknowledge the user's character role."},
                     {"role": "user", "content": prompt}
                 ]
             )
