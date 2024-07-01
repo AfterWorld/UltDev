@@ -413,7 +413,7 @@ class OnePieceAI(commands.Cog):
                     if len(topics) > 5:
                         topics.pop(0)
 
-   @commands.command()
+    @commands.command()
     async def cook(self, ctx, *, recipe: str):
         """Try to cook a recipe"""
         if recipe not in self.recipes:
