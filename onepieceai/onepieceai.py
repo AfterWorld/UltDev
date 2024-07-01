@@ -723,7 +723,7 @@ class OnePieceAI(commands.Cog):
             await ctx.send(f"Error checking usage: {str(e)}")
             raise
 
- async def setup(bot):
-        cog = OnePieceAI(bot)
-        await bot.add_cog(cog)
-        cog.seasonal_event_task = bot.loop.create_task(cog.check_seasonal_events())
+async def setup(bot):
+    cog = OnePieceAI(bot)
+    await bot.add_cog(cog)
+    cog.seasonal_event_task = bot.loop.create_task(cog.check_seasonal_events())
