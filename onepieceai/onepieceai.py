@@ -5,6 +5,7 @@ import random
 import asyncio
 from openai import OpenAI
 from datetime import datetime, timedelta
+import tiktoken
 
 class OnePieceAI(commands.Cog):
     def __init__(self, bot: Red):
