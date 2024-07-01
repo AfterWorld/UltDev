@@ -337,7 +337,29 @@ class OnePieceAI(commands.Cog):
         async with self.config.guild(ctx.guild).chat_channels() as channels:
             if channel.id not in channels:
                 channels.append(channel.id)
-        await ctx.send(f"{channel.mention} added to AI-enabled channels.")
+                await ctx.send(f"{channel.mention} added to AI-enabled channels.")
+            else:
+                await ctx.send(f"{channel.mention} is already an AI-enabled channel.")
+
+    @opaiadmin.command(name="removechannel")
+    async def removechannel(self, ctx, channel: discord.TextChannel):
+        """Remove a channel from AI interactions and events"""
+        async with self.config.guild(ctx.guild).chat_channels() as channels:
+            if channel.id in channels:
+                channels.remove(channel.id)
+                await ctx.send(f"{channel.mention} removed from AI-enabled channels.")
+            else:
+                await ctx.send(f"{channel.mention} is not an AI-enabled channel.")
+
+    @opaiadmin.command(name="listchannels")
+    async def listchannels(self, ctx):
+        """List all AI-enabled channels"""
+        channels = await self.config.guild(ctx.guild).chat_channels()
+        if channels:
+            channel_mentions = [ctx.guild.get_channel(channel_id).mention for channel_id in channels if ctx.guild.get_channel(channel_id)]
+            await ctx.send(f"AI-enabled channels: {', '.join(channel_mentions)}")
+        else:
+            await ctx.send("There are no AI-enabled channels.")
 
     @commands.command()
     @commands.is_owner()
