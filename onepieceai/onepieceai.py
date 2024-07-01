@@ -117,6 +117,7 @@ class OnePieceAI(commands.Cog):
             "Sworn Sibling": "25% discount on trades, shared resources, unbreakable battle bond"
         }
         self.current_event = None
+        self.feature_reminder_task = self.bot.loop.create_task(self.send_feature_reminder())
         self.storyline = "The adventure begins in the East Blue..."
         
 
@@ -128,6 +129,7 @@ class OnePieceAI(commands.Cog):
         self.token_reset_task.cancel()
         self.discussion_task.cancel()
         self.seasonal_event_task.cancel()
+        self.feature_reminder_task.cancel()
 
     async def initialize_client(self):
         api_key = (await self.bot.get_shared_api_tokens("openai")).get("api_key")
@@ -317,26 +319,31 @@ class OnePieceAI(commands.Cog):
         return f"**One Piece World Event**\n\n{event}\n\nHow do you respond? (Use the `[p]respond` command)"
 
     @commands.command()
-    async def respond(self, ctx, *, response: str):
+    async def respond(self, ctx):
         """Respond to the current world event"""
         if not self.current_event:
             await ctx.send("There is no active world event to respond to.")
             return
-
-        # Generate AI response based on the user's response to the event
-        prompt = f"Event: {self.current_event}\nUser response: {response}\nGenerate a narrative of how this response affects the event and the overall storyline:"
-        result = await self.generate_ai_response(prompt)
-
-        # Update the storyline with the event and response
-        self.storyline += f"\n\nEvent: {self.current_event}\nResponse: {response}\nOutcome: {result}"
-
-        # Clear the current event
-        self.current_event = None
-
-        await ctx.send(f"Your response: {response}\n\nOutcome: {result}")
-
-        # Trigger a story update
-        await self.evolve_story()
+    
+        async with self.event_response_lock:
+            if not self.current_event:  # Check again in case another user just responded
+                await ctx.send("Sorry, someone else just responded to the event.")
+                return
+    
+            # Generate AI response based on the event
+            prompt = f"Event: {self.current_event}\nGenerate a narrative of how this event unfolds:"
+            result = await self.generate_ai_response(prompt)
+    
+            # Update the storyline with the event and response
+            self.storyline += f"\n\nEvent: {self.current_event}\nOutcome: {result}"
+    
+            # Clear the current event
+            self.current_event = None
+    
+            await ctx.send(f"Event outcome: {result}")
+    
+            # Trigger a story update
+            await self.evolve_story()
 
     async def evolve_story(self):
         await self.bot.wait_until_ready()
@@ -362,17 +369,18 @@ class OnePieceAI(commands.Cog):
         await ctx.send(f"**Current One Piece Adventure Storyline**\n\n{self.storyline}")
 
     async def periodic_event(self):
-        await self.bot.wait_until_ready()
-        while not self.bot.is_closed():
-            await asyncio.sleep(await self.config.guild(self.bot.guilds[0]).event_frequency())
-            if not self.current_event:  # Only generate a new event if there's no active event
-                for guild in self.bot.guilds:
-                    chat_channels = await self.config.guild(guild).chat_channels()
-                    if chat_channels:
-                        channel = self.bot.get_channel(random.choice(chat_channels))
-                        if channel:
-                            event = await self.generate_random_event()
-                            await channel.send(event)
+    await self.bot.wait_until_ready()
+    while not self.bot.is_closed():
+        await asyncio.sleep(await self.config.guild(self.bot.guilds[0]).event_frequency())
+        if not self.current_event:  # Only generate a new event if there's no active event
+            for guild in self.bot.guilds:
+                chat_channels = await self.config.guild(guild).chat_channels()
+                if chat_channels:
+                    channel = self.bot.get_channel(random.choice(chat_channels))
+                    if channel:
+                        event = await self.generate_random_event()
+                        await channel.send(f"{event}\n\nType `.respond` to continue this event!")
+                        self.event_response_lock = asyncio.Lock()  # Create a lock for this event
 
     async def update_world(self):
         await self.bot.wait_until_ready()
@@ -413,6 +421,36 @@ class OnePieceAI(commands.Cog):
                     topics.append(topic)
                     if len(topics) > 5:
                         topics.pop(0)
+
+    @commands.command()
+    async def features(self, ctx):
+        """Display information about the One Piece AI Bot features"""
+        embed = discord.Embed(title="One Piece AI Bot Features", color=discord.Color.blue())
+        embed.add_field(name="World Events", value="Respond to random events with `.respond`", inline=False)
+        embed.add_field(name="Cooking", value="Cook One Piece recipes with `.cook <recipe_name>`", inline=False)
+        embed.add_field(name="Relationships", value="Interact with other users using `.interact @user`", inline=False)
+        embed.add_field(name="Quests", value="Check your quest progress with `.quest_progress`", inline=False)
+        embed.add_field(name="Profile", value="View your character profile with `.profile`", inline=False)
+        embed.add_field(name="Help", value="For more information, use `.help`", inline=False)
+        await ctx.send(embed=embed)
+
+    async def send_feature_reminder(self):
+    await self.bot.wait_until_ready()
+    while not self.bot.is_closed():
+        await asyncio.sleep(1800)  # 30 minutes
+        for guild in self.bot.guilds:
+            chat_channels = await self.config.guild(guild).chat_channels()
+            if chat_channels:
+                channel = self.bot.get_channel(random.choice(chat_channels))
+                if channel:
+                    embed = discord.Embed(title="One Piece AI Bot Features", color=discord.Color.blue())
+                    embed.add_field(name="World Events", value="Respond to random events with `.respond`", inline=False)
+                    embed.add_field(name="Cooking", value="Cook One Piece recipes with `.cook <recipe_name>`", inline=False)
+                    embed.add_field(name="Relationships", value="Interact with other users using `.interact @user`", inline=False)
+                    embed.add_field(name="Quests", value="Check your quest progress with `.quest_progress`", inline=False)
+                    embed.add_field(name="Profile", value="View your character profile with `.profile`", inline=False)
+                    embed.add_field(name="Help", value="For more information, use `.help`", inline=False)
+                    await channel.send(embed=embed)
 
     @commands.command()
     async def cook(self, ctx, *, recipe: str):
