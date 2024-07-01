@@ -17,12 +17,19 @@ class OnePieceAI(commands.Cog):
             "event_frequency": 3600,  # Default: one event per hour
         }
         self.config.register_guild(**default_guild)
-        self.client = OpenAI(api_key="your-api-key-here")
+        self.client = None
         self.event_task = self.bot.loop.create_task(self.periodic_event())
         self.total_tokens_used = 0
 
     def cog_unload(self):
         self.event_task.cancel()
+
+    async def initialize_client(self):
+        api_key = (await self.bot.get_shared_api_tokens("openai")).get("api_key")
+        if api_key:
+            self.client = OpenAI(api_key=api_key)
+        else:
+            print("OpenAI API key not found.")
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -43,6 +50,11 @@ class OnePieceAI(commands.Cog):
             await message.channel.send(response)
 
     async def generate_ai_response(self, prompt: str):
+        if not self.client:
+            await self.initialize_client()
+            if not self.client:
+                return "I'm not feeling well at the moment. Please try again later."
+
         try:
             response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
@@ -121,7 +133,7 @@ class OnePieceAI(commands.Cog):
             estimated_cost = (self.total_tokens_used / 1000) * 0.002
 
             # Example of how many tokens are left (assuming a monthly limit of 10 million tokens)
-            monthly_limit = 30000  # Adjust this based on your actual limit
+            monthly_limit = 60000  # Adjust this based on your actual limit
             tokens_left = monthly_limit - self.total_tokens_used
 
             # Create a sample message to show token usage
@@ -140,4 +152,6 @@ class OnePieceAI(commands.Cog):
             raise  # This will print the full error traceback in the console
 
 async def setup(bot):
-    await bot.add_cog(OnePieceAI(bot))
+    cog = OnePieceAI(bot)
+    await cog.initialize_client()
+    await bot.add_cog(cog)
