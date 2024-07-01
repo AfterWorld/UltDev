@@ -6,6 +6,9 @@ import asyncio
 from openai import OpenAI
 from datetime import datetime, timedelta
 import json
+import tiktoken
+from textblob import TextBlob
+import emoji
 
 class OnePieceAI(commands.Cog):
     def __init__(self, bot: Red):
@@ -34,56 +37,56 @@ class OnePieceAI(commands.Cog):
             "personality_profile": {},
             "conversation_history": [],
             "emotional_state": "neutral",
-            "formality_preference": 0.5,
-            "resources": {
-                "food": 100,
-                "wood": 50,
-                "gold": 20,
-                "special_items": []
-            },
-            "reputation": {
-                "Marines": 0,
-                "Pirates": 0,
-                "Revolutionaries": 0
-            }
+            "formality_preference": 0.5  # 0 is very informal, 1 is very formal
         }
         self.config.register_guild(**default_guild)
         self.config.register_member(**default_member)
         self.client = None
-        # Remove the reference to evolve_story
-        # self.story_task = self.bot.loop.create_task(self.evolve_story())
-        # self.world_task = self.bot.loop.create_task(self.update_world())
-        # self.npc_task = self.bot.loop.create_task(self.npc_interactions())
-        # self.event_task = self.bot.loop.create_task(self.periodic_event())
+        self.story_task = self.bot.loop.create_task(self.evolve_story())
+        self.world_task = self.bot.loop.create_task(self.update_world())
+        self.npc_task = self.bot.loop.create_task(self.npc_interactions())
+        self.event_task = self.bot.loop.create_task(self.periodic_event())
         self.token_reset_task = self.bot.loop.create_task(self.reset_daily_tokens())
         self.discussion_task = self.bot.loop.create_task(self.generate_discussion_topics())
-        self.tournament_task = self.bot.loop.create_task(self.run_tournaments())
-        self.feature_reminder_task = self.bot.loop.create_task(self.send_feature_reminder())
         self.total_tokens_used = 0
-        self.current_event = None
-        self.event_response_lock = asyncio.Lock()
-        self.current_tournament = None
-        self.storyline = "A new adventure begins in the world of One Piece..."
-        self.roles = {
-            0: "Cabin Boy",
-            100: "Deckhand",
-            500: "First Mate",
-            1000: "Captain",
-            2000: "Yonko"
+        self.one_piece_characters = ["Monkey D. Luffy", "Roronoa Zoro", "Nami", "Usopp", "Sanji", "Tony Tony Chopper", "Nico Robin", "Franky", "Brook", "Jinbe"]
+        self.devil_fruits = ["Gomu Gomu no Mi", "Mera Mera no Mi", "Hie Hie no Mi", "Gura Gura no Mi", "Ope Ope no Mi"]
+        self.crews = ["Straw Hat Pirates", "Heart Pirates", "Red Hair Pirates", "Whitebeard Pirates", "Big Mom Pirates"]
+        self.one_piece_emojis = {
+            "pirate": "🏴‍☠️", "ship": "⛵", "island": "🏝️", "treasure": "💰", "fight": "⚔️",
+            "devil_fruit": "🍎", "sea": "🌊", "log_pose": "🧭", "wanted_poster": "📜"
         }
-        self.islands = ["Alabasta", "Water 7", "Thriller Bark", "Sabaody Archipelago", "Fishman Island"]
+        self.recipes = {
+            "Meat on the Bone": {"ingredients": ["meat", "spices"], "difficulty": 1},
+            "Sea King Soup": {"ingredients": ["sea king meat", "vegetables", "salt"], "difficulty": 2},
+            "Takoyaki": {"ingredients": ["octopus", "flour", "eggs", "sauce"], "difficulty": 3},
+            "Bento Box": {"ingredients": ["rice", "fish", "vegetables", "eggs"], "difficulty": 4},
+            "Devil Fruit Cake": {"ingredients": ["flour", "sugar", "eggs", "devil fruit essence"], "difficulty": 5},
+        }
+        self.seasonal_events = {
+            # Real-life holidays
+            (12, 25): {"name": "Christmas", "description": "A festive time even on the Grand Line!"},
+            (1, 1): {"name": "New Year", "description": "Pirates and Marines alike celebrate the new year!"},
+            (10, 31): {"name": "Halloween", "description": "Spooky events occur across the seas!"},
+            # One Piece events
+            (5, 5): {"name": "Luffy's Birthday", "description": "Celebrate the birthday of the future Pirate King!"},
+            (7, 3): {"name": "Tanabata", "description": "The Straw Hats celebrate the Star Festival!"},
+            (3, 2): {"name": "Belly Day", "description": "A day when treasure hunting is extra rewarding!"},
+        }
+        self.relationship_levels = ["Stranger", "Acquaintance", "Friend", "Nakama", "Best Friend"]
+        self.current_event = None
+        self.storyline = "The adventure begins in the East Blue..."
+        
 
     def cog_unload(self):
-        # Remove the reference to story_task
-        # self.story_task.cancel()
-        # self.world_task.cancel()
-        # self.npc_task.cancel()
-        # self.event_task.cancel()
+        self.story_task.cancel()
+        self.world_task.cancel()
+        self.npc_task.cancel()
+        self.event_task.cancel()
         self.token_reset_task.cancel()
         self.discussion_task.cancel()
-        self.tournament_task.cancel()
-        self.feature_reminder_task.cancel()
-        
+        self.seasonal_event_task.cancel()
+
     async def initialize_client(self):
         api_key = (await self.bot.get_shared_api_tokens("openai")).get("api_key")
         if api_key:
@@ -104,8 +107,7 @@ class OnePieceAI(commands.Cog):
         if not ai_enabled:
             return
 
-        if self.bot.user in message.mentions:
-            await self.process_message(message)
+        await self.process_message(message)
 
     async def process_message(self, message: discord.Message):
         user_data = await self.config.member(message.author).all()
@@ -140,9 +142,25 @@ class OnePieceAI(commands.Cog):
         user_data['conversation_history'] = user_data['conversation_history'][-20:]  # Keep last 20 messages
         await self.config.member(message.author).conversation_history.set(user_data['conversation_history'])
 
+        # Perform sentiment analysis
+        sentiment = TextBlob(message.content).sentiment.polarity
+        if sentiment > 0.3:
+            emotional_state = "positive"
+        elif sentiment < -0.3:
+            emotional_state = "negative"
+        else:
+            emotional_state = "neutral"
+        await self.config.member(message.author).emotional_state.set(emotional_state)
+
+        # Update user's personality profile
+        await self.update_personality_profile(message.author, message.content)
+
         # Generate AI response
         context = self.build_context(message, user_data, guild_data)
         response = await self.generate_ai_response(context)
+
+        # Post-process the response
+        response = self.post_process_response(response, user_data, guild_data)
 
         await message.channel.send(response)
 
@@ -161,24 +179,20 @@ class OnePieceAI(commands.Cog):
             "skills": skills
         }
         await self.config.member(user).character.set(character)
-        await self.config.member(user).crew.set(random.choice(["Straw Hat Pirates", "Heart Pirates", "Red Hair Pirates", "Whitebeard Pirates", "Big Mom Pirates"]))
-        await self.config.member(user).devil_fruit.set(random.choice(["Gomu Gomu no Mi", "Mera Mera no Mi", "Hie Hie no Mi", "Gura Gura no Mi", "Ope Ope no Mi"]))
+        await self.config.member(user).crew.set(random.choice(self.crews))
+        await self.config.member(user).devil_fruit.set(random.choice(self.devil_fruits))
 
-    async def update_user_role(self, member: discord.Member, xp: int):
-        async with self.config.member(member).all() as user_data:
-            user_data['experience'] = user_data.get('experience', 0) + xp
-            current_xp = user_data['experience']
-
-            for required_xp, role_name in sorted(self.roles.items(), reverse=True):
-                if current_xp >= required_xp:
-                    role = discord.utils.get(member.guild.roles, name=role_name)
-                    if role and role not in member.roles:
-                        await member.add_roles(role)
-                        await member.guild.system_channel.send(f"Congratulations, {member.mention}! You've earned the role of {role_name}!")
-                    break
+    async def update_personality_profile(self, user: discord.Member, message: str):
+        async with self.config.member(user).personality_profile() as profile:
+            words = message.lower().split()
+            for word in words:
+                if word not in profile:
+                    profile[word] = 0
+                profile[word] += 1
 
     def build_context(self, message: discord.Message, user_data: dict, guild_data: dict):
         context = f"Current storyline: {self.storyline}\n"
+        context += f"World state: {json.dumps(guild_data['world_state'])}\n"
         context += f"User {message.author.display_name} ({user_data['character']['name']}) said: {message.content}\n"
         context += f"User traits: {', '.join(user_data['character']['traits'])}\n"
         context += f"User skills: {json.dumps(user_data['character']['skills'])}\n"
@@ -208,7 +222,7 @@ class OnePieceAI(commands.Cog):
             response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
-                    {"role": "system", "content": "You are a One Piece themed AI assistant. Respond in character, incorporating One Piece themes and lore. Include the user's character in your response and advance the story based on their actions."},
+                    {"role": "system", "content": "You are a One Piece themed AI assistant. Respond in character, incorporating One Piece themes and lore."},
                     {"role": "user", "content": context}
                 ]
             )
@@ -218,6 +232,255 @@ class OnePieceAI(commands.Cog):
             return response.choices[0].message.content
         except Exception as e:
             return f"Error generating response: {str(e)}"
+
+    def post_process_response(self, response: str, user_data: dict, guild_data: dict):
+        # Adjust formality
+        if user_data['formality_preference'] < 0.3:
+            response = response.lower().replace(".", "").replace(",", "")
+        elif user_data['formality_preference'] > 0.7:
+            response = response.capitalize() + "."
+
+        # Add One Piece emojis
+        for word, emoji_code in self.one_piece_emojis.items():
+            if word in response.lower():
+                response += f" {emoji_code}"
+
+        # Mimic character voice if in character
+        if "character_voice" in user_data and random.random() < 0.3:
+            response = self.apply_character_voice(response, user_data['character_voice'])
+
+        return response
+
+    def apply_character_voice(self, response: str, character: str):
+        if character == "Luffy":
+            response += " Shishishi!"
+        elif character == "Zoro":
+            response = response.replace("left", "right").replace("right", "left")
+        elif character == "Sanji":
+            if "woman" in response.lower() or "lady" in response.lower():
+                response += " Mellorine~!"
+        # Add more character voices as needed
+        return response
+
+    async def generate_random_event(self):
+        events = [
+            "A mysterious island has appeared on the horizon!",
+            "A powerful storm is brewing in the New World!",
+            "Rumors of a hidden treasure map are spreading!",
+            "A rival pirate crew has been spotted nearby!",
+            "The Marines have launched a surprise attack!"
+        ]
+        event = random.choice(events)
+        self.current_event = event
+        return f"**One Piece World Event**\n\n{event}\n\nHow do you respond? (Use the `[p]respond` command)"
+
+    @commands.command()
+    async def respond(self, ctx, *, response: str):
+        """Respond to the current world event"""
+        if not self.current_event:
+            await ctx.send("There is no active world event to respond to.")
+            return
+
+        # Generate AI response based on the user's response to the event
+        prompt = f"Event: {self.current_event}\nUser response: {response}\nGenerate a narrative of how this response affects the event and the overall storyline:"
+        result = await self.generate_ai_response(prompt)
+
+        # Update the storyline with the event and response
+        self.storyline += f"\n\nEvent: {self.current_event}\nResponse: {response}\nOutcome: {result}"
+
+        # Clear the current event
+        self.current_event = None
+
+        await ctx.send(f"Your response: {response}\n\nOutcome: {result}")
+
+        # Trigger a story update
+        await self.evolve_story()
+
+    async def evolve_story(self):
+        await self.bot.wait_until_ready()
+        while not self.bot.is_closed():
+            if not self.current_event:  # Only evolve story if there's no active event
+                prompt = f"Current storyline: {self.storyline}\n\nGenerate the next development in this One Piece adventure:"
+                new_development = await self.generate_ai_response(prompt)
+                self.storyline += f"\n\nNew Development: {new_development}"
+
+                # Send the new development to all AI-enabled channels
+                for guild in self.bot.guilds:
+                    chat_channels = await self.config.guild(guild).chat_channels()
+                    for channel_id in chat_channels:
+                        channel = self.bot.get_channel(channel_id)
+                        if channel:
+                            await channel.send(f"**Story Update**\n{new_development}")
+
+            await asyncio.sleep(3600)  # Wait for an hour before the next story evolution
+
+    @commands.command()
+    async def storyline(self, ctx):
+        """Display the current storyline"""
+        await ctx.send(f"**Current One Piece Adventure Storyline**\n\n{self.storyline}")
+
+    async def periodic_event(self):
+        await self.bot.wait_until_ready()
+        while not self.bot.is_closed():
+            await asyncio.sleep(await self.config.guild(self.bot.guilds[0]).event_frequency())
+            if not self.current_event:  # Only generate a new event if there's no active event
+                for guild in self.bot.guilds:
+                    chat_channels = await self.config.guild(guild).chat_channels()
+                    if chat_channels:
+                        channel = self.bot.get_channel(random.choice(chat_channels))
+                        if channel:
+                            event = await self.generate_random_event()
+                            await channel.send(event)
+
+    async def update_world(self):
+        await self.bot.wait_until_ready()
+        while not self.bot.is_closed():
+            await asyncio.sleep(1800)  # Update world every 30 minutes
+            for guild in self.bot.guilds:
+                world_state = await self.config.guild(guild).world_state()
+                world_state['weather'] = random.choice(["calm", "stormy", "foggy", "sunny"])
+                await self.config.guild(guild).world_state.set(world_state)
+                
+                chat_channels = await self.config.guild(guild).chat_channels()
+                if chat_channels:
+                    channel = self.bot.get_channel(random.choice(chat_channels))
+                    if channel:
+                        await channel.send(f"**World Update**\nThe weather has changed to {world_state['weather']}!")
+
+    async def npc_interactions(self):
+        await self.bot.wait_until_ready()
+        while not self.bot.is_closed():
+            await asyncio.sleep(5400)  # NPC interaction every 1.5 hours
+            for guild in self.bot.guilds:
+                npc = random.choice(["Shanks", "Buggy", "Rayleigh", "Garp"])
+                interaction = await self.generate_ai_response(f"Generate a random interaction or quote from {npc} in the style of One Piece:")
+                
+                chat_channels = await self.config.guild(guild).chat_channels()
+                if chat_channels:
+                    channel = self.bot.get_channel(random.choice(chat_channels))
+                    if channel:
+                        await channel.send(f"**{npc} appears!**\n{interaction}")
+
+    async def generate_discussion_topics(self):
+        await self.bot.wait_until_ready()
+        while not self.bot.is_closed():
+            await asyncio.sleep(14400)  # Generate new topics every 4 hours
+            for guild in self.bot.guilds:
+                topic = await self.generate_ai_response("Generate a thought-provoking discussion topic about One Piece lore, theories, or character motivations.")
+                async with self.config.guild(guild).discussion_topics() as topics:
+                    topics.append(topic)
+                    if len(topics) > 5:
+                        topics.pop(0)
+
+    @commands.command()
+    async def cook(self, ctx, *, recipe: str):
+        """Try to cook a recipe"""
+        if recipe not in self.recipes:
+            return await ctx.send(f"Recipe not found. Available recipes: {', '.join(self.recipes.keys())}")
+        
+        user_data = await self.config.member(ctx.author).all()
+        inventory = user_data.get('inventory', {})
+        
+        recipe_data = self.recipes[recipe]
+        missing_ingredients = [ing for ing in recipe_data['ingredients'] if ing not in inventory]
+        
+        if missing_ingredients:
+            return await ctx.send(f"You're missing these ingredients: {', '.join(missing_ingredients)}")
+        
+        # Cooking attempt
+        success_chance = (user_data.get('cooking_skill', 0) + 1) / (recipe_data['difficulty'] * 2)
+        if random.random() < success_chance:
+            await ctx.send(f"Success! You've cooked a delicious {recipe}!")
+            # Improve cooking skill
+            await self.config.member(ctx.author).cooking_skill.set(user_data.get('cooking_skill', 0) + 1)
+            # Add cooked item to inventory
+            await self.add_item_to_inventory(ctx.author, recipe)
+        else:
+            await ctx.send(f"Oh no! Your attempt to cook {recipe} has failed. The ingredients are ruined!")
+        
+        # Remove used ingredients
+        for ingredient in recipe_data['ingredients']:
+            inventory[ingredient] -= 1
+            if inventory[ingredient] == 0:
+                del inventory[ingredient]
+        await self.config.member(ctx.author).inventory.set(inventory)
+
+    @commands.command()
+    async def relationship(self, ctx, member: discord.Member):
+        """Check your relationship with another member"""
+        if member == ctx.author:
+            return await ctx.send("You can't check your relationship with yourself!")
+        
+        user_data = await self.config.member(ctx.author).all()
+        relationships = user_data.get('relationships', {})
+        
+        level = relationships.get(str(member.id), 0)
+        relationship_status = self.relationship_levels[min(level, len(self.relationship_levels) - 1)]
+        
+        await ctx.send(f"Your relationship with {member.display_name} is: {relationship_status}")
+
+    @commands.command()
+    async def interact(self, ctx, member: discord.Member):
+        """Interact with another member to improve your relationship"""
+        if member == ctx.author:
+            return await ctx.send("You can't interact with yourself!")
+        
+        async with self.config.member(ctx.author).relationships() as relationships:
+            level = relationships.get(str(member.id), 0)
+            if random.random() < 0.7:  # 70% chance to improve relationship
+                level = min(level + 1, len(self.relationship_levels) - 1)
+                relationships[str(member.id)] = level
+                await ctx.send(f"Your interaction was successful! Your relationship with {member.display_name} has improved!")
+            else:
+                await ctx.send(f"Your interaction didn't go as planned. Your relationship with {member.display_name} remains unchanged.")
+
+    async def check_seasonal_events(self):
+        await self.bot.wait_until_ready()
+        while not self.bot.is_closed():
+            now = datetime.now()
+            current_date = (now.month, now.day)
+            
+            if current_date in self.seasonal_events:
+                event = self.seasonal_events[current_date]
+                for guild in self.bot.guilds:
+                    chat_channels = await self.config.guild(guild).chat_channels()
+                    if chat_channels:
+                        channel = self.bot.get_channel(random.choice(chat_channels))
+                        if channel:
+                            await channel.send(f"**Seasonal Event: {event['name']}**\n{event['description']}")
+                            
+                            # Generate a special event or bonus for this seasonal event
+                            special_event = await self.generate_ai_response(f"Generate a special One Piece themed event or bonus for {event['name']}")
+                            await channel.send(special_event)
+            
+            # Check once per day
+            await asyncio.sleep(86400)
+
+
+    @commands.command()
+    async def discuss(self, ctx):
+        """Start a discussion about a One Piece topic"""
+        topics = await self.config.guild(ctx.guild).discussion_topics()
+        if not topics:
+            topic = await self.generate_ai_response("Generate a thought-provoking discussion topic about One Piece lore, theories, or character motivations.")
+        else:
+            topic = topics.pop(0)
+        await ctx.send(f"Let's discuss this One Piece topic:\n\n{topic}")
+
+    @commands.command()
+    async def roleplay(self, ctx, character: str):
+        """Start roleplaying as a One Piece character"""
+        if character.lower() in [c.lower() for c in self.one_piece_characters]:
+            await self.config.member(ctx.author).character_voice.set(character)
+            await ctx.send(f"You are now roleplaying as {character}! The AI will interact with you accordingly.")
+        else:
+            await ctx.send(f"{character} is not a recognized One Piece character. Please choose from: {', '.join(self.one_piece_characters)}")
+
+    @commands.command()
+    async def joke(self, ctx):
+        """Tell a One Piece themed joke"""
+        joke = await self.generate_ai_response("Tell a One Piece themed joke or pun.")
+        await ctx.send(joke)
 
     async def check_skill_improvement(self, user: discord.Member, message_content: str):
         async with self.config.member(user).character() as character:
@@ -229,283 +492,123 @@ class OnePieceAI(commands.Cog):
                 character['skills']['charisma'] = min(100, character['skills']['charisma'] + 1)
 
     @commands.command()
-    async def joke(self, ctx):
-        """Tell a One Piece themed joke"""
-        jokes = [
-            "Why did Luffy get lost in the library? He was looking for the One Piece... of literature!",
-            "What do you call a pirate with two eyes, two ears, and two legs? A rookie!",
-            "Why don't the Straw Hats ever get sick? Because they have Chopper on board!",
-            "How does Zoro cut his food? With three knives at once!",
-            "Why did Nami become a navigator? Because she always knows where the money is!",
-            "What's Sanji's favorite type of music? Cook rock!",
-            "Why did the Sea King go to the dentist? To get his Alabasta teeth cleaned!",
-            "How does Buggy the Clown split the bill? He doesn't, he just splits himself!",
-            "Why doesn't Blackbeard ever lose at hide and seek? Because he's always in the dark!",
-            "What's Monkey D. Luffy's favorite exercise? The Gum-Gum Stretch!"
-        ]
-        await ctx.send(random.choice(jokes))
-
-    @commands.command()
-    async def profile(self, ctx):
-        """Display your One Piece profile"""
-        user_data = await self.config.member(ctx.author).all()
-        current_xp = user_data.get('experience', 0)
-        current_role = "Swabbie"
-        for required_xp, role_name in sorted(self.roles.items(), reverse=True):
-            if current_xp >= required_xp:
-                current_role = role_name
-                break
-
-        embed = discord.Embed(title=f"{ctx.author.display_name}'s Pirate Profile", color=discord.Color.blue())
-        embed.add_field(name="Role", value=current_role, inline=False)
-        embed.add_field(name="Experience", value=current_xp, inline=False)
-        embed.add_field(name="Crew", value=user_data.get('crew', 'None'), inline=False)
-        embed.add_field(name="Devil Fruit", value=user_data.get('devil_fruit', 'None'), inline=False)
+    async def profile(self, ctx, member: discord.Member = None):
+        """Display your or another member's One Piece profile"""
+        target = member or ctx.author
+        user_data = await self.config.member(target).all()
+        
+        embed = discord.Embed(title=f"{target.display_name}'s One Piece Profile", color=discord.Color.blue())
+        embed.add_field(name="Character", value=user_data['character']['name'], inline=False)
+        embed.add_field(name="Crew", value=user_data['crew'], inline=True)
+        embed.add_field(name="Devil Fruit", value=user_data['devil_fruit'] or "None", inline=True)
+        embed.add_field(name="Bounty", value=f"{user_data['bounty']:,} Beris", inline=True)
         embed.add_field(name="Skills", value="\n".join([f"{k.capitalize()}: {v}" for k, v in user_data['character']['skills'].items()]), inline=False)
-        embed.add_field(name="Bounty", value=f"{user_data['bounty']:,} Beris", inline=False)
-        await ctx.send(embed=embed)
-
-    @commands.Cog.listener()
-    async def on_reaction_add(self, reaction: discord.Reaction, user: discord.User):
-        if user.bot or reaction.message.author != self.bot.user:
-            return
-
-        xp_rewards = {
-            "⚔️": ("combat", 10),
-            "🧠": ("intelligence", 10),
-            "🏃": ("speed", 10),
-            "🍳": ("cooking", 10)
-        }
-
-        if str(reaction.emoji) in xp_rewards:
-            skill, xp = xp_rewards[str(reaction.emoji)]
-            await self.update_user_skill(user, skill, xp)
-            await reaction.message.channel.send(f"{user.mention} gained {xp} {skill} XP!")
-
-    async def update_user_skill(self, user: discord.User, skill: str, xp: int):
-        async with self.config.member(user).all() as user_data:
-            user_data.setdefault('skills', {})
-            user_data['skills'][skill] = user_data['skills'].get(skill, 0) + xp
-
-    @commands.command()
-    async def resources(self, ctx):
-        """Display your current resources"""
-        user_data = await self.config.member(ctx.author).all()
-        resources = user_data['resources']
-
-        embed = discord.Embed(title=f"{ctx.author.display_name}'s Resources", color=discord.Color.green())
-        for resource, amount in resources.items():
-            if resource != "special_items":
-                embed.add_field(name=resource.capitalize(), value=amount, inline=True)
-        
-        if resources['special_items']:
-            embed.add_field(name="Special Items", value=", ".join(resources['special_items']), inline=False)
+        embed.add_field(name="Traits", value=", ".join(user_data['character']['traits']), inline=False)
         
         await ctx.send(embed=embed)
 
-    @commands.command()
-    async def trade(self, ctx, member: discord.Member, give_resource: str, give_amount: int, receive_resource: str, receive_amount: int):
-        """Trade resources with another user"""
-        if member == ctx.author:
-            return await ctx.send("You can't trade with yourself!")
-
-        async with self.config.member(ctx.author).all() as user_data, self.config.member(member).all() as target_data:
-            if give_resource not in user_data['resources'] or receive_resource not in target_data['resources']:
-                return await ctx.send("Invalid resource type.")
-
-            if user_data['resources'][give_resource] < give_amount or target_data['resources'][receive_resource] < receive_amount:
-                return await ctx.send("One of you doesn't have enough resources for this trade.")
-
-            user_data['resources'][give_resource] -= give_amount
-            user_data['resources'][receive_resource] += receive_amount
-            target_data['resources'][give_resource] += give_amount
-            target_data['resources'][receive_resource] -= receive_amount
-
-        await ctx.send(f"Trade successful! {ctx.author.mention} gave {give_amount} {give_resource} and received {receive_amount} {receive_resource} from {member.mention}.")
-
-    @commands.command()
-    async def reputation(self, ctx):
-        """Display your reputation with different factions"""
-        user_data = await self.config.member(ctx.author).all()
-        rep = user_data['reputation']
-
-        embed = discord.Embed(title=f"{ctx.author.display_name}'s Reputation", color=discord.Color.purple())
-        for faction, value in rep.items():
-            embed.add_field(name=faction, value=value, inline=True)
-        
-        await ctx.send(embed=embed)
-
-    async def update_reputation(self, user: discord.Member, faction: str, amount: int):
-        async with self.config.member(user).all() as user_data:
-            user_data['reputation'][faction] = max(-100, min(100, user_data['reputation'][faction] + amount))
-
-    async def run_tournaments(self):
+    async def reset_daily_tokens(self):
         await self.bot.wait_until_ready()
         while not self.bot.is_closed():
-            if self.current_tournament is None:
-                await self.start_new_tournament()
-            elif datetime.now() > self.current_tournament.end_date:
-                await self.end_tournament()
-            await asyncio.sleep(3600)  # Check every hour
-
-    async def start_new_tournament(self):
-        tournament_types = ["Combat", "Cooking", "Navigation"]
-        name = f"Grand Line {random.choice(tournament_types)} Tournament"
-        start_date = datetime.now()
-        end_date = start_date + timedelta(days=7)
-        self.current_tournament = Tournament(name, start_date, end_date, random.choice(tournament_types))
-
-        for guild in self.bot.guilds:
-            for channel_id in await self.config.guild(guild).chat_channels():
-                channel = self.bot.get_channel(channel_id)
-                if channel:
-                    await channel.send(f"**New Tournament Started!**\n{name}\nType `.join_tournament` to participate!")
-
-    @commands.command()
-    async def join_tournament(self, ctx):
-        """Join the current tournament"""
-        if self.current_tournament is None:
-            return await ctx.send("There is no active tournament right now.")
-        if ctx.author.id in self.current_tournament.participants:
-            return await ctx.send("You're already participating in this tournament!")
-        self.current_tournament.participants.append(ctx.author.id)
-        self.current_tournament.scores[ctx.author.id] = 0
-        await ctx.send(f"You've joined the {self.current_tournament.name}!")
-
-    async def end_tournament(self):
-        if not self.current_tournament:
-            return
-
-        winner_id = max(self.current_tournament.scores, key=self.current_tournament.scores.get)
-        winner = self.bot.get_user(winner_id)
-
-        for guild in self.bot.guilds:
-            for channel_id in await self.config.guild(guild).chat_channels():
-                channel = self.bot.get_channel(channel_id)
-                if channel:
-                    await channel.send(f"**Tournament Ended!**\n{self.current_tournament.name}\nWinner: {winner.mention}")
-
-        # Award the winner
-        await self.update_user_role(winner, 100)  # Big XP boost
-        special_role = await self.create_special_role(winner.guild, f"{self.current_tournament.event_type} Champion")
-        await winner.add_roles(special_role)
-
-        self.current_tournament = None
-
-    async def create_special_role(self, guild, role_name):
-        role = await guild.create_role(name=role_name, color=discord.Color.gold())
-        return role
-
-    @commands.command()
-    async def story(self, ctx):
-        """Start a new interactive story arc"""
-        user_data = await self.config.member(ctx.author).all()
-        character_name = user_data['character']['name']
-        story_prompt = f"Start a new One Piece adventure featuring {character_name}:"
-        story_start = await self.generate_ai_response(story_prompt)
-        
-        message = await ctx.send(f"**New Adventure Begins**\n\n{story_start}\n\nHow do you want to proceed? React with:\n🏴‍☠️ - Act like a pirate\n⚖️ - Follow the law\n🕵️ - Investigate further")
-        
-        for emoji in ['🏴‍☠️', '⚖️', '🕵️']:
-            await message.add_reaction(emoji)
-
-        def check(reaction, user):
-            return user == ctx.author and str(reaction.emoji) in ['🏴‍☠️', '⚖️', '🕵️'] and reaction.message.id == message.id
-
-        try:
-            reaction, user = await self.bot.wait_for('reaction_add', timeout=300.0, check=check)
-        except asyncio.TimeoutError:
-            await ctx.send("The adventure fades as you hesitate to act...")
-        else:
-            choice = {
-                '🏴‍☠️': 'act like a pirate',
-                '⚖️': 'follow the law',
-                '🕵️': 'investigate further'
-            }[str(reaction.emoji)]
-            
-            next_part = await self.generate_ai_response(f"Continue the One Piece story where {character_name} decides to {choice}:\n\n{story_start}")
-            await ctx.send(f"**The Adventure Continues**\n\n{next_part}")
-            self.storyline += f"\n\n{story_start}\n{next_part}"
-
-    @commands.command()
-    async def treasure_hunt(self, ctx):
-        """Start a treasure hunting minigame"""
-        grid_size = 5
-        treasure_x, treasure_y = random.randint(0, grid_size-1), random.randint(0, grid_size-1)
-        attempts = 3
-
-        await ctx.send(f"A treasure has been hidden in a {grid_size}x{grid_size} grid! You have {attempts} attempts to find it.")
-
-        def check(m):
-            return m.author == ctx.author and m.channel == ctx.channel
-
-        while attempts > 0:
-            await ctx.send(f"Enter your guess as 'x y' (e.g., '2 3'). Attempts left: {attempts}")
-            try:
-                msg = await self.bot.wait_for('message', timeout=30.0, check=check)
-                guess_x, guess_y = map(int, msg.content.split())
-                
-                if guess_x == treasure_x and guess_y == treasure_y:
-                    await ctx.send("Congratulations! You found the treasure!")
-                    await self.award_treasure(ctx.author)
-                    return
-                else:
-                    attempts -= 1
-                    if attempts > 0:
-                        hint = self.get_treasure_hint(guess_x, guess_y, treasure_x, treasure_y)
-                        await ctx.send(f"Not quite! {hint}")
-                    else:
-                        await ctx.send(f"Sorry, you're out of attempts. The treasure was at ({treasure_x}, {treasure_y}).")
-            except (ValueError, IndexError):
-                await ctx.send("Invalid input. Please enter two numbers separated by a space.")
-            except asyncio.TimeoutError:
-                await ctx.send("Time's up! The treasure remains hidden.")
-                return
-
-    def get_treasure_hint(self, guess_x, guess_y, treasure_x, treasure_y):
-        if abs(guess_x - treasure_x) <= 1 and abs(guess_y - treasure_y) <= 1:
-            return "You're very close!"
-        elif guess_x == treasure_x:
-            return "You've got the right X coordinate!"
-        elif guess_y == treasure_y:
-            return "You've got the right Y coordinate!"
-        elif guess_x < treasure_x:
-            return "The treasure is to the east."
-        elif guess_x > treasure_x:
-            return "The treasure is to the west."
-        elif guess_y < treasure_y:
-            return "The treasure is to the north."
-        else:
-            return "The treasure is to the south."
-
-    async def award_treasure(self, user: discord.Member):
-        treasure_items = ["Golden Den Den Mushi", "Ancient Poneglyph Rubbing", "Rare Devil Fruit"]
-        treasure = random.choice(treasure_items)
-        async with self.config.member(user).all() as user_data:
-            user_data['resources']['special_items'].append(treasure)
-            user_data['beris'] += 1000
-        await self.update_user_role(user, 50)
-        await self.update_reputation(user, "Pirates", 10)
-        await user.send(f"You've been awarded a {treasure} and 1000 Beris for finding the treasure!")
-
-    async def send_feature_reminder(self):
-        await self.bot.wait_until_ready()
-        while not self.bot.is_closed():
-            await asyncio.sleep(1800)  # 30 minutes
+            now = datetime.utcnow()
+            tomorrow = now + timedelta(days=1)
+            next_reset = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 0, 0, 0)
+            await asyncio.sleep((next_reset - now).total_seconds())
             for guild in self.bot.guilds:
-                chat_channels = await self.config.guild(guild).chat_channels()
-                if chat_channels:
-                    channel = self.bot.get_channel(random.choice(chat_channels))
-                    if channel:
-                        embed = discord.Embed(title="One Piece AI Bot Features", color=discord.Color.blue())
-                        embed.add_field(name="Story", value="Start a new adventure with `.story`", inline=False)
-                        embed.add_field(name="Treasure Hunt", value="Search for treasure with `.treasure_hunt`", inline=False)
-                        embed.add_field(name="Profile", value="View your character profile with `.profile`", inline=False)
-                        embed.add_field(name="Resources", value="Check your resources with `.resources`", inline=False)
-                        embed.add_field(name="Reputation", value="View your faction reputation with `.reputation`", inline=False)
-                        embed.add_field(name="Tournament", value="Join ongoing tournaments with `.join_tournament`", inline=False)
-                        embed.add_field(name="Trade", value="Trade resources with `.trade`", inline=False)
-                        await channel.send(embed=embed)
+                await self.config.guild(guild).daily_tokens_used.set(0)
+                await self.config.guild(guild).last_token_reset.set(next_reset.isoformat())
+
+    @commands.group(name="opaiadmin", invoke_without_command=True)
+    @commands.admin_or_permissions(manage_guild=True)
+    async def opaiadmin(self, ctx):
+        """Admin commands for OnePieceAI settings"""
+        await ctx.send_help(ctx.command)
+
+    @opaiadmin.command(name="settings")
+    async def show_settings(self, ctx):
+        """Display current OnePieceAI settings"""
+        guild_data = await self.config.guild(ctx.guild).all()
+        
+        embed = discord.Embed(title="OnePieceAI Settings", color=discord.Color.blue())
+        
+        embed.add_field(name="AI Status", value="Enabled" if guild_data['ai_enabled'] else "Disabled", inline=False)
+        
+        chat_channels = [ctx.guild.get_channel(channel_id).mention for channel_id in guild_data['chat_channels'] if ctx.guild.get_channel(channel_id)]
+        embed.add_field(name="AI-enabled Channels", value=", ".join(chat_channels) if chat_channels else "None", inline=False)
+        
+        embed.add_field(name="Event Frequency", value=f"{guild_data['event_frequency']} seconds", inline=False)
+        
+        embed.add_field(name="Daily Token Limit", value=guild_data['daily_token_limit'], inline=True)
+        embed.add_field(name="Tokens Used Today", value=guild_data['daily_tokens_used'], inline=True)
+        
+        last_reset = guild_data['last_token_reset']
+        if last_reset:
+            last_reset = datetime.fromisoformat(last_reset).strftime("%Y-%m-%d %H:%M:%S UTC")
+        else:
+            last_reset = "Never"
+        embed.add_field(name="Last Token Reset", value=last_reset, inline=False)
+        
+        embed.add_field(name="Current Weather", value=guild_data['world_state']['weather'], inline=True)
+        embed.add_field(name="Current Island", value=guild_data['world_state']['current_island'], inline=True)
+        
+        await ctx.send(embed=embed)
+
+    @opaiadmin.command(name="setdailylimit")
+    async def set_daily_limit(self, ctx, limit: int):
+        """Set the daily token usage limit"""
+        await self.config.guild(ctx.guild).daily_token_limit.set(limit)
+        await ctx.send(f"Daily token limit set to {limit}")
+
+    @opaiadmin.command(name="resetusage")
+    async def reset_usage(self, ctx):
+        """Reset the daily token usage"""
+        await self.config.guild(ctx.guild).daily_tokens_used.set(0)
+        await self.config.guild(ctx.guild).last_token_reset.set(datetime.utcnow().isoformat())
+        await ctx.send("Daily token usage has been reset.")
+
+    @opaiadmin.command(name="toggleai")
+    async def toggleai(self, ctx):
+        """Toggle AI responses on/off"""
+        current = await self.config.guild(ctx.guild).ai_enabled()
+        await self.config.guild(ctx.guild).ai_enabled.set(not current)
+        state = "enabled" if not current else "disabled"
+        await ctx.send(f"AI responses have been {state}.")
+
+    @opaiadmin.command(name="seteventfrequency")
+    async def seteventfrequency(self, ctx, seconds: int):
+        """Set the frequency of random events in seconds"""
+        await self.config.guild(ctx.guild).event_frequency.set(seconds)
+        await ctx.send(f"Event frequency set to every {seconds} seconds.")
+
+    @opaiadmin.command(name="addchannel")
+    async def addchannel(self, ctx, channel: discord.TextChannel):
+        """Add a channel for AI interactions and events"""
+        async with self.config.guild(ctx.guild).chat_channels() as channels:
+            if channel.id not in channels:
+                channels.append(channel.id)
+                await ctx.send(f"{channel.mention} added to AI-enabled channels.")
+            else:
+                await ctx.send(f"{channel.mention} is already an AI-enabled channel.")
+
+    @opaiadmin.command(name="removechannel")
+    async def removechannel(self, ctx, channel: discord.TextChannel):
+        """Remove a channel from AI interactions and events"""
+        async with self.config.guild(ctx.guild).chat_channels() as channels:
+            if channel.id in channels:
+                channels.remove(channel.id)
+                await ctx.send(f"{channel.mention} removed from AI-enabled channels.")
+            else:
+                await ctx.send(f"{channel.mention} is not an AI-enabled channel.")
+
+    @opaiadmin.command(name="listchannels")
+    async def listchannels(self, ctx):
+        """List all AI-enabled channels"""
+        channels = await self.config.guild(ctx.guild).chat_channels()
+        if channels:
+            channel_mentions = [ctx.guild.get_channel(channel_id).mention for channel_id in channels if ctx.guild.get_channel(channel_id)]
+            await ctx.send(f"AI-enabled channels: {', '.join(channel_mentions)}")
+        else:
+            await ctx.send("There are no AI-enabled channels.")
 
     @commands.command()
     @commands.is_owner()
@@ -516,18 +619,25 @@ class OnePieceAI(commands.Cog):
             return
 
         try:
+            encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
             estimated_cost = (self.total_tokens_used / 1000) * 0.002
-            guild_data = await self.config.guild(ctx.guild).all()
-            daily_tokens_used = guild_data['daily_tokens_used']
-            daily_limit = guild_data['daily_token_limit']
+            monthly_limit = 30000  # Adjust this based on your actual limit
+            tokens_left = monthly_limit - self.total_tokens_used
+            sample_message = "This is a sample message to show token usage."
+            sample_tokens = len(encoding.encode(sample_message))
 
             await ctx.send(f"Estimated usage since bot start:\n"
                            f"Total tokens used: {self.total_tokens_used:,}\n"
                            f"Estimated cost: ${estimated_cost:.2f}\n"
-                           f"Daily tokens used: {daily_tokens_used:,}/{daily_limit:,}")
+                           f"Estimated tokens left: {tokens_left:,}\n"
+                           f"\nSample message: '{sample_message}'\n"
+                           f"Token count: {sample_tokens}")
 
         except Exception as e:
             await ctx.send(f"Error checking usage: {str(e)}")
+            raise
 
-async def setup(bot):
-    await bot.add_cog(OnePieceAI(bot))
+ async def setup(bot):
+        cog = OnePieceAI(bot)
+        await bot.add_cog(cog)
+        cog.seasonal_event_task = bot.loop.create_task(cog.check_seasonal_events())
