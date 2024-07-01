@@ -56,8 +56,27 @@ class OnePieceAI(commands.Cog):
             "pirate": "🏴‍☠️", "ship": "⛵", "island": "🏝️", "treasure": "💰", "fight": "⚔️",
             "devil_fruit": "🍎", "sea": "🌊", "log_pose": "🧭", "wanted_poster": "📜"
         }
+        self.recipes = {
+            "Meat on the Bone": {"ingredients": ["meat", "spices"], "difficulty": 1},
+            "Sea King Soup": {"ingredients": ["sea king meat", "vegetables", "salt"], "difficulty": 2},
+            "Takoyaki": {"ingredients": ["octopus", "flour", "eggs", "sauce"], "difficulty": 3},
+            "Bento Box": {"ingredients": ["rice", "fish", "vegetables", "eggs"], "difficulty": 4},
+            "Devil Fruit Cake": {"ingredients": ["flour", "sugar", "eggs", "devil fruit essence"], "difficulty": 5},
+        }
+        self.seasonal_events = {
+            # Real-life holidays
+            (12, 25): {"name": "Christmas", "description": "A festive time even on the Grand Line!"},
+            (1, 1): {"name": "New Year", "description": "Pirates and Marines alike celebrate the new year!"},
+            (10, 31): {"name": "Halloween", "description": "Spooky events occur across the seas!"},
+            # One Piece events
+            (5, 5): {"name": "Luffy's Birthday", "description": "Celebrate the birthday of the future Pirate King!"},
+            (7, 3): {"name": "Tanabata", "description": "The Straw Hats celebrate the Star Festival!"},
+            (3, 2): {"name": "Belly Day", "description": "A day when treasure hunting is extra rewarding!"},
+        }
+        self.relationship_levels = ["Stranger", "Acquaintance", "Friend", "Nakama", "Best Friend"]
         self.current_event = None
         self.storyline = "The adventure begins in the East Blue..."
+        
 
     def cog_unload(self):
         self.story_task.cancel()
@@ -66,6 +85,7 @@ class OnePieceAI(commands.Cog):
         self.event_task.cancel()
         self.token_reset_task.cancel()
         self.discussion_task.cancel()
+        self.seasonal_event_task.cancel()
 
     async def initialize_client(self):
         api_key = (await self.bot.get_shared_api_tokens("openai")).get("api_key")
@@ -353,6 +373,91 @@ class OnePieceAI(commands.Cog):
                         topics.pop(0)
 
     @commands.command()
+    async def cook(self, ctx, *, recipe: str):
+        """Try to cook a recipe"""
+        if recipe not in self.recipes:
+            return await ctx.send(f"Recipe not found. Available recipes: {', '.join(self.recipes.keys())}")
+        
+        user_data = await self.config.member(ctx.author).all()
+        inventory = user_data.get('inventory', {})
+        
+        recipe_data = self.recipes[recipe]
+        missing_ingredients = [ing for ing in recipe_data['ingredients'] if ing not in inventory]
+        
+        if missing_ingredients:
+            return await ctx.send(f"You're missing these ingredients: {', '.join(missing_ingredients)}")
+        
+        # Cooking attempt
+        success_chance = (user_data.get('cooking_skill', 0) + 1) / (recipe_data['difficulty'] * 2)
+        if random.random() < success_chance:
+            await ctx.send(f"Success! You've cooked a delicious {recipe}!")
+            # Improve cooking skill
+            await self.config.member(ctx.author).cooking_skill.set(user_data.get('cooking_skill', 0) + 1)
+            # Add cooked item to inventory
+            await self.add_item_to_inventory(ctx.author, recipe)
+        else:
+            await ctx.send(f"Oh no! Your attempt to cook {recipe} has failed. The ingredients are ruined!")
+        
+        # Remove used ingredients
+        for ingredient in recipe_data['ingredients']:
+            inventory[ingredient] -= 1
+            if inventory[ingredient] == 0:
+                del inventory[ingredient]
+        await self.config.member(ctx.author).inventory.set(inventory)
+
+    @commands.command()
+    async def relationship(self, ctx, member: discord.Member):
+        """Check your relationship with another member"""
+        if member == ctx.author:
+            return await ctx.send("You can't check your relationship with yourself!")
+        
+        user_data = await self.config.member(ctx.author).all()
+        relationships = user_data.get('relationships', {})
+        
+        level = relationships.get(str(member.id), 0)
+        relationship_status = self.relationship_levels[min(level, len(self.relationship_levels) - 1)]
+        
+        await ctx.send(f"Your relationship with {member.display_name} is: {relationship_status}")
+
+    @commands.command()
+    async def interact(self, ctx, member: discord.Member):
+        """Interact with another member to improve your relationship"""
+        if member == ctx.author:
+            return await ctx.send("You can't interact with yourself!")
+        
+        async with self.config.member(ctx.author).relationships() as relationships:
+            level = relationships.get(str(member.id), 0)
+            if random.random() < 0.7:  # 70% chance to improve relationship
+                level = min(level + 1, len(self.relationship_levels) - 1)
+                relationships[str(member.id)] = level
+                await ctx.send(f"Your interaction was successful! Your relationship with {member.display_name} has improved!")
+            else:
+                await ctx.send(f"Your interaction didn't go as planned. Your relationship with {member.display_name} remains unchanged.")
+
+    async def check_seasonal_events(self):
+        await self.bot.wait_until_ready()
+        while not self.bot.is_closed():
+            now = datetime.now()
+            current_date = (now.month, now.day)
+            
+            if current_date in self.seasonal_events:
+                event = self.seasonal_events[current_date]
+                for guild in self.bot.guilds:
+                    chat_channels = await self.config.guild(guild).chat_channels()
+                    if chat_channels:
+                        channel = self.bot.get_channel(random.choice(chat_channels))
+                        if channel:
+                            await channel.send(f"**Seasonal Event: {event['name']}**\n{event['description']}")
+                            
+                            # Generate a special event or bonus for this seasonal event
+                            special_event = await self.generate_ai_response(f"Generate a special One Piece themed event or bonus for {event['name']}")
+                            await channel.send(special_event)
+            
+            # Check once per day
+            await asyncio.sleep(86400)
+
+
+    @commands.command()
     async def discuss(self, ctx):
         """Start a discussion about a One Piece topic"""
         topics = await self.config.guild(ctx.guild).discussion_topics()
@@ -532,5 +637,7 @@ class OnePieceAI(commands.Cog):
             await ctx.send(f"Error checking usage: {str(e)}")
             raise
 
-async def setup(bot):
-    await bot.add_cog(OnePieceAI(bot))
+ async def setup(bot):
+        cog = OnePieceAI(bot)
+        await bot.add_cog(cog)
+        cog.seasonal_event_task = bot.loop.create_task(cog.check_seasonal_events())
