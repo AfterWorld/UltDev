@@ -53,7 +53,7 @@ class OnePieceAI(commands.Cog):
         # Remove the reference to evolve_story
         # self.story_task = self.bot.loop.create_task(self.evolve_story())
         # self.world_task = self.bot.loop.create_task(self.update_world())
-        self.npc_task = self.bot.loop.create_task(self.npc_interactions())
+        # self.npc_task = self.bot.loop.create_task(self.npc_interactions())
         self.event_task = self.bot.loop.create_task(self.periodic_event())
         self.token_reset_task = self.bot.loop.create_task(self.reset_daily_tokens())
         self.discussion_task = self.bot.loop.create_task(self.generate_discussion_topics())
@@ -77,7 +77,7 @@ class OnePieceAI(commands.Cog):
         # Remove the reference to story_task
         # self.story_task.cancel()
         # self.world_task.cancel()
-        self.npc_task.cancel()
+        # self.npc_task.cancel()
         self.event_task.cancel()
         self.token_reset_task.cancel()
         self.discussion_task.cancel()
