@@ -369,18 +369,18 @@ class OnePieceAI(commands.Cog):
         await ctx.send(f"**Current One Piece Adventure Storyline**\n\n{self.storyline}")
 
     async def periodic_event(self):
-    await self.bot.wait_until_ready()
-    while not self.bot.is_closed():
-        await asyncio.sleep(await self.config.guild(self.bot.guilds[0]).event_frequency())
-        if not self.current_event:  # Only generate a new event if there's no active event
-            for guild in self.bot.guilds:
-                chat_channels = await self.config.guild(guild).chat_channels()
-                if chat_channels:
-                    channel = self.bot.get_channel(random.choice(chat_channels))
-                    if channel:
-                        event = await self.generate_random_event()
-                        await channel.send(f"{event}\n\nType `.respond` to continue this event!")
-                        self.event_response_lock = asyncio.Lock()  # Create a lock for this event
+        await self.bot.wait_until_ready()
+        while not self.bot.is_closed():
+            await asyncio.sleep(await self.config.guild(self.bot.guilds[0]).event_frequency())
+            if not self.current_event:  # Only generate a new event if there's no active event
+                for guild in self.bot.guilds:
+                    chat_channels = await self.config.guild(guild).chat_channels()
+                    if chat_channels:
+                        channel = self.bot.get_channel(random.choice(chat_channels))
+                        if channel:
+                            event = await self.generate_random_event()
+                            await channel.send(f"{event}\n\nType `.respond` to continue this event!")
+                            self.event_response_lock = asyncio.Lock()  # Create a lock for this event
 
     async def update_world(self):
         await self.bot.wait_until_ready()
