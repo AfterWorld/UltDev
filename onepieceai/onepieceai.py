@@ -19,6 +19,7 @@ class OnePieceAI(commands.Cog):
         self.config.register_guild(**default_guild)
         self.client = OpenAI(api_key="your-api-key-here")
         self.event_task = self.bot.loop.create_task(self.periodic_event())
+        self.total_tokens_used = 0
 
     def cog_unload(self):
         self.event_task.cancel()
@@ -50,6 +51,7 @@ class OnePieceAI(commands.Cog):
                     {"role": "user", "content": prompt}
                 ]
             )
+            self.total_tokens_used += response.usage.total_tokens
             return response.choices[0].message.content
         except Exception as e:
             return f"Error generating response: {str(e)}"
@@ -105,7 +107,7 @@ class OnePieceAI(commands.Cog):
 
     @commands.command()
     @commands.is_owner()
-    async def checkuse(self, ctx):
+    async def check_openai_usage(self, ctx):
         """Check estimated OpenAI API usage based on token count"""
         if not self.client:
             await ctx.send("OpenAI client is not initialized.")
