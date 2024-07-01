@@ -35,6 +35,7 @@ class OnePieceAI(commands.Cog):
             "bounty": 0,
             "inventory": {},
             "personality_profile": {},
+            "relationships": {},
             "conversation_history": [],
             "emotional_state": "neutral",
             "formality_preference": 0.5  # 0 is very informal, 1 is very formal
@@ -456,20 +457,23 @@ class OnePieceAI(commands.Cog):
         if member == ctx.author:
             return await ctx.send("You can't check your relationship with yourself!")
         
-        async with self.config.member(ctx.author).relationships() as relationships:
-            level = relationships.get(str(member.id), 0)
-            relationship_status = self.relationship_levels[min(level, len(self.relationship_levels) - 1)]
+        user_data = await self.config.member(ctx.author).all()
+        relationships = user_data.get('relationships', {})
+        
+        level = relationships.get(str(member.id), 0)
+        relationship_status = self.relationship_levels[min(level, len(self.relationship_levels) - 1)]
         
         benefits = self.relationship_benefits.get(relationship_status, "No special benefits yet.")
         await ctx.send(f"Your relationship with {member.display_name} is: {relationship_status}\nBenefits: {benefits}")
-
+    
     @commands.command()
     async def interact(self, ctx, member: discord.Member):
         """Interact with another member to improve your relationship"""
         if member == ctx.author:
             return await ctx.send("You can't interact with yourself!")
         
-        async with self.config.member(ctx.author).relationships() as relationships:
+        async with self.config.member(ctx.author).all() as user_data:
+            relationships = user_data.get('relationships', {})
             level = relationships.get(str(member.id), 0)
             if random.random() < 0.7:  # 70% chance to improve relationship
                 level = min(level + 1, len(self.relationship_levels) - 1)
@@ -480,6 +484,7 @@ class OnePieceAI(commands.Cog):
                     await ctx.send(f"New benefit unlocked: {self.relationship_benefits[new_status]}")
             else:
                 await ctx.send(f"Your interaction didn't go as planned. Your relationship with {member.display_name} remains unchanged.")
+            user_data['relationships'] = relationships
 
     async def check_seasonal_events(self):
         await self.bot.wait_until_ready()
