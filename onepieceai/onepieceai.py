@@ -555,6 +555,7 @@ class OnePieceAI(commands.Cog):
 
 
     @commands.command()
+    @commands.admin_or_permissions(manage_guild=True)
     async def discuss(self, ctx):
         """Start a discussion about a One Piece topic"""
         topics = await self.config.guild(ctx.guild).discussion_topics()
