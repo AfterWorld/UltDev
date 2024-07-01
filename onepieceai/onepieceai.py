@@ -142,17 +142,18 @@ class OnePieceAI(commands.Cog):
     async def on_message(self, message: discord.Message):
         if message.author.bot or not message.guild:
             return
-
+    
         chat_channels = await self.config.guild(message.guild).chat_channels()
         if message.channel.id not in chat_channels:
             return
-
+    
         ai_enabled = await self.config.guild(message.guild).ai_enabled()
         if not ai_enabled:
             return
-
-        await self.process_message(message)
-
+    
+        if self.bot.user in message.mentions:
+            await self.process_message(message)
+            
     async def process_message(self, message: discord.Message):
         user_data = await self.config.member(message.author).all()
         guild_data = await self.config.guild(message.guild).all()
