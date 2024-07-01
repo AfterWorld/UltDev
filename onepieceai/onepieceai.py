@@ -7,15 +7,6 @@ from openai import OpenAI
 from datetime import datetime, timedelta
 import json
 
-class Tournament:
-    def __init__(self, name, start_date, end_date, event_type):
-        self.name = name
-        self.start_date = start_date
-        self.end_date = end_date
-        self.event_type = event_type
-        self.participants = []
-        self.scores = {}
-
 class OnePieceAI(commands.Cog):
     def __init__(self, bot: Red):
         self.bot = bot
@@ -59,7 +50,8 @@ class OnePieceAI(commands.Cog):
         self.config.register_guild(**default_guild)
         self.config.register_member(**default_member)
         self.client = None
-        self.story_task = self.bot.loop.create_task(self.evolve_story())
+        # Remove the reference to evolve_story
+        # self.story_task = self.bot.loop.create_task(self.evolve_story())
         self.world_task = self.bot.loop.create_task(self.update_world())
         self.npc_task = self.bot.loop.create_task(self.npc_interactions())
         self.event_task = self.bot.loop.create_task(self.periodic_event())
@@ -82,7 +74,8 @@ class OnePieceAI(commands.Cog):
         self.islands = ["Alabasta", "Water 7", "Thriller Bark", "Sabaody Archipelago", "Fishman Island"]
 
     def cog_unload(self):
-        self.story_task.cancel()
+        # Remove the reference to story_task
+        # self.story_task.cancel()
         self.world_task.cancel()
         self.npc_task.cancel()
         self.event_task.cancel()
@@ -90,7 +83,6 @@ class OnePieceAI(commands.Cog):
         self.discussion_task.cancel()
         self.tournament_task.cancel()
         self.feature_reminder_task.cancel()
-
     async def initialize_client(self):
         api_key = (await self.bot.get_shared_api_tokens("openai")).get("api_key")
         if api_key:
@@ -235,6 +227,23 @@ class OnePieceAI(commands.Cog):
                 character['skills']['intelligence'] = min(100, character['skills']['intelligence'] + 1)
             if "talk" in message_content.lower() or "negotiate" in message_content.lower():
                 character['skills']['charisma'] = min(100, character['skills']['charisma'] + 1)
+
+    @commands.command()
+    async def joke(self, ctx):
+        """Tell a One Piece themed joke"""
+        jokes = [
+            "Why did Luffy get lost in the library? He was looking for the One Piece... of literature!",
+            "What do you call a pirate with two eyes, two ears, and two legs? A rookie!",
+            "Why don't the Straw Hats ever get sick? Because they have Chopper on board!",
+            "How does Zoro cut his food? With three knives at once!",
+            "Why did Nami become a navigator? Because she always knows where the money is!",
+            "What's Sanji's favorite type of music? Cook rock!",
+            "Why did the Sea King go to the dentist? To get his Alabasta teeth cleaned!",
+            "How does Buggy the Clown split the bill? He doesn't, he just splits himself!",
+            "Why doesn't Blackbeard ever lose at hide and seek? Because he's always in the dark!",
+            "What's Monkey D. Luffy's favorite exercise? The Gum-Gum Stretch!"
+        ]
+        await ctx.send(random.choice(jokes))
 
     @commands.command()
     async def profile(self, ctx):
