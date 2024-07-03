@@ -31,7 +31,9 @@ class OnePieceMod(commands.Cog):
         self.bot = bot
         self.config = Config.get_conf(self, identifier=1234567890)
         default_guild = {
-            "muted_users": {}
+            "muted_users": {},
+            "restricted_channels": {},
+            "level_5_role_id": None
         }
         self.config.register_guild(**default_guild)
         self.log_channel_id = 1245208777003634698
@@ -299,6 +301,74 @@ class OnePieceMod(commands.Cog):
             if roles_to_add:
                 await user.add_roles(*roles_to_add, reason=f"Restoring roles after unmute: {reason}")
             self.muted_users.pop(user.id, None)
+
+    @commands.command()
+    @checks.admin_or_permissions(manage_channels=True)
+    async def restrict(self, ctx, channel: discord.TextChannel, role: discord.Role):
+        """Restrict a channel to users with a specific role."""
+        async with self.config.guild(ctx.guild).restricted_channels() as restricted:
+            restricted[str(channel.id)] = role.id
+
+        await channel.set_permissions(ctx.guild.default_role, send_messages=False, add_reactions=False)
+        await channel.set_permissions(role, send_messages=True, add_reactions=True)
+
+        await ctx.send(f"🔒 The {channel.mention} has been restricted to members with the {role.name} role.")
+
+    @commands.command()
+    @checks.admin_or_permissions(manage_channels=True)
+    async def unrestrict(self, ctx, channel: discord.TextChannel):
+        """Remove restrictions from a channel."""
+        async with self.config.guild(ctx.guild).restricted_channels() as restricted:
+            if str(channel.id) in restricted:
+                del restricted[str(channel.id)]
+
+        await channel.set_permissions(ctx.guild.default_role, send_messages=None, add_reactions=None)
+        await ctx.send(f"🔓 The restrictions on {channel.mention} have been removed.")
+
+    @commands.command()
+    @checks.admin_or_permissions(manage_roles=True)
+    async def setlevel5(self, ctx, role: discord.Role):
+        """Set the role for level 5 users (for image permissions)."""
+        await self.config.guild(ctx.guild).level_5_role_id.set(role.id)
+        await ctx.send(f"The role for level 5 users has been set to {role.name}.")
+
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        if message.author.bot or not message.guild:
+            return
+
+        # Check if the user is new (less than 24 hours in the server)
+        is_new_user = (datetime.utcnow() - message.author.joined_at) < timedelta(hours=24)
+
+        # Check if the user has the level 5 role
+        level_5_role_id = await self.config.guild(message.guild).level_5_role_id()
+        has_level_5_role = level_5_role_id in [role.id for role in message.author.roles]
+
+        # Filter messages from new users
+        if is_new_user:
+            contains_link = re.search(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', message.content)
+            contains_gif = re.search(r'\b(?:gif|giphy)\b', message.content, re.IGNORECASE)
+            has_attachments = len(message.attachments) > 0
+
+            if contains_link or contains_gif or has_attachments:
+                await message.delete()
+                await message.channel.send(f"{message.author.mention}, new members cannot send links, GIFs, or images for the first 24 hours.", delete_after=10)
+                return
+
+        # Filter images for users without the level 5 role
+        if not has_level_5_role and len(message.attachments) > 0:
+            await message.delete()
+            await message.channel.send(f"{message.author.mention}, you need to be at least level 5 to send images.", delete_after=10)
+            return
+
+        # Check if the channel is restricted
+        restricted_channels = await self.config.guild(message.guild).restricted_channels()
+        if str(message.channel.id) in restricted_channels:
+            required_role_id = restricted_channels[str(message.channel.id)]
+            if required_role_id not in [role.id for role in message.author.roles]:
+                await message.delete()
+                await message.channel.send(f"{message.author.mention}, you don't have permission to send messages in this channel.", delete_after=10)
+                return
             
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
