@@ -230,99 +230,16 @@ class OnePieceInfo(commands.Cog):
         await ctx.send(embed=embed)
 
     @commands.command()
-    async def userinfo(self, ctx, member: discord.Member = None):
-        """Display information about a crewmate (user)."""
-        member = member or ctx.author
+    async def userinfo(self, ctx, *, user: discord.Member = None):
+        """Display user info (themed as a Vivre Card)."""
+        user = user or ctx.author
+        roles = [role.name.replace('@', '@\u200b') for role in user.roles]
         
-        now = datetime.now(timezone.utc)
-        joined_at = member.joined_at.replace(tzinfo=timezone.utc)
-        created_at = member.created_at.replace(tzinfo=timezone.utc)
-        days_on_server = (now - joined_at).days
-        days_on_discord = (now - created_at).days
-        
-        if days_on_server < 7:
-            rank = "🐣 Cabin Boy"
-        elif days_on_server < 30:
-            rank = "🧭 Deckhand"
-        elif days_on_server < 90:
-            rank = "🎭 Quarter Master"
-        elif days_on_server < 180:
-            rank = "🏴‍☠️ First Mate"
-        else:
-            rank = "🦜 Veteran Pirate"
-
-        embed = discord.Embed(title=f"🏴‍☠️ Pirate Profile: {member.name}", color=member.color)
-        embed.set_thumbnail(url=member.avatar.url)
-        
-        # Main Info
-        main_info = (
-            f"**🎭 Pirate Alias:** {member.display_name}\n"
-            f"**🏅 Crew Rank:** {rank}\n"
-            f"**🔢 Pirate ID:** {member.id}\n"
-            f"**🎨 Colors:** {len(member.roles) - 1} roles\n"
-            f"**🏴‍☠️ Top Role:** {member.top_role.mention if len(member.roles) > 1 else 'None'}"
-        )
-        embed.add_field(name="Main Info", value=main_info, inline=True)
-        
-        # Dates
-        dates_info = (
-            f"**🗺️ Joined Crew:** {joined_at.strftime('%B %d, %Y')}\n"
-            f"**⏳ Crew Time:** {days_on_server} days\n"
-            f"**🌊 Sailed Discord:** {created_at.strftime('%B %d, %Y')}\n"
-            f"**⚓ Discord Age:** {days_on_discord} days"
-        )
-        embed.add_field(name="Dates", value=dates_info, inline=True)
-        
-        # Roles
-        roles = [role.mention for role in reversed(member.roles) if role.name != "@everyone"]
-        roles_value = textwrap.shorten(" ".join(roles) if roles else "No roles", width=1024, placeholder="...")
-        embed.add_field(name=f"🎨 Colors of Allegiance ({len(roles)})", value=roles_value, inline=False)
-        
-        # Permissions
-        key_permissions = []
-        if member.guild_permissions.administrator:
-            key_permissions.append("👑 Admiral (Administrator)")
-        if member.guild_permissions.manage_guild:
-            key_permissions.append("🏛️ Fleet Commander (Manage Server)")
-        if member.guild_permissions.manage_roles:
-            key_permissions.append("🎖️ Commodore (Manage Roles)")
-        if member.guild_permissions.manage_channels:
-            key_permissions.append("🗺️ Navigator (Manage Channels)")
-        if member.guild_permissions.manage_messages:
-            key_permissions.append("📜 Scribe (Manage Messages)")
-        if member.guild_permissions.kick_members:
-            key_permissions.append("👢 Bouncer (Kick Members)")
-        if member.guild_permissions.ban_members:
-            key_permissions.append("🚫 Enforcer (Ban Members)")
-        
-        if key_permissions:
-            embed.add_field(name="🔑 Key Permissions", value="\n".join(key_permissions), inline=False)
-        
-        # Status and Activity
-        status_emoji = {
-            discord.Status.online: "🟢",
-            discord.Status.idle: "🟡",
-            discord.Status.dnd: "🔴",
-            discord.Status.offline: "⚫"
-        }
-        status = f"{status_emoji.get(member.status, '⚪')} {str(member.status).capitalize()}"
-        if member.is_on_mobile():
-            status += " (via Den Den Mushi)"
-        
-        if member.activity:
-            if isinstance(member.activity, discord.Game):
-                activity = f"Playing {member.activity.name}"
-            elif isinstance(member.activity, discord.Streaming):
-                activity = f"Streaming {member.activity.name}"
-            elif isinstance(member.activity, discord.Spotify):
-                activity = f"Listening to {member.activity.title} by {member.activity.artist}"
-            else:
-                activity = str(member.activity)
-            embed.add_field(name="⚓ Current Status", value=f"{status}\n{activity}", inline=False)
-        else:
-            embed.add_field(name="⚓ Current Status", value=status, inline=False)
-        
-        embed.set_footer(text="A true nakama, through calm seas and stormy weather!")
+        embed = discord.Embed(title=f"Vivre Card of {user.name}", color=user.color)
+        embed.set_thumbnail(url=user.avatar_url)
+        embed.add_field(name="Joined Crew", value=user.joined_at.strftime("%d %b %Y %H:%M"))
+        embed.add_field(name="Crew Positions", value=", ".join(roles) if len(roles) < 10 else f"{len(roles)} positions")
+        embed.add_field(name="Bounty", value="Coming soon...")  # Placeholder for future bounty system
         
         await ctx.send(embed=embed)
 
