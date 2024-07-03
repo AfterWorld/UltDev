@@ -35,6 +35,7 @@ class OnePieceMod(commands.Cog):
         self.mute_role_id = 808869058476769312  # Pre-set mute role ID
         self.general_chat_id = 425068612542398476
         self.default_mute_time = timedelta(hours=24)  # Default mute time of 24 hours
+        self.muted_users = {}  # Store muted users' roles
         self.ban_messages = [
             ("Looks like you're taking a trip to Impel Down!", "https://tenor.com/view/one-piece-magellan-magellan-one-piece-impel-down-gif-24849283"),
             ("You've been hit by Nami's Clima-Tact!", "https://tenor.com/view/nami-sanji-slap-one-piece-anime-gif-19985101"),
@@ -168,7 +169,13 @@ class OnePieceMod(commands.Cog):
             success_list = []
             for user in users:
                 try:
+                    # Store the user's current roles
+                    self.muted_users[user.id] = [role for role in user.roles if role != ctx.guild.default_role]
+                    
+                    # Remove all roles and add mute role
+                    await user.edit(roles=[])
                     await user.add_roles(mute_role, reason=audit_reason)
+                    
                     success_list.append(user)
                     await modlog.create_case(
                         self.bot,
@@ -205,14 +212,22 @@ class OnePieceMod(commands.Cog):
             return await ctx.send(f"{user.name} is not silenced. They're free to speak!")
 
         try:
+            # Remove mute role
             await user.remove_roles(mute_role, reason=reason)
-            await ctx.send(f"🔊 The Sea Prism effect has worn off. {user.name} can speak again!")
-            await self.log_action(ctx, user, "Unmuted", reason)
+            
+            # Restore original roles
+            if user.id in self.muted_users:
+                await user.add_roles(*self.muted_users[user.id], reason="Restoring roles after unmute")
+                del self.muted_users[user.id]
+            
+            await ctx.send(f"🔊 The Sea Prism effect has worn off. {user.name} can speak again and their roles have been restored!")
+            
+            # We're not logging or creating a case for unmute actions as per your request
+            
         except discord.Forbidden:
             await ctx.send(f"I don't have the authority to remove Sea Prism handcuffs from {user.name}!")
         except discord.HTTPException:
             await ctx.send(f"There was an error trying to un-silence {user.name}. The Sea Kings must be interfering with our Den Den Mushi!")
-
 async def setup(bot):
     global original_commands
     cog = OnePieceMod(bot)
