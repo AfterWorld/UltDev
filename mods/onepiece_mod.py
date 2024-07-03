@@ -252,6 +252,48 @@ class OnePieceMod(commands.Cog):
         if mute_role in before.roles and mute_role not in after.roles:
             # The mute role was manually removed
             await self._restore_roles(after, "Manual unmute detected")
+
+    @commands.command()
+    @checks.admin_or_permissions(manage_guild=True)
+    async def send_staff_announcement(self, ctx, channel: discord.TextChannel = None):
+        """Send the staff announcement about updated moderation commands to the specified channel."""
+        if channel is None:
+            channel = ctx.channel
+
+        announcement = (
+            "🚨 **Attention All Crew Members!** 🏴‍☠️\n\n"
+            "Captain's orders! We've upgraded our ship's systems to better maintain order and discipline among our crew. "
+            "Here are the new and improved moderation commands:\n\n"
+            "1. **Muting** (Sea Prism Handcuffs):\n"
+            "   - Command: `.mute <user(s)> [duration] [reason]`\n"
+            "   - Duration can be specified in minutes (m), hours (h), days (d), or weeks (w).\n"
+            "   - If no duration is given, the default is 24 hours.\n"
+            "   - Example: `.mute @LuffyFan123 2h Excessive shouting about becoming Pirate King`\n\n"
+            "2. **Kicking** (Walking the Plank):\n"
+            "   - Command: `.kick <user> [reason]`\n"
+            "   - Example: `.kick @ZoroStan456 Sleeping on watch duty again`\n\n"
+            "3. **Banning** (Banishment to Impel Down):\n"
+            "   - Command: `.ban <user> [delete_days] [reason]`\n"
+            "   - `delete_days` specifies how many days of messages to delete (default is 1).\n"
+            "   - Example: `.ban @SanjiSimp789 7 Harassing female crew members`\n\n"
+            "4. **Unmuting** (Removing Sea Prism Handcuffs):\n"
+            "   - Command: `.unmute <user> [reason]`\n"
+            "   - Example: `.unmute @ChopperLover101 Has learned their lesson about proper medical practices`\n\n"
+            "Remember, with great power comes great responsibility. Use these commands wisely and fairly. "
+            "We're not the World Government, after all!\n\n"
+            "If you have any questions about these new features, please consult with your division commander "
+            "or send a message in a bottle to the tech support Den Den Mushi.\n\n"
+            "Stay vigilant and keep our seas safe!\n\n"
+            "- Your Friendly Neighborhood Sunny Go Support System 🌞"
+        )
+
+        try:
+            await channel.send(announcement)
+            await ctx.send(f"Staff announcement sent to {channel.mention}!")
+        except discord.Forbidden:
+            await ctx.send("I don't have permission to send messages in that channel!")
+        except discord.HTTPException:
+            await ctx.send("There was an error sending the announcement. Please try again later.")
             
 async def setup(bot):
     global original_commands
