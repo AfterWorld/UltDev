@@ -3,6 +3,7 @@ from redbot.core import commands, checks, modlog
 from redbot.core.bot import Red
 import asyncio
 import re
+import random
 
 original_commands = {}
 
@@ -11,7 +12,20 @@ class OnePieceMod(commands.Cog):
         self.bot = bot
         self.log_channel_id = 1245208777003634698
         self.mute_role_id = 808869058476769312
+        self.general_chat_id = 425068612542398476  # ID of the general chat channel
         self.muted_users = {}  # Store muted users' roles
+        self.ban_messages = [
+            ("Looks like you're taking a trip to Impel Down!", "https://media.giphy.com/media/rGXHcVMyhQ9X78mVKL/giphy.gif"),
+            ("You've been hit by Nami's Clima-Tact!", "https://media.giphy.com/media/iqnrguQzA3Ypr8jz5t/giphy.gif"),
+            ("Zoro got lost again, and somehow you got banned!", "https://media.giphy.com/media/9qpSMEeTZDpgk/giphy.gif"),
+            ("You've been Gum-Gum Banned!", "https://media.giphy.com/media/6rBrYiAC6u6GK9WwT3/giphy.gif"),
+            ("Sanji's kicking you out of the crew!", "https://media.giphy.com/media/9bFtI7IPw9tMQ/giphy.gif"),
+            ("You've been caught in Trafalgar Law's ROOM!", "https://media.giphy.com/media/SLdOGqZDgJN1C/giphy.gif"),
+            ("Blackbeard's darkness has swallowed you!", "https://media.giphy.com/media/xYzkV4uf3FKiQ/giphy.gif"),
+            ("You've been frozen by Aokiji's Ice Age!", "https://media.giphy.com/media/5rmXvBMfdETZX6nWXs/giphy.gif"),
+            ("Buggy's Chop-Chop Fruit sent you flying!", "https://media.giphy.com/media/23BkoSaR8RcCQ/giphy.gif"),
+            ("Big Mom's Soul-Soul Fruit has taken your lifespan... and your server access!", "https://media.giphy.com/media/3oKIPbKcNBkHrpZDtK/giphy.gif")
+        ]
 
     async def log_action(self, ctx, member: discord.Member, action: str, reason: str):
         log_channel = self.bot.get_channel(self.log_channel_id)
@@ -61,7 +75,21 @@ class OnePieceMod(commands.Cog):
                 # Use the standard delete_message_days parameter
                 await ctx.guild.ban(member, reason=reason, delete_message_days=delete_days)
 
-            await ctx.send(f"⛓️ {member.name} has been banished to Impel Down for their crimes against the crew!")
+            # Select a random ban message and GIF
+            ban_message, ban_gif = random.choice(self.ban_messages)
+            
+            embed = discord.Embed(title="⛓️ Pirate Banished! ⛓️", description=f"{member.name} has been banished to Impel Down!", color=0xff0000)
+            embed.add_field(name="Reason", value=reason, inline=False)
+            embed.add_field(name="Ban Message", value=ban_message, inline=False)
+            embed.set_image(url=ban_gif)
+            
+            # Send the ban message to the general chat
+            general_chat = self.bot.get_channel(self.general_chat_id)
+            if general_chat:
+                await general_chat.send(embed=embed)
+            else:
+                await ctx.send("Couldn't find the general chat channel. Posting here instead:", embed=embed)
+            
             await self.log_action(ctx, member, f"Banned (messages deleted: {'all' if delete_all else f'{delete_days} days'})", reason)
             
             case = await modlog.create_case(
