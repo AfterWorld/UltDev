@@ -340,6 +340,17 @@ class OnePieceMod(commands.Cog):
         # Check if the user is new (less than 24 hours in the server)
         is_new_user = (datetime.utcnow() - message.author.joined_at) < timedelta(hours=24)
 
+        # More comprehensive URL detection
+        contains_url = re.search(r'(https?://\S+)', message.content, re.IGNORECASE) or message.content.startswith('http')
+
+        # Check for Discord auto-embedded links
+        has_embeds = len(message.embeds) > 0
+
+        if is_new_user and (contains_url or has_embeds):
+            await message.delete()
+            await self.send_themed_message(message.channel, message.author, "new_user_link")
+            return
+
         # Get the minimum image role
         minimum_image_role_id = await self.config.guild(message.guild).minimum_image_role_id()
         if minimum_image_role_id is None:
@@ -352,19 +363,11 @@ class OnePieceMod(commands.Cog):
         # Check if the user has the minimum role or higher
         has_permission = any(role >= minimum_image_role for role in message.author.roles)
 
-        # Filter messages from new users
-        if is_new_user:
-            contains_link = re.search(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', message.content)
-            if contains_link:
-                await message.delete()
-                await self.send_themed_message(message.channel, message.author, "new_user_link")
-                return
-
         # Filter images and GIFs for users without the minimum role or higher
         if not has_permission:
             contains_gif = re.search(r'\b(?:gif|giphy)\b', message.content, re.IGNORECASE)
             has_attachments = len(message.attachments) > 0
-            if contains_gif or has_attachments:
+            if contains_gif or has_attachments or has_embeds:
                 await message.delete()
                 await self.send_themed_message(message.channel, message.author, "low_rank_image", minimum_image_role)
                 return
@@ -382,19 +385,19 @@ class OnePieceMod(commands.Cog):
     async def send_themed_message(self, channel, user, message_type, role=None):
         messages = {
             "new_user_link": [
-                f"Whoa there, {user.mention}! You're still a cabin boy on this ship. No sending treasure maps (links) until you've sailed with us for at least 24 hours!",
-                f"Easy, {user.mention}! New pirates aren't allowed to share mysterious scrolls (links) until they've proven their loyalty for 24 hours!",
-                f"Hold your Sea Kings, {user.mention}! You need to be part of the crew for 24 hours before you can share any Grand Line routes (links)!"
+                f"Avast ye, {user.mention}! New crew members can't be sharing treasure maps (links) until they've proven their sea legs for 24 hours!",
+                f"Shiver me timbers, {user.mention}! Ye can't be posting mysterious scrolls (links) 'til ye've sailed with us for a full day!",
+                f"Blimey, {user.mention}! No sharing secret routes (links) 'til ye've been part of the crew for 24 hours! Them's the rules of the sea!"
             ],
             "low_rank_image": [
-                f"Yohoho! {user.mention}, your bounty isn't high enough to share wanted posters (images) yet! You need to reach the rank of {role.name} first!",
-                f"Oi, {user.mention}! Only pirates ranked {role.name} or higher can share their adventure snapshots (images). Keep sailing and level up!",
-                f"Shiver me timbers, {user.mention}! You need to be at least a {role.name} to show off your loot (images). Raise your pirate flag higher!"
+                f"Arr, {user.mention}! Yer bounty's not high enough to be sharing wanted posters (images) yet! Ye need to reach the rank of {role.name} first!",
+                f"Hold yer seahorses, {user.mention}! Only pirates ranked {role.name} or higher can show off their loot (images). Keep plunderin' and level up!",
+                f"Yo ho ho, {user.mention}! Ye need to be at least a {role.name} to unfurl yer map (share images). Hoist yer Jolly Roger higher!"
             ],
             "restricted_channel": [
-                f"Arr, {user.mention}! This be a restricted area of the ship. Only crew members ranked {role.name} or higher can enter!",
-                f"Belay that, {user.mention}! This channel is for {role.name}s and above. Swab the deck and come back when you've earned your stripes!",
-                f"Avast ye, {user.mention}! This be the captain's quarters ({role.name}s and above). You'll walk the plank if ye try to enter without permission!"
+                f"Gaaar! {user.mention}, this be a restricted part of the ship. Only crew members ranked {role.name} or higher can enter these waters!",
+                f"Avast, {user.mention}! This channel be for {role.name}s and above. Swab the poop deck and come back when ye've earned yer stripes!",
+                f"Blimey, {user.mention}! This be the captain's quarters ({role.name}s and above). Ye'll be keel-hauled if ye try to enter without permission!"
             ]
         }
 
