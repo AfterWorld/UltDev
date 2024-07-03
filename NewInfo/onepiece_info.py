@@ -234,8 +234,9 @@ class OnePieceInfo(commands.Cog):
         """Display user info (themed as a Vivre Card)."""
         user = user or ctx.author
         
-        # Calculate account age
-        account_age = (datetime.utcnow() - user.created_at).days
+        # Calculate account age using offset-aware datetimes
+        now = datetime.now(timezone.utc)
+        account_age = (now - user.created_at).days
 
         # Get roles, excluding @everyone
         roles = [role.name for role in user.roles if role.name != "@everyone"]
