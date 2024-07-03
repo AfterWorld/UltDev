@@ -347,19 +347,19 @@ class OnePieceMod(commands.Cog):
         # Filter messages from new users
         if is_new_user:
             contains_link = re.search(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', message.content)
-            contains_gif = re.search(r'\b(?:gif|giphy)\b', message.content, re.IGNORECASE)
-            has_attachments = len(message.attachments) > 0
-
-            if contains_link or contains_gif or has_attachments:
+            if contains_link:
                 await message.delete()
-                await message.channel.send(f"{message.author.mention}, new members cannot send links, GIFs, or images for the first 24 hours.", delete_after=10)
+                await message.channel.send(f"{message.author.mention}, new members cannot send links for the first 24 hours.", delete_after=10)
                 return
 
-        # Filter images for users without the level 5 role
-        if not has_level_5_role and len(message.attachments) > 0:
-            await message.delete()
-            await message.channel.send(f"{message.author.mention}, you need to be at least level 5 to send images.", delete_after=10)
-            return
+        # Filter images and GIFs for users without the level 5 role
+        if not has_level_5_role:
+            contains_gif = re.search(r'\b(?:gif|giphy)\b', message.content, re.IGNORECASE)
+            has_attachments = len(message.attachments) > 0
+            if contains_gif or has_attachments:
+                await message.delete()
+                await message.channel.send(f"{message.author.mention}, you need to be at least level 5 to send images or GIFs.", delete_after=10)
+                return
 
         # Check if the channel is restricted
         restricted_channels = await self.config.guild(message.guild).restricted_channels()
