@@ -33,7 +33,7 @@ class OnePieceMod(commands.Cog):
         default_guild = {
             "muted_users": {},
             "restricted_channels": {},
-            "level_5_role_id": None
+            "minimum_image_role_id": None
         }
         self.config.register_guild(**default_guild)
         self.log_channel_id = 1245208777003634698
@@ -312,7 +312,7 @@ class OnePieceMod(commands.Cog):
         await channel.set_permissions(ctx.guild.default_role, send_messages=False, add_reactions=False)
         await channel.set_permissions(role, send_messages=True, add_reactions=True)
 
-        await ctx.send(f"🔒 The {channel.mention} has been restricted to members with the {role.name} role.")
+        await ctx.send(f"🔒 The {channel.mention} has been restricted to members with the {role.name} role or higher.")
 
     @commands.command()
     @checks.admin_or_permissions(manage_channels=True)
@@ -328,9 +328,9 @@ class OnePieceMod(commands.Cog):
     @commands.command()
     @checks.admin_or_permissions(manage_roles=True)
     async def setlevel5(self, ctx, role: discord.Role):
-        """Set the role for level 5 users (for image permissions)."""
-        await self.config.guild(ctx.guild).level_5_role_id.set(role.id)
-        await ctx.send(f"The role for level 5 users has been set to {role.name}.")
+        """Set the minimum role for image and GIF permissions."""
+        await self.config.guild(ctx.guild).minimum_image_role_id.set(role.id)
+        await ctx.send(f"The minimum role for sending images and GIFs has been set to {role.name}.")
 
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -340,9 +340,17 @@ class OnePieceMod(commands.Cog):
         # Check if the user is new (less than 24 hours in the server)
         is_new_user = (datetime.utcnow() - message.author.joined_at) < timedelta(hours=24)
 
-        # Check if the user has the level 5 role
-        level_5_role_id = await self.config.guild(message.guild).level_5_role_id()
-        has_level_5_role = level_5_role_id in [role.id for role in message.author.roles]
+        # Get the minimum image role
+        minimum_image_role_id = await self.config.guild(message.guild).minimum_image_role_id()
+        if minimum_image_role_id is None:
+            return  # If no minimum role is set, don't apply any restrictions
+
+        minimum_image_role = message.guild.get_role(minimum_image_role_id)
+        if minimum_image_role is None:
+            return  # If the role doesn't exist anymore, don't apply any restrictions
+
+        # Check if the user has the minimum role or higher
+        has_permission = any(role >= minimum_image_role for role in message.author.roles)
 
         # Filter messages from new users
         if is_new_user:
@@ -352,20 +360,21 @@ class OnePieceMod(commands.Cog):
                 await message.channel.send(f"{message.author.mention}, new members cannot send links for the first 24 hours.", delete_after=10)
                 return
 
-        # Filter images and GIFs for users without the level 5 role
-        if not has_level_5_role:
+        # Filter images and GIFs for users without the minimum role or higher
+        if not has_permission:
             contains_gif = re.search(r'\b(?:gif|giphy)\b', message.content, re.IGNORECASE)
             has_attachments = len(message.attachments) > 0
             if contains_gif or has_attachments:
                 await message.delete()
-                await message.channel.send(f"{message.author.mention}, you need to be at least level 5 to send images or GIFs.", delete_after=10)
+                await message.channel.send(f"{message.author.mention}, you need to be at least {minimum_image_role.name} to send images or GIFs.", delete_after=10)
                 return
 
         # Check if the channel is restricted
         restricted_channels = await self.config.guild(message.guild).restricted_channels()
         if str(message.channel.id) in restricted_channels:
             required_role_id = restricted_channels[str(message.channel.id)]
-            if required_role_id not in [role.id for role in message.author.roles]:
+            required_role = message.guild.get_role(required_role_id)
+            if required_role and not any(role >= required_role for role in message.author.roles):
                 await message.delete()
                 await message.channel.send(f"{message.author.mention}, you don't have permission to send messages in this channel.", delete_after=10)
                 return
