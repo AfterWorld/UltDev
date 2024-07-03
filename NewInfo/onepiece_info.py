@@ -233,14 +233,52 @@ class OnePieceInfo(commands.Cog):
     async def userinfo(self, ctx, *, user: discord.Member = None):
         """Display user info (themed as a Vivre Card)."""
         user = user or ctx.author
-        roles = [role.name.replace('@', '@\u200b') for role in user.roles]
         
+        # Fetch user data from config
+        user_data = await self.config.member(user).all()
+
+        # Calculate account age
+        account_age = (datetime.utcnow() - user.created_at).days
+
+        # Get roles, excluding @everyone
+        roles = [role.name for role in user.roles if role.name != "@everyone"]
+        
+        # Determine user's highest role (crew position)
+        highest_role = user.top_role.name if len(user.roles) > 1 else "Cabin Boy/Girl"
+
+        # One Piece themed status
+        op_status = {
+            discord.Status.online: "On an Adventure",
+            discord.Status.idle: "Taking a Nap",
+            discord.Status.dnd: "In a Fierce Battle",
+            discord.Status.offline: "Lost at Sea"
+        }
+
         embed = discord.Embed(title=f"Vivre Card of {user.name}", color=user.color)
-        embed.set_thumbnail(url=user.display_avatar.url)  # Updated to use display_avatar
-        embed.add_field(name="Joined Crew", value=user.joined_at.strftime("%d %b %Y %H:%M"))
-        embed.add_field(name="Crew Positions", value=", ".join(roles) if len(roles) < 10 else f"{len(roles)} positions")
-        embed.add_field(name="Bounty", value="Coming soon...")  # Placeholder for future bounty system
+        embed.set_thumbnail(url=user.display_avatar.url)
         
+        embed.add_field(name="🏴‍☠️ Pirate Name", value=user.name, inline=True)
+        embed.add_field(name="🔢 Pirate ID", value=user.discriminator, inline=True)
+        
+        embed.add_field(name="⚓ Joined Crew", value=user.joined_at.strftime("%d %b %Y"), inline=True)
+        embed.add_field(name="🎂 Pirate Age", value=f"{account_age} days", inline=True)
+        
+        embed.add_field(name="🧭 Current Status", value=op_status.get(user.status, "Unknown"), inline=True)
+        embed.add_field(name="🏅 Highest Position", value=highest_role, inline=True)
+        
+        if roles:
+            embed.add_field(name="🎭 Crew Positions", value=", ".join(roles) if len(roles) < 10 else f"{len(roles)} positions", inline=False)
+        
+        # Add a random One Piece quote
+        quotes = [
+            "The sea is vast. Someday, without fail, your nakama will appear!",
+            "Only those who have suffered long can see the light within the shadows.",
+            "If you don't take risks, you can't create a future!",
+            "When do you think people die? When they are shot in the heart with a pistol? No. When they are ravaged by an uncurable disease? No. When they drink a soup made from poisonous mushrooms? No! It's when they are forgotten!",
+            "I don't want to conquer anything. I just think the guy with the most freedom in this whole ocean... that's the Pirate King!"
+        ]
+        embed.set_footer(text=random.choice(quotes))
+
         await ctx.send(embed=embed)
 
 async def setup(bot: Red):
