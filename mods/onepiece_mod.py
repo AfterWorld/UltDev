@@ -52,12 +52,16 @@ class OnePieceMod(commands.Cog):
             ("Big Mom's Soul-Soul Fruit has taken your lifespan... and your server access!", "https://tenor.com/view/%E5%A4%A7%E5%AA%BDauntie-aunt-granny-grandmom-gif-12576437")
         ]
 
-    async def log_action(self, ctx, member: discord.Member, action: str, reason: str):
+    async def log_action(self, ctx, member: discord.Member, action: str, reason: str, moderator: discord.Member = None, jump_url: str = None):
         log_channel = self.bot.get_channel(self.log_channel_id)
         if log_channel:
             log_message = f"- {member.name} (ID: {member.id})\n- {action}\n- Reason: {reason}"
+            if moderator:
+                log_message += f"\n- Actioned by: {moderator.name} (ID: {moderator.id})"
+            if jump_url:
+                log_message += f"\n- [Jump to message]({jump_url})"
             await log_channel.send(log_message)
-
+            
     @commands.command()
     @checks.admin_or_permissions(kick_members=True)
     async def kick(self, ctx, member: discord.Member, *, reason: str = "Disrespecting the captain's orders!"):
@@ -138,19 +142,7 @@ class OnePieceMod(commands.Cog):
         *,
         reason: str = None
     ):
-        """Silence crew members with Sea Prism handcuffs.
-
-        <users...> is a space separated list of usernames, ID's, or mentions.
-        [time_and_reason] is the time to mute for and/or the reason.
-        Time can be specified as a number followed by m(inutes), h(ours), d(ays), or w(eeks).
-        If no time unit is given, minutes will be assumed.
-        If no time is specified, the mute will last for 24 hours.
-
-        Examples:
-        `[p]mute @member1 @member2 10m Disrupting crew meeting`
-        `[p]mute @member1 1d Stealing food from the galley`
-        `[p]mute @member1 Insubordination`
-        """
+        """Silence crew members with Sea Prism handcuffs."""
         if not users:
             return await ctx.send_help()
         if ctx.me in users:
@@ -204,10 +196,10 @@ class OnePieceMod(commands.Cog):
                             reason,
                             until=until,
                         )
-                        await self.log_action(ctx, user, f"Muted{time_str}", reason)
+                        await self.log_action(ctx, user, f"Muted{time_str}", reason, moderator=ctx.author, jump_url=ctx.message.jump_url)
                         
                         # Schedule unmute
-                        self.bot.loop.create_task(self.schedule_unmute(user, duration))
+                        self.bot.loop.create_task(self.schedule_unmute(ctx.guild, user, duration))
                     except discord.Forbidden:
                         await ctx.send(f"I don't have the authority to silence {user.name}!")
                     except discord.HTTPException:
@@ -219,6 +211,11 @@ class OnePieceMod(commands.Cog):
             else:
                 msg = f"{humanize_list([f'`{u.name}`' for u in success_list])} have been silenced with Sea Prism handcuffs{time_str}."
             await ctx.send(msg)
+
+    async def schedule_unmute(self, guild: discord.Guild, user: discord.Member, duration: timedelta):
+        """Schedule an unmute operation."""
+        await asyncio.sleep(duration.total_seconds())
+        await self.unmute(await self.bot.get_context(await self.bot.get_message(guild, user.id)), user)
 
     @commands.command()
     @checks.admin_or_permissions(manage_roles=True)
@@ -242,14 +239,13 @@ class OnePieceMod(commands.Cog):
                 mute_info = muted_users.pop(str(user.id), None)
             
             message = f"🔊 The Sea Prism effect has worn off. {user.name} can speak again and their roles have been restored!"
+            await ctx.send(message)
             
             if mute_info:
                 moderator = ctx.guild.get_member(mute_info['moderator'])
                 mod_name = moderator.name if moderator else "Unknown moderator"
-                message += f"\nThey were muted by {mod_name} for: {mute_info['reason']}"
-                message += f"\nMute command: [Jump to message]({mute_info['jump_url']})"
-            
-            await ctx.send(message)
+                log_message = f"Unmuted: {user.name} (ID: {user.id})\nThey were muted by {mod_name} for: {mute_info['reason']}\nMute command: [Jump to message]({mute_info['jump_url']})"
+                await self.log_action(ctx, user, "Unmuted", reason, moderator=ctx.author, jump_url=mute_info['jump_url'])
             
         except discord.Forbidden:
             await ctx.send(f"I don't have the authority to remove Sea Prism handcuffs from {user.name}!")
