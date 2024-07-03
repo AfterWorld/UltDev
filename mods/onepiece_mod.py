@@ -1,20 +1,38 @@
 import discord
-from redbot.core import commands, checks, modlog
+from redbot.core import commands, checks, modlog, Config
+from redbot.core.utils.chat_formatting import humanize_list, humanize_timedelta
+from redbot.core.utils.mod import get_audit_reason
 from redbot.core.bot import Red
+from datetime import timedelta, datetime
 import asyncio
 import re
 import random
-import datetime
 
-original_commands = {}
+class MuteTime(commands.Converter):
+    async def convert(self, ctx, argument):
+        args = argument.split()
+        if not args:
+            return {"duration": None, "reason": None}
+        time_converter = commands.get_converter(commands.TimedeltaConverter)
+        try:
+            time = await time_converter.convert(ctx, args[0])
+            if len(args) > 1:
+                reason = " ".join(args[1:])
+            else:
+                reason = None
+        except commands.BadArgument:
+            reason = argument
+            time = None
+        return {"duration": time, "reason": reason}
 
 class OnePieceMod(commands.Cog):
     def __init__(self, bot: Red):
         self.bot = bot
+        self.config = Config.get_conf(self, identifier=1234567890)
         self.log_channel_id = 1245208777003634698
-        self.mute_role_id = 808869058476769312
-        self.general_chat_id = 425068612542398476  # ID of the general chat channel
-        self.muted_users = {}  # Store muted users' roles
+        self.mute_role_id = 808869058476769312  # Pre-set mute role ID
+        self.general_chat_id = 425068612542398476
+        self.default_mute_time = timedelta(hours=24)  # Default mute time of 24 hours
         self.ban_messages = [
             ("Looks like you're taking a trip to Impel Down!", "https://tenor.com/view/one-piece-magellan-magellan-one-piece-impel-down-gif-24849283"),
             ("You've been hit by Nami's Clima-Tact!", "https://tenor.com/view/nami-sanji-slap-one-piece-anime-gif-19985101"),
@@ -44,7 +62,7 @@ class OnePieceMod(commands.Cog):
             await self.log_action(ctx, member, "Kicked", reason)
             
             case = await modlog.create_case(
-                ctx.bot, ctx.guild, ctx.message.created_at, action_type="kick",
+                self.bot, ctx.guild, ctx.message.created_at, action_type="kick",
                 user=member, moderator=ctx.author, reason=reason
             )
             if case:
@@ -76,11 +94,25 @@ class OnePieceMod(commands.Cog):
                 # Use the standard delete_message_days parameter
                 await ctx.guild.ban(member, reason=reason, delete_message_days=delete_days)
 
-            await ctx.send(f"⛓️ {member.name} has been banished to Impel Down for their crimes against the crew!")
+            # Select a random ban message and GIF
+            ban_message, ban_gif = random.choice(self.ban_messages)
+            
+            embed = discord.Embed(title="⛓️ Pirate Banished! ⛓️", description=f"{member.name} has been banished to Impel Down!", color=0xff0000)
+            embed.add_field(name="Reason", value=reason, inline=False)
+            embed.add_field(name="Ban Message", value=ban_message, inline=False)
+            embed.set_image(url=ban_gif)
+            
+            # Send the ban message to the general chat
+            general_chat = self.bot.get_channel(self.general_chat_id)
+            if general_chat:
+                await general_chat.send(embed=embed)
+            else:
+                await ctx.send("Couldn't find the general chat channel. Posting here instead:", embed=embed)
+            
             await self.log_action(ctx, member, f"Banned (messages deleted: {'all' if delete_all else f'{delete_days} days'})", reason)
             
             case = await modlog.create_case(
-                ctx.bot, ctx.guild, ctx.message.created_at, action_type="ban",
+                self.bot, ctx.guild, ctx.message.created_at, action_type="ban",
                 user=member, moderator=ctx.author, reason=reason
             )
             if case:
@@ -92,117 +124,95 @@ class OnePieceMod(commands.Cog):
 
     @commands.command()
     @checks.admin_or_permissions(manage_roles=True)
-    async def mute(self, ctx, member: discord.Member, *, args: str = ""):
-        """Silence a crew member with Sea Prism handcuffs. Usage: .mute @member [duration] [reason]"""
+    async def mute(
+        self,
+        ctx: commands.Context,
+        users: commands.Greedy[discord.Member],
+        *,
+        time_and_reason: MuteTime = {},
+    ):
+        """Silence crew members with Sea Prism handcuffs.
+
+        <users...> is a space separated list of usernames, ID's, or mentions.
+        [time_and_reason] is the time to mute for and reason. Time is
+        any valid time length such as `30 minutes` or `2 days`. If nothing
+        is provided the mute will last for 24 hours.
+
+        Examples:
+        `[p]mute @member1 @member2 5 hours Disrupting crew meeting`
+        `[p]mute @member1 3 days Stealing food from the galley`
+        `[p]mute @member1 Insubordination`
+        """
+        if not users:
+            return await ctx.send_help()
+        if ctx.me in users:
+            return await ctx.send("You cannot silence the ship's Den Den Mushi!")
+        if ctx.author in users:
+            return await ctx.send("You cannot silence yourself with Sea Prism handcuffs!")
+
         mute_role = ctx.guild.get_role(self.mute_role_id)
         if not mute_role:
-            await ctx.send("The Mute role doesn't exist! We need to craft some Sea Prism handcuffs first.")
-            return
+            return await ctx.send("The Sea Prism handcuffs (mute role) haven't been crafted yet!")
 
-        duration = None
-        reason = "Speaking out of turn during a crew meeting!"
+        async with ctx.typing():
+            duration = time_and_reason.get("duration", self.default_mute_time)
+            reason = time_and_reason.get("reason", "No reason provided")
+            until = ctx.message.created_at + (duration or self.default_mute_time)
+            time_str = f" for {humanize_timedelta(timedelta=duration or self.default_mute_time)}"
 
-        # Parse duration and reason
-        duration_match = re.match(r'(\d+)([mhd])', args)
-        if duration_match:
-            duration = duration_match.group(0)
-            reason = args[len(duration):].strip() or reason
-        else:
-            reason = args or reason
+            author = ctx.message.author
+            guild = ctx.guild
+            audit_reason = get_audit_reason(author, reason)
+            success_list = []
+            for user in users:
+                try:
+                    await user.add_roles(mute_role, reason=audit_reason)
+                    success_list.append(user)
+                    await modlog.create_case(
+                        self.bot,
+                        guild,
+                        ctx.message.created_at,
+                        "smute",
+                        user,
+                        author,
+                        reason,
+                        until=until,
+                    )
+                    await self.log_action(ctx, user, f"Muted{time_str}", reason)
+                except discord.Forbidden:
+                    await ctx.send(f"I don't have the authority to silence {user.name}!")
+                except discord.HTTPException:
+                    await ctx.send(f"There was an error trying to silence {user.name}. The Sea Kings must be interfering with our Den Den Mushi!")
 
-        try:
-            # Store the user's current roles
-            self.muted_users[member.id] = [role for role in member.roles if role != ctx.guild.default_role]
-
-            # Remove all roles and add mute role
-            await member.edit(roles=[])
-            await member.add_roles(mute_role, reason=reason)
-            
-            await ctx.send(f"🔇 {member.name} has been silenced with Sea Prism handcuffs and stripped of all roles!")
-            
-            if duration:
-                duration_seconds = self.parse_duration(duration)
-                await self.log_action(ctx, member, f"Muted for {duration}", reason)
-                await asyncio.sleep(duration_seconds)
-                await self.unmute(ctx, member)
+        if success_list:
+            if len(success_list) == 1:
+                msg = f"{success_list[0].name} has been silenced with Sea Prism handcuffs{time_str}."
             else:
-                await self.log_action(ctx, member, "Muted indefinitely", reason)
-
-            # Create a case using the generic "moderation" action type
-            case = await modlog.create_case(
-                ctx.bot, ctx.guild, ctx.message.created_at, action_type="moderation",
-                user=member, moderator=ctx.author, reason=f"Muted: {reason}"
-            )
-            if case:
-                await ctx.send(f"The incident has been recorded in the ship's log. Case number: {case.case_number}")
-
-        except discord.Forbidden:
-            await ctx.send("I don't have the authority to use Sea Prism handcuffs on that crew member!")
-        except discord.HTTPException:
-            await ctx.send("There was an error while trying to silence that crew member. The Sea Kings must be interfering with our Den Den Mushi!")
+                msg = f"{humanize_list([f'`{u.name}`' for u in success_list])} have been silenced with Sea Prism handcuffs{time_str}."
+            await ctx.send(msg)
 
     @commands.command()
     @checks.admin_or_permissions(manage_roles=True)
-    async def unmute(self, ctx, member: discord.Member, *, reason: str = "Sea Prism effect wore off"):
+    async def unmute(self, ctx: commands.Context, user: discord.Member, *, reason: str = "Sea Prism effect wore off"):
         """Remove Sea Prism handcuffs from a crew member."""
         mute_role = ctx.guild.get_role(self.mute_role_id)
         if not mute_role:
-            await ctx.send("The Mute role doesn't exist! We can't remove non-existent Sea Prism handcuffs.")
-            return
+            return await ctx.send("The Sea Prism handcuffs (mute role) don't exist!")
 
-        if mute_role not in member.roles:
-            await ctx.send(f"{member.name} is not muted. They're free to speak!")
-            return
+        if mute_role not in user.roles:
+            return await ctx.send(f"{user.name} is not silenced. They're free to speak!")
 
         try:
-            # Remove mute role
-            await member.remove_roles(mute_role, reason=reason)
-            
-            # Restore original roles
-            if member.id in self.muted_users:
-                await member.add_roles(*self.muted_users[member.id], reason="Restoring roles after unmute")
-                del self.muted_users[member.id]
-            
-            await ctx.send(f"🔊 The Sea Prism effect has worn off. {member.name} can speak again and their roles have been restored!")
-
-            # We're not logging or creating a case for unmute actions as per your request
-
+            await user.remove_roles(mute_role, reason=reason)
+            await ctx.send(f"🔊 The Sea Prism effect has worn off. {user.name} can speak again!")
+            await self.log_action(ctx, user, "Unmuted", reason)
         except discord.Forbidden:
-            await ctx.send("I don't have the authority to remove Sea Prism handcuffs from that crew member!")
+            await ctx.send(f"I don't have the authority to remove Sea Prism handcuffs from {user.name}!")
         except discord.HTTPException:
-            await ctx.send("There was an error while trying to unmute that crew member. The Sea Kings must be interfering with our Den Den Mushi!")
-
-    def parse_duration(self, duration: str) -> int:
-        """Parse duration string into seconds."""
-        value = int(duration[:-1])
-        unit = duration[-1]
-        if unit == 'm':
-            return value * 60
-        elif unit == 'h':
-            return value * 3600
-        elif unit == 'd':
-            return value * 86400
-        else:
-            return 0
+            await ctx.send(f"There was an error trying to un-silence {user.name}. The Sea Kings must be interfering with our Den Den Mushi!")
 
 async def setup(bot):
-    global original_commands
-    cog = OnePieceMod(bot)
-
-    command_names = ["kick", "ban", "mute", "unmute"]
-    for cmd_name in command_names:
-        original_cmd = bot.get_command(cmd_name)
-        if original_cmd:
-            original_commands[cmd_name] = original_cmd
-            bot.remove_command(cmd_name)
-
-    await bot.add_cog(cog)
+    await bot.add_cog(OnePieceMod(bot))
 
 async def teardown(bot):
-    global original_commands
-    for cmd_name, cmd in original_commands.items():
-        if bot.get_command(cmd_name):
-            bot.remove_command(cmd_name)
-        if cmd:
-            bot.add_command(cmd)
-    original_commands.clear()
+    await bot.remove_cog("OnePieceMod")
