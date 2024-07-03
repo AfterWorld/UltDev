@@ -241,6 +241,16 @@ class OnePieceMod(commands.Cog):
                 msg = f"{humanize_list([f'`{u.name}`' for u in success_list])} have been banished to the Void Century{time_str}."
             await ctx.send(msg)
 
+    async def schedule_unmute(self, guild: discord.Guild, user: discord.Member, duration: timedelta):
+        """Schedule an unmute operation."""
+        await asyncio.sleep(duration.total_seconds())
+        
+        # Check if the user is still muted
+        mute_role = guild.get_role(self.mute_role_id)
+        if mute_role and mute_role in user.roles:
+            ctx = await self.bot.get_context(await self.bot.get_message(guild, user.id))
+            await self.unmute(ctx, user, reason="Scheduled unmute: Void Century banishment has ended")
+
     @commands.command()
     @checks.admin_or_permissions(manage_roles=True)
     async def unmute(self, ctx: commands.Context, user: discord.Member, *, reason: str = "Void Century banishment has ended"):
