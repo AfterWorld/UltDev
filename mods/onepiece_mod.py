@@ -138,11 +138,22 @@ class OnePieceMod(commands.Cog):
         self,
         ctx: commands.Context,
         users: commands.Greedy[discord.Member],
-        time_and_reason: MuteTime,
         *,
-        reason: str = None
+        time_and_reason: str = None
     ):
-        """Silence crew members with Sea Prism handcuffs."""
+        """Silence crew members with Sea Prism handcuffs.
+
+        <users...> is a space separated list of usernames, ID's, or mentions.
+        [time_and_reason] is the time to mute for and/or the reason.
+        Time can be specified as a number followed by m(inutes), h(ours), d(ays), or w(eeks).
+        If no time is specified, the mute will be indefinite.
+
+        Examples:
+        `[p]mute @member1 @member2 10m Disrupting crew meeting`
+        `[p]mute @member1 1d Stealing food from the galley`
+        `[p]mute @member1 Insubordination` (indefinite mute)
+        `[p]mute @member1` (indefinite mute with no reason)
+        """
         if not users:
             return await ctx.send_help()
         if ctx.me in users:
@@ -154,10 +165,25 @@ class OnePieceMod(commands.Cog):
         if not mute_role:
             return await ctx.send("The Sea Prism handcuffs (mute role) haven't been crafted yet!")
 
-        duration = time_and_reason["duration"] or self.default_mute_time
-        reason = reason or time_and_reason["reason"] or "No reason provided"
-        until = ctx.message.created_at + duration
-        time_str = f" for {humanize_timedelta(timedelta=duration)}"
+        duration = None
+        reason = "No reason provided"
+
+        if time_and_reason:
+            time_match = re.match(r"(\d+)\s*(m(?:in(?:ute)?s?)?|h(?:ours?)?|d(?:ays?)?|w(?:eeks?)?)", time_and_reason)
+            if time_match:
+                time_val = int(time_match.group(1))
+                time_unit = time_match.group(2)[0].lower()
+                if time_unit == 'm':
+                    duration = timedelta(minutes=time_val)
+                elif time_unit == 'h':
+                    duration = timedelta(hours=time_val)
+                elif time_unit == 'd':
+                    duration = timedelta(days=time_val)
+                elif time_unit == 'w':
+                    duration = timedelta(weeks=time_val)
+                reason = time_and_reason[time_match.end():].strip() or reason
+            else:
+                reason = time_and_reason
 
         async with ctx.typing():
             author = ctx.message.author
@@ -182,7 +208,7 @@ class OnePieceMod(commands.Cog):
                             "moderator": ctx.author.id,
                             "reason": reason,
                             "timestamp": ctx.message.created_at.isoformat(),
-                            "duration": duration.total_seconds(),
+                            "duration": duration.total_seconds() if duration else None,
                             "jump_url": ctx.message.jump_url
                         }
                         
@@ -194,12 +220,15 @@ class OnePieceMod(commands.Cog):
                             user,
                             author,
                             reason,
-                            until=until,
+                            until=ctx.message.created_at + duration if duration else None,
                         )
+                        
+                        time_str = f" for {humanize_timedelta(timedelta=duration)}" if duration else " indefinitely"
                         await self.log_action(ctx, user, f"Muted{time_str}", reason, moderator=ctx.author, jump_url=ctx.message.jump_url)
                         
-                        # Schedule unmute
-                        self.bot.loop.create_task(self.schedule_unmute(ctx.guild, user, duration))
+                        # Schedule unmute if duration is set
+                        if duration:
+                            self.bot.loop.create_task(self.schedule_unmute(ctx.guild, user, duration))
                     except discord.Forbidden:
                         await ctx.send(f"I don't have the authority to silence {user.name}!")
                     except discord.HTTPException:
