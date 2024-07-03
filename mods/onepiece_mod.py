@@ -357,7 +357,7 @@ class OnePieceMod(commands.Cog):
             contains_link = re.search(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', message.content)
             if contains_link:
                 await message.delete()
-                await message.channel.send(f"{message.author.mention}, new members cannot send links for the first 24 hours.", delete_after=10)
+                await self.send_themed_message(message.channel, message.author, "new_user_link")
                 return
 
         # Filter images and GIFs for users without the minimum role or higher
@@ -366,7 +366,7 @@ class OnePieceMod(commands.Cog):
             has_attachments = len(message.attachments) > 0
             if contains_gif or has_attachments:
                 await message.delete()
-                await message.channel.send(f"{message.author.mention}, you need to be at least {minimum_image_role.name} to send images or GIFs.", delete_after=10)
+                await self.send_themed_message(message.channel, message.author, "low_rank_image", minimum_image_role)
                 return
 
         # Check if the channel is restricted
@@ -376,8 +376,30 @@ class OnePieceMod(commands.Cog):
             required_role = message.guild.get_role(required_role_id)
             if required_role and not any(role >= required_role for role in message.author.roles):
                 await message.delete()
-                await message.channel.send(f"{message.author.mention}, you don't have permission to send messages in this channel.", delete_after=10)
+                await self.send_themed_message(message.channel, message.author, "restricted_channel", required_role)
                 return
+
+    async def send_themed_message(self, channel, user, message_type, role=None):
+        messages = {
+            "new_user_link": [
+                f"Whoa there, {user.mention}! You're still a cabin boy on this ship. No sending treasure maps (links) until you've sailed with us for at least 24 hours!",
+                f"Easy, {user.mention}! New pirates aren't allowed to share mysterious scrolls (links) until they've proven their loyalty for 24 hours!",
+                f"Hold your Sea Kings, {user.mention}! You need to be part of the crew for 24 hours before you can share any Grand Line routes (links)!"
+            ],
+            "low_rank_image": [
+                f"Yohoho! {user.mention}, your bounty isn't high enough to share wanted posters (images) yet! You need to reach the rank of {role.name} first!",
+                f"Oi, {user.mention}! Only pirates ranked {role.name} or higher can share their adventure snapshots (images). Keep sailing and level up!",
+                f"Shiver me timbers, {user.mention}! You need to be at least a {role.name} to show off your loot (images). Raise your pirate flag higher!"
+            ],
+            "restricted_channel": [
+                f"Arr, {user.mention}! This be a restricted area of the ship. Only crew members ranked {role.name} or higher can enter!",
+                f"Belay that, {user.mention}! This channel is for {role.name}s and above. Swab the deck and come back when you've earned your stripes!",
+                f"Avast ye, {user.mention}! This be the captain's quarters ({role.name}s and above). You'll walk the plank if ye try to enter without permission!"
+            ]
+        }
+
+        themed_message = random.choice(messages[message_type])
+        await channel.send(themed_message, delete_after=15)
             
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
