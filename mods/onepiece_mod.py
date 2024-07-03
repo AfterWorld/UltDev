@@ -3,7 +3,7 @@ from redbot.core import commands, checks, modlog, Config
 from redbot.core.utils.chat_formatting import humanize_list, humanize_timedelta
 from redbot.core.utils.mod import get_audit_reason
 from redbot.core.bot import Red
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, timezone
 import asyncio
 import re
 import random
