@@ -325,13 +325,6 @@ class OnePieceMod(commands.Cog):
         await channel.set_permissions(ctx.guild.default_role, send_messages=None, add_reactions=None)
         await ctx.send(f"🔓 The restrictions on {channel.mention} have been removed.")
 
-    @commands.command()
-    @checks.admin_or_permissions(manage_roles=True)
-    async def setlevel5(self, ctx, role: discord.Role):
-        """Set the minimum role for image and GIF permissions."""
-        await self.config.guild(ctx.guild).minimum_image_role_id.set(role.id)
-        await ctx.send(f"The minimum role for sending images and GIFs has been set to {role.name}.")
-
     @commands.Cog.listener()
     async def on_message(self, message):
         if message.author.bot or not message.guild:
@@ -340,16 +333,30 @@ class OnePieceMod(commands.Cog):
         # Check if the user is new (less than 24 hours in the server)
         is_new_user = (datetime.utcnow() - message.author.joined_at) < timedelta(hours=24)
 
-        # More comprehensive URL detection
-        contains_url = re.search(r'(https?://\S+)', message.content, re.IGNORECASE) or message.content.startswith('http')
+        if is_new_user:
+            # Comprehensive URL detection
+            contains_url = any([
+                re.search(r'(https?://\S+)', message.content, re.IGNORECASE),
+                message.content.startswith('http'),
+                'http://' in message.content,
+                'https://' in message.content,
+                'www.' in message.content,
+                '.com' in message.content,
+                '.net' in message.content,
+                '.org' in message.content
+            ])
 
-        # Check for Discord auto-embedded links
-        has_embeds = len(message.embeds) > 0
+            # Check for Discord auto-embedded links
+            has_embeds = len(message.embeds) > 0
 
-        if is_new_user and (contains_url or has_embeds):
-            await message.delete()
-            await self.send_themed_message(message.channel, message.author, "new_user_link")
-            return
+            if contains_url or has_embeds:
+                await asyncio.sleep(1)  # Small delay to ensure Discord processes embeds
+                try:
+                    await message.delete()
+                    await self.send_themed_message(message.channel, message.author, "new_user_link")
+                except discord.errors.NotFound:
+                    pass  # Message was already deleted
+                return
 
         # Get the minimum image role
         minimum_image_role_id = await self.config.guild(message.guild).minimum_image_role_id()
