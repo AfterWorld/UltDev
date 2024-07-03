@@ -15,16 +15,16 @@ class OnePieceMod(commands.Cog):
         self.general_chat_id = 425068612542398476  # ID of the general chat channel
         self.muted_users = {}  # Store muted users' roles
         self.ban_messages = [
-            ("Looks like you're taking a trip to Impel Down!", "https://media.giphy.com/media/rGXHcVMyhQ9X78mVKL/giphy.gif"),
-            ("You've been hit by Nami's Clima-Tact!", "https://media.giphy.com/media/iqnrguQzA3Ypr8jz5t/giphy.gif"),
-            ("Zoro got lost again, and somehow you got banned!", "https://media.giphy.com/media/9qpSMEeTZDpgk/giphy.gif"),
-            ("You've been Gum-Gum Banned!", "https://media.giphy.com/media/6rBrYiAC6u6GK9WwT3/giphy.gif"),
-            ("Sanji's kicking you out of the crew!", "https://media.giphy.com/media/9bFtI7IPw9tMQ/giphy.gif"),
-            ("You've been caught in Trafalgar Law's ROOM!", "https://media.giphy.com/media/SLdOGqZDgJN1C/giphy.gif"),
-            ("Blackbeard's darkness has swallowed you!", "https://media.giphy.com/media/xYzkV4uf3FKiQ/giphy.gif"),
-            ("You've been frozen by Aokiji's Ice Age!", "https://media.giphy.com/media/5rmXvBMfdETZX6nWXs/giphy.gif"),
-            ("Buggy's Chop-Chop Fruit sent you flying!", "https://media.giphy.com/media/23BkoSaR8RcCQ/giphy.gif"),
-            ("Big Mom's Soul-Soul Fruit has taken your lifespan... and your server access!", "https://media.giphy.com/media/3oKIPbKcNBkHrpZDtK/giphy.gif")
+            ("Looks like you're taking a trip to Impel Down!", "https://tenor.com/view/one-piece-magellan-magellan-one-piece-impel-down-gif-24849283"),
+            ("You've been hit by Nami's Clima-Tact!", "https://tenor.com/view/nami-sanji-slap-one-piece-anime-gif-19985101"),
+            ("Zoro got lost again, and somehow you got banned!", "https://tenor.com/view/onepiece-zoro-gif-20413728"),
+            ("You've been Gum-Gum Banned!", "https://tenor.com/view/luffy-punch-onepiece-gif-11908462"),
+            ("Sanji's kicking you out of the crew!", "https://tenor.com/view/sanji-one-piece-angry-flame-gif-5738862"),
+            ("You've been caught in Trafalgar Law's ROOM!", "https://tenor.com/view/room-law-trafalgar-law-shambles-big-mom-gif-26718981"),
+            ("Blackbeard's darkness has swallowed you!", "https://tenor.com/view/one-piece-anime-blackbeard-marshall-d-teach-gif-19895866"),
+            ("You've been frozen by Aokiji's Ice Age!", "https://tenor.com/view/one-piece-kuzan-aokoji-freeze-charlotte-cracker-gif-15455402913382101990"),
+            ("Buggy's Chop-Chop Fruit sent you flying!", "https://tenor.com/view/bara-bara-no-mi-bara-bara-no-mi-o-grande-one-piece-rp-gif-22513624"),
+            ("Big Mom's Soul-Soul Fruit has taken your lifespan... and your server access!", "https://tenor.com/view/%E5%A4%A7%E5%AA%BDauntie-aunt-granny-grandmom-gif-12576437")
         ]
 
     async def log_action(self, ctx, member: discord.Member, action: str, reason: str):
