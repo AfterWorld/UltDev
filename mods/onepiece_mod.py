@@ -265,16 +265,10 @@ class OnePieceMod(commands.Cog):
             await self._restore_roles(user, reason)
             
             async with self.config.guild(ctx.guild).muted_users() as muted_users:
-                mute_info = muted_users.pop(str(user.id), None)
+                muted_users.pop(str(user.id), None)
             
             message = f"🔊 The Sea Prism effect has worn off. {user.name} can speak again and their roles have been restored!"
             await ctx.send(message)
-            
-            if mute_info:
-                moderator = ctx.guild.get_member(mute_info['moderator'])
-                mod_name = moderator.name if moderator else "Unknown moderator"
-                log_message = f"Unmuted: {user.name} (ID: {user.id})\nThey were muted by {mod_name} for: {mute_info['reason']}\nMute command: [Jump to message]({mute_info['jump_url']})"
-                await self.log_action(ctx, user, "Unmuted", reason, moderator=ctx.author, jump_url=mute_info['jump_url'])
             
         except discord.Forbidden:
             await ctx.send(f"I don't have the authority to remove Sea Prism handcuffs from {user.name}!")
