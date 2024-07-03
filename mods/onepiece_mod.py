@@ -7,6 +7,7 @@ from datetime import timedelta, datetime, timezone
 import asyncio
 import re
 import random
+import pytz
 
 original_commands = {}
 
@@ -329,10 +330,12 @@ class OnePieceMod(commands.Cog):
     async def on_message(self, message):
         if message.author.bot or not message.guild:
             return
-
+    
         # Check if the user is new (less than 24 hours in the server)
-        is_new_user = (datetime.utcnow() - message.author.joined_at) < timedelta(hours=24)
-
+        utc_now = datetime.now(pytz.utc)
+        joined_at_utc = message.author.joined_at.replace(tzinfo=pytz.utc)
+        is_new_user = (utc_now - joined_at_utc) < timedelta(hours=24)
+    
         if is_new_user:
             # First check for obvious URLs
             contains_url = self.contains_url(message.content)
