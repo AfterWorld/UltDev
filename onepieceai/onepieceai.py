@@ -415,7 +415,7 @@ class OnePieceAI(commands.Cog):
     async def generate_discussion_topics(self):
         await self.bot.wait_until_ready()
         while not self.bot.is_closed():
-            await asyncio.sleep(14400)  # Generate new topics every 4 hours
+            await asyncio.sleep(1800)  # Generate new topics every 4 hours
             for guild in self.bot.guilds:
                 topic = await self.generate_ai_response("Generate a thought-provoking discussion topic about One Piece lore, theories, or character motivations.")
                 async with self.config.guild(guild).discussion_topics() as topics:
@@ -434,24 +434,6 @@ class OnePieceAI(commands.Cog):
         embed.add_field(name="Profile", value="View your character profile with `.profile`", inline=False)
         embed.add_field(name="Help", value="For more information, use `.help`", inline=False)
         await ctx.send(embed=embed)
-
-    async def send_feature_reminder(self):
-        await self.bot.wait_until_ready()
-        while not self.bot.is_closed():
-            await asyncio.sleep(1800)  # 30 minutes
-            for guild in self.bot.guilds:
-                chat_channels = await self.config.guild(guild).chat_channels()
-                if chat_channels:
-                    channel = self.bot.get_channel(random.choice(chat_channels))
-                    if channel:
-                        embed = discord.Embed(title="One Piece AI Bot Features", color=discord.Color.blue())
-                        embed.add_field(name="World Events", value="Respond to random events with `.respond`", inline=False)
-                        embed.add_field(name="Cooking", value="Cook One Piece recipes with `.cook <recipe_name>`", inline=False)
-                        embed.add_field(name="Relationships", value="Interact with other users using `.interact @user`", inline=False)
-                        embed.add_field(name="Quests", value="Check your quest progress with `.quest_progress`", inline=False)
-                        embed.add_field(name="Profile", value="View your character profile with `.profile`", inline=False)
-                        embed.add_field(name="Help", value="For more information, use `.help`", inline=False)
-                        await channel.send(embed=embed)
 
     @commands.command()
     async def cook(self, ctx, *, recipe: str):
