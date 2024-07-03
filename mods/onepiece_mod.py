@@ -30,6 +30,10 @@ class OnePieceMod(commands.Cog):
     def __init__(self, bot: Red):
         self.bot = bot
         self.config = Config.get_conf(self, identifier=1234567890)
+        default_guild = {
+            "muted_users": {}
+        }
+        self.config.register_guild(**default_guild)
         self.log_channel_id = 1245208777003634698
         self.mute_role_id = 808869058476769312  # Pre-set mute role ID
         self.general_chat_id = 425068612542398476
@@ -168,34 +172,46 @@ class OnePieceMod(commands.Cog):
             guild = ctx.guild
             audit_reason = get_audit_reason(author, reason)
             success_list = []
-            for user in users:
-                try:
-                    # Store the user's current roles
-                    self.muted_users[user.id] = [role for role in user.roles if role != ctx.guild.default_role]
-                    
-                    # Remove all roles and add mute role
-                    await user.edit(roles=[])
-                    await user.add_roles(mute_role, reason=audit_reason)
-                    
-                    success_list.append(user)
-                    await modlog.create_case(
-                        self.bot,
-                        guild,
-                        ctx.message.created_at,
-                        "smute",
-                        user,
-                        author,
-                        reason,
-                        until=until,
-                    )
-                    await self.log_action(ctx, user, f"Muted{time_str}", reason)
-                    
-                    # Schedule unmute
-                    self.bot.loop.create_task(self.schedule_unmute(user, duration))
-                except discord.Forbidden:
-                    await ctx.send(f"I don't have the authority to silence {user.name}!")
-                except discord.HTTPException:
-                    await ctx.send(f"There was an error trying to silence {user.name}. The Sea Kings must be interfering with our Den Den Mushi!")
+            
+            async with self.config.guild(ctx.guild).muted_users() as muted_users:
+                for user in users:
+                    try:
+                        # Store the user's current roles
+                        self.muted_users[user.id] = [role for role in user.roles if role != ctx.guild.default_role]
+                        
+                        # Remove all roles and add mute role
+                        await user.edit(roles=[])
+                        await user.add_roles(mute_role, reason=audit_reason)
+                        
+                        success_list.append(user)
+                        
+                        # Store mute information
+                        muted_users[str(user.id)] = {
+                            "moderator": ctx.author.id,
+                            "reason": reason,
+                            "timestamp": ctx.message.created_at.isoformat(),
+                            "duration": duration.total_seconds(),
+                            "jump_url": ctx.message.jump_url
+                        }
+                        
+                        await modlog.create_case(
+                            self.bot,
+                            guild,
+                            ctx.message.created_at,
+                            "smute",
+                            user,
+                            author,
+                            reason,
+                            until=until,
+                        )
+                        await self.log_action(ctx, user, f"Muted{time_str}", reason)
+                        
+                        # Schedule unmute
+                        self.bot.loop.create_task(self.schedule_unmute(user, duration))
+                    except discord.Forbidden:
+                        await ctx.send(f"I don't have the authority to silence {user.name}!")
+                    except discord.HTTPException:
+                        await ctx.send(f"There was an error trying to silence {user.name}. The Sea Kings must be interfering with our Den Den Mushi!")
 
         if success_list:
             if len(success_list) == 1:
@@ -203,11 +219,6 @@ class OnePieceMod(commands.Cog):
             else:
                 msg = f"{humanize_list([f'`{u.name}`' for u in success_list])} have been silenced with Sea Prism handcuffs{time_str}."
             await ctx.send(msg)
-
-    async def schedule_unmute(self, user: discord.Member, duration: timedelta):
-        """Schedule an unmute operation."""
-        await asyncio.sleep(duration.total_seconds())
-        await self.unmute(await self.bot.get_context(await self.bot.get_message(user.guild, user.id)), user)
 
     @commands.command()
     @checks.admin_or_permissions(manage_roles=True)
@@ -227,7 +238,18 @@ class OnePieceMod(commands.Cog):
             # Restore original roles
             await self._restore_roles(user, reason)
             
-            await ctx.send(f"🔊 The Sea Prism effect has worn off. {user.name} can speak again and their roles have been restored!")
+            async with self.config.guild(ctx.guild).muted_users() as muted_users:
+                mute_info = muted_users.pop(str(user.id), None)
+            
+            message = f"🔊 The Sea Prism effect has worn off. {user.name} can speak again and their roles have been restored!"
+            
+            if mute_info:
+                moderator = ctx.guild.get_member(mute_info['moderator'])
+                mod_name = moderator.name if moderator else "Unknown moderator"
+                message += f"\nThey were muted by {mod_name} for: {mute_info['reason']}"
+                message += f"\nMute command: [Jump to message]({mute_info['jump_url']})"
+            
+            await ctx.send(message)
             
         except discord.Forbidden:
             await ctx.send(f"I don't have the authority to remove Sea Prism handcuffs from {user.name}!")
@@ -240,8 +262,8 @@ class OnePieceMod(commands.Cog):
             roles_to_add = [role for role in self.muted_users[user.id] if role not in user.roles and role < user.guild.me.top_role]
             if roles_to_add:
                 await user.add_roles(*roles_to_add, reason=f"Restoring roles after unmute: {reason}")
-            del self.muted_users[user.id]
-
+            self.muted_users.pop(user.id, None)
+            
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
         """Event listener to catch manual mute role removals."""
