@@ -141,29 +141,29 @@ class OnePieceMod(commands.Cog):
         *,
         time_and_reason: str = None
     ):
-        """Silence crew members with Sea Prism handcuffs.
+        """Banish crew members to the Void Century.
 
         <users...> is a space separated list of usernames, ID's, or mentions.
         [time_and_reason] is the time to mute for and/or the reason.
         Time can be specified as a number followed by m(inutes), h(ours), d(ays), or w(eeks).
-        If no time is specified, the mute will be indefinite.
+        If no time is specified, the banishment will be indefinite.
 
         Examples:
         `[p]mute @member1 @member2 10m Disrupting crew meeting`
         `[p]mute @member1 1d Stealing food from the galley`
-        `[p]mute @member1 Insubordination` (indefinite mute)
-        `[p]mute @member1` (indefinite mute with no reason)
+        `[p]mute @member1 Insubordination` (indefinite banishment)
+        `[p]mute @member1` (indefinite banishment with no reason)
         """
         if not users:
             return await ctx.send_help()
         if ctx.me in users:
-            return await ctx.send("You cannot silence the ship's Den Den Mushi!")
+            return await ctx.send("You cannot banish the ship's Log Pose to the Void Century!")
         if ctx.author in users:
-            return await ctx.send("You cannot silence yourself with Sea Prism handcuffs!")
+            return await ctx.send("You cannot banish yourself to the Void Century!")
 
         mute_role = ctx.guild.get_role(self.mute_role_id)
         if not mute_role:
-            return await ctx.send("The Sea Prism handcuffs (mute role) haven't been crafted yet!")
+            return await ctx.send("The Void Century role hasn't been established yet!")
 
         duration = None
         reason = "No reason provided"
@@ -224,38 +224,33 @@ class OnePieceMod(commands.Cog):
                         )
                         
                         time_str = f" for {humanize_timedelta(timedelta=duration)}" if duration else " indefinitely"
-                        await self.log_action(ctx, user, f"Muted{time_str}", reason, moderator=ctx.author, jump_url=ctx.message.jump_url)
+                        await self.log_action(ctx, user, f"Banished to Void Century{time_str}", reason, moderator=ctx.author, jump_url=ctx.message.jump_url)
                         
                         # Schedule unmute if duration is set
                         if duration:
                             self.bot.loop.create_task(self.schedule_unmute(ctx.guild, user, duration))
                     except discord.Forbidden:
-                        await ctx.send(f"I don't have the authority to silence {user.name}!")
+                        await ctx.send(f"I don't have the authority to banish {user.name} to the Void Century!")
                     except discord.HTTPException:
-                        await ctx.send(f"There was an error trying to silence {user.name}. The Sea Kings must be interfering with our Den Den Mushi!")
+                        await ctx.send(f"There was an error trying to banish {user.name}. The currents of time must be interfering with our Log Pose!")
 
         if success_list:
             if len(success_list) == 1:
-                msg = f"{success_list[0].name} has been silenced with Sea Prism handcuffs{time_str}."
+                msg = f"{success_list[0].name} has been banished to the Void Century{time_str}."
             else:
-                msg = f"{humanize_list([f'`{u.name}`' for u in success_list])} have been silenced with Sea Prism handcuffs{time_str}."
+                msg = f"{humanize_list([f'`{u.name}`' for u in success_list])} have been banished to the Void Century{time_str}."
             await ctx.send(msg)
-
-    async def schedule_unmute(self, guild: discord.Guild, user: discord.Member, duration: timedelta):
-        """Schedule an unmute operation."""
-        await asyncio.sleep(duration.total_seconds())
-        await self.unmute(await self.bot.get_context(await self.bot.get_message(guild, user.id)), user)
 
     @commands.command()
     @checks.admin_or_permissions(manage_roles=True)
-    async def unmute(self, ctx: commands.Context, user: discord.Member, *, reason: str = "Sea Prism effect wore off"):
-        """Remove Sea Prism handcuffs from a crew member."""
+    async def unmute(self, ctx: commands.Context, user: discord.Member, *, reason: str = "Void Century banishment has ended"):
+        """Return a crew member from the Void Century."""
         mute_role = ctx.guild.get_role(self.mute_role_id)
         if not mute_role:
-            return await ctx.send("The Sea Prism handcuffs (mute role) don't exist!")
+            return await ctx.send("The Void Century role doesn't exist!")
 
         if mute_role not in user.roles:
-            return await ctx.send(f"{user.name} is not silenced. They're free to speak!")
+            return await ctx.send(f"{user.name} is not banished to the Void Century. They're free to speak!")
 
         try:
             # Remove mute role
@@ -267,13 +262,13 @@ class OnePieceMod(commands.Cog):
             async with self.config.guild(ctx.guild).muted_users() as muted_users:
                 muted_users.pop(str(user.id), None)
             
-            message = f"🔊 The Sea Prism effect has worn off. {user.name} can speak again and their roles have been restored!"
+            message = f"🕰️ {user.name} has returned from the Void Century and can speak again! Their roles have been restored."
             await ctx.send(message)
             
         except discord.Forbidden:
-            await ctx.send(f"I don't have the authority to remove Sea Prism handcuffs from {user.name}!")
+            await ctx.send(f"I don't have the authority to return {user.name} from the Void Century!")
         except discord.HTTPException:
-            await ctx.send(f"There was an error trying to un-silence {user.name}. The Sea Kings must be interfering with our Den Den Mushi!")
+            await ctx.send(f"There was an error trying to return {user.name} from the Void Century. The currents of time must be interfering with our Log Pose!")
 
     async def _restore_roles(self, user: discord.Member, reason: str):
         """Helper method to restore roles for a user."""
