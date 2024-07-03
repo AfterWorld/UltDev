@@ -329,21 +329,21 @@ class OnePieceMod(commands.Cog):
     async def on_message(self, message):
         if message.author.bot or not message.guild:
             return
-    
+
         # Check if the user is new (less than 24 hours in the server)
         is_new_user = (datetime.utcnow() - message.author.joined_at) < timedelta(hours=24)
-    
+
         if is_new_user:
             # First check for obvious URLs
             contains_url = self.contains_url(message.content)
-    
+
             if contains_url:
                 await self.delete_and_warn(message, "new_user_link")
                 return
-    
+
             # If no obvious URL, wait a short time and check for embeds
             await asyncio.sleep(1)  # Wait for Discord to process potential embeds
-            
+
             # Fetch the message again to check for embeds
             try:
                 updated_message = await message.channel.fetch_message(message.id)
@@ -353,19 +353,19 @@ class OnePieceMod(commands.Cog):
             except discord.NotFound:
                 # Message was deleted, no action needed
                 pass
-    
+
         # Get the minimum image role
         minimum_image_role_id = await self.config.guild(message.guild).minimum_image_role_id()
         if minimum_image_role_id is None:
             return  # If no minimum role is set, don't apply any restrictions
-    
+
         minimum_image_role = message.guild.get_role(minimum_image_role_id)
         if minimum_image_role is None:
             return  # If the role doesn't exist anymore, don't apply any restrictions
-    
+
         # Check if the user has the minimum role or higher
         has_permission = any(role >= minimum_image_role for role in message.author.roles)
-    
+
         # Filter images and GIFs for users without the minimum role or higher
         if not has_permission:
             contains_gif = re.search(r'\b(?:gif|giphy)\b', message.content, re.IGNORECASE)
@@ -373,7 +373,7 @@ class OnePieceMod(commands.Cog):
             if contains_gif or has_attachments or message.embeds:
                 await self.delete_and_warn(message, "low_rank_image", minimum_image_role)
                 return
-    
+
         # Check if the channel is restricted
         restricted_channels = await self.config.guild(message.guild).restricted_channels()
         if str(message.channel.id) in restricted_channels:
@@ -382,7 +382,16 @@ class OnePieceMod(commands.Cog):
             if required_role and not any(role >= required_role for role in message.author.roles):
                 await self.delete_and_warn(message, "restricted_channel", required_role)
                 return
-            
+
+    def contains_url(self, text):
+        url_regex = re.compile(
+            r'(?i)\b((?:https?://|www\d{0,3}[.]|discord[.]gg|discordapp[.]com|discord[.]com|t[.]me|twitch[.]tv|picarto[.]tv|youtube[.]com|youtu[.]be|facebook[.]com|fb[.]com|instagram[.]com|instagr[.]am|twitter[.]com|x[.]com|tumblr[.]com|reddit[.]com|reddit[.]it|linkedin[.]com|linkd[.]in|snapchat[.]com|snap[.]com|whatsapp[.]com|whatsapp[.]net|weibo[.]com|qq[.]com|qzone[.]qq[.]com|tiktok[.]com|douyin[.]com|bilibili[.]com|b23[.]tv|vk[.]com|ok[.]ru)\S*)\b')
+        return re.search(url_regex, text) is not None
+
+    async def delete_and_warn(self, message, message_type, role=None):
+        await message.delete()
+        await self.send_themed_message(message.channel, message.author, message_type, role)
+
     async def send_themed_message(self, channel, user, message_type, role=None):
         messages = {
             "new_user_link": [
@@ -404,6 +413,7 @@ class OnePieceMod(commands.Cog):
 
         themed_message = random.choice(messages[message_type])
         await channel.send(themed_message, delete_after=15)
+
             
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
