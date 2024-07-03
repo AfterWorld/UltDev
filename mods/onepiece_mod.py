@@ -12,12 +12,19 @@ original_commands = {}
 
 class MuteTime(commands.Converter):
     async def convert(self, ctx, argument):
-        try:
-            converter = commands.TimedeltaConverter()
-            time = await converter.convert(ctx, argument)
-            return {"duration": time, "reason": None}
-        except commands.BadArgument:
-            return {"duration": None, "reason": argument}
+        matches = re.match(r"(\d+)\s*(m(?:in(?:ute)?s?)?|h(?:ours?)?|d(?:ays?)?|w(?:eeks?)?)?$", argument.lower())
+        if matches:
+            time = int(matches.group(1))
+            unit = matches.group(2) or 'm'
+            if unit.startswith('m'):
+                return {"duration": timedelta(minutes=time), "reason": None}
+            elif unit.startswith('h'):
+                return {"duration": timedelta(hours=time), "reason": None}
+            elif unit.startswith('d'):
+                return {"duration": timedelta(days=time), "reason": None}
+            elif unit.startswith('w'):
+                return {"duration": timedelta(weeks=time), "reason": None}
+        return {"duration": None, "reason": argument}
 
 class OnePieceMod(commands.Cog):
     def __init__(self, bot: Red):
@@ -123,19 +130,21 @@ class OnePieceMod(commands.Cog):
         self,
         ctx: commands.Context,
         users: commands.Greedy[discord.Member],
+        time_and_reason: MuteTime,
         *,
-        time_and_reason: MuteTime = {},
+        reason: str = None
     ):
         """Silence crew members with Sea Prism handcuffs.
 
         <users...> is a space separated list of usernames, ID's, or mentions.
-        [time_and_reason] is the time to mute for and reason. Time is
-        any valid time length such as `30 minutes` or `2 days`. If nothing
-        is provided the mute will last for 24 hours.
+        [time_and_reason] is the time to mute for and/or the reason.
+        Time can be specified as a number followed by m(inutes), h(ours), d(ays), or w(eeks).
+        If no time unit is given, minutes will be assumed.
+        If no time is specified, the mute will last for 24 hours.
 
         Examples:
-        `[p]mute @member1 @member2 5 hours Disrupting crew meeting`
-        `[p]mute @member1 3 days Stealing food from the galley`
+        `[p]mute @member1 @member2 10m Disrupting crew meeting`
+        `[p]mute @member1 1d Stealing food from the galley`
         `[p]mute @member1 Insubordination`
         """
         if not users:
@@ -149,12 +158,12 @@ class OnePieceMod(commands.Cog):
         if not mute_role:
             return await ctx.send("The Sea Prism handcuffs (mute role) haven't been crafted yet!")
 
-        async with ctx.typing():
-            duration = time_and_reason.get("duration", self.default_mute_time)
-            reason = time_and_reason.get("reason") or "No reason provided"
-            until = ctx.message.created_at + (duration or self.default_mute_time)
-            time_str = f" for {humanize_timedelta(timedelta=duration or self.default_mute_time)}"
+        duration = time_and_reason["duration"] or self.default_mute_time
+        reason = reason or time_and_reason["reason"] or "No reason provided"
+        until = ctx.message.created_at + duration
+        time_str = f" for {humanize_timedelta(timedelta=duration)}"
 
+        async with ctx.typing():
             author = ctx.message.author
             guild = ctx.guild
             audit_reason = get_audit_reason(author, reason)
@@ -180,6 +189,9 @@ class OnePieceMod(commands.Cog):
                         until=until,
                     )
                     await self.log_action(ctx, user, f"Muted{time_str}", reason)
+                    
+                    # Schedule unmute
+                    self.bot.loop.create_task(self.schedule_unmute(user, duration))
                 except discord.Forbidden:
                     await ctx.send(f"I don't have the authority to silence {user.name}!")
                 except discord.HTTPException:
@@ -191,6 +203,11 @@ class OnePieceMod(commands.Cog):
             else:
                 msg = f"{humanize_list([f'`{u.name}`' for u in success_list])} have been silenced with Sea Prism handcuffs{time_str}."
             await ctx.send(msg)
+
+    async def schedule_unmute(self, user: discord.Member, duration: timedelta):
+        """Schedule an unmute operation."""
+        await asyncio.sleep(duration.total_seconds())
+        await self.unmute(await self.bot.get_context(await self.bot.get_message(user.guild, user.id)), user)
 
     @commands.command()
     @checks.admin_or_permissions(manage_roles=True)
