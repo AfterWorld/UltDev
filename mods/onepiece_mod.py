@@ -52,23 +52,25 @@ class OnePieceMod(commands.Cog):
             ("Big Mom's Soul-Soul Fruit has taken your lifespan... and your server access!", "https://tenor.com/view/%E5%A4%A7%E5%AA%BDauntie-aunt-granny-grandmom-gif-12576437")
         ]
 
-    async def log_action(self, ctx, member: discord.Member, action: str, reason: str, moderator: discord.Member = None, jump_url: str = None):
+    async def log_action(self, ctx, member: discord.Member, action: str, reason: str, moderator: discord.Member = None, jump_url: str = None, image_url: str = None):
         log_channel = self.bot.get_channel(self.log_channel_id)
         if log_channel:
-            embed = discord.Embed(title="🏴‍☠️ Crew Log Entry 🏴‍☠️", color=discord.Color.dark_red())
-            embed.add_field(name="Target Pirate", value=f"{member.name} (ID: {member.id})", inline=False)
-            embed.add_field(name="Action Taken", value=action, inline=False)
-            embed.add_field(name="Reason for Action", value=reason, inline=False)
-            
+            log_message = (
+                "🏴‍☠️ **Crew Log Entry** 🏴‍☠️\n\n"
+                f"**Target Pirate:** {member.name} (ID: {member.id})\n"
+                f"**Action Taken:** {action}\n"
+                f"**Reason for Action:** {reason}\n"
+            )
             if moderator:
-                embed.add_field(name="Enforcing Officer", value=f"{moderator.name} (ID: {moderator.id})", inline=False)
-            
+                log_message += f"**Enforcing Officer:** {moderator.name} (ID: {moderator.id})\n"
             if jump_url:
-                embed.add_field(name="Incident Report", value=f"[View Incident Details]({jump_url})", inline=False)
+                log_message += f"**Incident Report:** [View Incident Details]({jump_url})\n"
+            if image_url:
+                log_message += f"**Evidence:** [View Image]({image_url})\n"
             
-            embed.set_footer(text=f"Logged at {ctx.message.created_at.strftime('%Y-%m-%d %H:%M:%S')} | One Piece Moderation")
+            log_message += f"\nLogged at {ctx.message.created_at.strftime('%Y-%m-%d %H:%M:%S')} | One Piece Moderation"
             
-            await log_channel.send(embed=embed)
+            await log_channel.send(log_message)
             
     @commands.command()
     @checks.admin_or_permissions(kick_members=True)
@@ -149,6 +151,8 @@ class OnePieceMod(commands.Cog):
         Time can be specified as a number followed by m(inutes), h(ours), d(ays), or w(eeks).
         If no time is specified, the banishment will be indefinite.
 
+        You can also attach an image as evidence for the mute.
+
         Examples:
         `[p]mute @member1 @member2 10m Disrupting crew meeting`
         `[p]mute @member1 1d Stealing food from the galley`
@@ -185,6 +189,13 @@ class OnePieceMod(commands.Cog):
                 reason = time_and_reason[time_match.end():].strip() or reason
             else:
                 reason = time_and_reason
+
+        # Check for image attachment
+        image_url = None
+        if ctx.message.attachments:
+            attachment = ctx.message.attachments[0]
+            if attachment.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
+                image_url = attachment.url
 
         async with ctx.typing():
             author = ctx.message.author
@@ -225,7 +236,7 @@ class OnePieceMod(commands.Cog):
                         )
                         
                         time_str = f" for {humanize_timedelta(timedelta=duration)}" if duration else " indefinitely"
-                        await self.log_action(ctx, user, f"Banished to Void Century{time_str}", reason, moderator=ctx.author, jump_url=ctx.message.jump_url)
+                        await self.log_action(ctx, user, f"Banished to Void Century{time_str}", reason, moderator=ctx.author, jump_url=ctx.message.jump_url, image_url=image_url)
                         
                         # Schedule unmute if duration is set
                         if duration:
