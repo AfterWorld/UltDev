@@ -75,21 +75,7 @@ class OnePieceMod(commands.Cog):
                 # Use the standard delete_message_days parameter
                 await ctx.guild.ban(member, reason=reason, delete_message_days=delete_days)
 
-            # Select a random ban message and GIF
-            ban_message, ban_gif = random.choice(self.ban_messages)
-            
-            embed = discord.Embed(title="⛓️ Pirate Banished! ⛓️", description=f"{member.name} has been banished to Impel Down!", color=0xff0000)
-            embed.add_field(name="Reason", value=reason, inline=False)
-            embed.add_field(name="Ban Message", value=ban_message, inline=False)
-            embed.set_image(url=ban_gif)
-            
-           # Send the ban message to the general chat
-            general_chat = self.bot.get_channel(self.general_chat_id)
-            if general_chat:
-                await general_chat.send(embed=embed)
-            else:
-                await ctx.send("Couldn't find the general chat channel. Posting here instead:", embed=embed)
-                        
+            await ctx.send(f"⛓️ {member.name} has been banished to Impel Down for their crimes against the crew!")
             await self.log_action(ctx, member, f"Banned (messages deleted: {'all' if delete_all else f'{delete_days} days'})", reason)
             
             case = await modlog.create_case(
@@ -141,11 +127,10 @@ class OnePieceMod(commands.Cog):
             else:
                 await self.log_action(ctx, member, "Muted indefinitely", reason)
 
-            # Create a case using a valid action type
+            # Create a case using the generic "moderation" action type
             case = await modlog.create_case(
-                ctx.bot, ctx.guild, ctx.message.created_at, action_type="tempmute" if duration else "mute",
-                user=member, moderator=ctx.author, reason=reason,
-                until=(ctx.message.created_at + datetime.timedelta(seconds=duration_seconds)) if duration else None
+                ctx.bot, ctx.guild, ctx.message.created_at, action_type="moderation",
+                user=member, moderator=ctx.author, reason=f"Muted: {reason}"
             )
             if case:
                 await ctx.send(f"The incident has been recorded in the ship's log. Case number: {case.case_number}")
@@ -178,15 +163,8 @@ class OnePieceMod(commands.Cog):
                 del self.muted_users[member.id]
             
             await ctx.send(f"🔊 The Sea Prism effect has worn off. {member.name} can speak again and their roles have been restored!")
-            await self.log_action(ctx, member, "Unmuted", reason)
 
-            # Create a case for unmute
-            case = await modlog.create_case(
-                ctx.bot, ctx.guild, ctx.message.created_at, action_type="unMute",
-                user=member, moderator=ctx.author, reason=reason
-            )
-            if case:
-                await ctx.send(f"The incident has been recorded in the ship's log. Case number: {case.case_number}")
+            # We're not logging or creating a case for unmute actions as per your request
 
         except discord.Forbidden:
             await ctx.send("I don't have the authority to remove Sea Prism handcuffs from that crew member!")
