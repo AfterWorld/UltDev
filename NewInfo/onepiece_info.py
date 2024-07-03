@@ -234,9 +234,6 @@ class OnePieceInfo(commands.Cog):
         """Display user info (themed as a Vivre Card)."""
         user = user or ctx.author
         
-        # Fetch user data from config
-        user_data = await self.config.member(user).all()
-
         # Calculate account age
         account_age = (datetime.utcnow() - user.created_at).days
 
@@ -259,10 +256,9 @@ class OnePieceInfo(commands.Cog):
         
         embed.add_field(name="🏴‍☠️ Pirate Name", value=user.name, inline=True)
         embed.add_field(name="🔢 Pirate ID", value=user.discriminator, inline=True)
-        
         embed.add_field(name="⚓ Joined Crew", value=user.joined_at.strftime("%d %b %Y"), inline=True)
-        embed.add_field(name="🎂 Pirate Age", value=f"{account_age} days", inline=True)
         
+        embed.add_field(name="🎂 Pirate Age", value=f"{account_age} days", inline=True)
         embed.add_field(name="🧭 Current Status", value=op_status.get(user.status, "Unknown"), inline=True)
         embed.add_field(name="🏅 Highest Position", value=highest_role, inline=True)
         
