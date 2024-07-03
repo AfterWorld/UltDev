@@ -8,24 +8,14 @@ import asyncio
 import re
 import random
 
-original_commands = {}
-
 class MuteTime(commands.Converter):
     async def convert(self, ctx, argument):
-        args = argument.split()
-        if not args:
-            return {"duration": None, "reason": None}
-        time_converter = commands.get_converter(commands.TimedeltaConverter)
         try:
-            time = await time_converter.convert(ctx, args[0])
-            if len(args) > 1:
-                reason = " ".join(args[1:])
-            else:
-                reason = None
+            converter = commands.TimedeltaConverter()
+            time = await converter.convert(ctx, argument)
+            return {"duration": time, "reason": None}
         except commands.BadArgument:
-            reason = argument
-            time = None
-        return {"duration": time, "reason": reason}
+            return {"duration": None, "reason": argument}
 
 class OnePieceMod(commands.Cog):
     def __init__(self, bot: Red):
@@ -159,7 +149,7 @@ class OnePieceMod(commands.Cog):
 
         async with ctx.typing():
             duration = time_and_reason.get("duration", self.default_mute_time)
-            reason = time_and_reason.get("reason", "No reason provided")
+            reason = time_and_reason.get("reason") or "No reason provided"
             until = ctx.message.created_at + (duration or self.default_mute_time)
             time_str = f" for {humanize_timedelta(timedelta=duration or self.default_mute_time)}"
 
