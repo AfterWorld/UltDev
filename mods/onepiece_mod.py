@@ -83,13 +83,13 @@ class OnePieceMod(commands.Cog):
             embed.add_field(name="Ban Message", value=ban_message, inline=False)
             embed.set_image(url=ban_gif)
             
-            # Send the ban message to the general chat
+           # Send the ban message to the general chat
             general_chat = self.bot.get_channel(self.general_chat_id)
             if general_chat:
                 await general_chat.send(embed=embed)
             else:
                 await ctx.send("Couldn't find the general chat channel. Posting here instead:", embed=embed)
-            
+                        
             await self.log_action(ctx, member, f"Banned (messages deleted: {'all' if delete_all else f'{delete_days} days'})", reason)
             
             case = await modlog.create_case(
