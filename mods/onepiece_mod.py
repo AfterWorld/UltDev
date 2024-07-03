@@ -329,66 +329,60 @@ class OnePieceMod(commands.Cog):
     async def on_message(self, message):
         if message.author.bot or not message.guild:
             return
-
+    
         # Check if the user is new (less than 24 hours in the server)
         is_new_user = (datetime.utcnow() - message.author.joined_at) < timedelta(hours=24)
-
+    
         if is_new_user:
-            # Comprehensive URL detection
-            contains_url = any([
-                re.search(r'(https?://\S+)', message.content, re.IGNORECASE),
-                message.content.startswith('http'),
-                'http://' in message.content,
-                'https://' in message.content,
-                'www.' in message.content,
-                '.com' in message.content,
-                '.net' in message.content,
-                '.org' in message.content
-            ])
-
-            # Check for Discord auto-embedded links
-            has_embeds = len(message.embeds) > 0
-
-            if contains_url or has_embeds:
-                await asyncio.sleep(1)  # Small delay to ensure Discord processes embeds
-                try:
-                    await message.delete()
-                    await self.send_themed_message(message.channel, message.author, "new_user_link")
-                except discord.errors.NotFound:
-                    pass  # Message was already deleted
+            # First check for obvious URLs
+            contains_url = self.contains_url(message.content)
+    
+            if contains_url:
+                await self.delete_and_warn(message, "new_user_link")
                 return
-
+    
+            # If no obvious URL, wait a short time and check for embeds
+            await asyncio.sleep(1)  # Wait for Discord to process potential embeds
+            
+            # Fetch the message again to check for embeds
+            try:
+                updated_message = await message.channel.fetch_message(message.id)
+                if updated_message.embeds:
+                    await self.delete_and_warn(updated_message, "new_user_link")
+                    return
+            except discord.NotFound:
+                # Message was deleted, no action needed
+                pass
+    
         # Get the minimum image role
         minimum_image_role_id = await self.config.guild(message.guild).minimum_image_role_id()
         if minimum_image_role_id is None:
             return  # If no minimum role is set, don't apply any restrictions
-
+    
         minimum_image_role = message.guild.get_role(minimum_image_role_id)
         if minimum_image_role is None:
             return  # If the role doesn't exist anymore, don't apply any restrictions
-
+    
         # Check if the user has the minimum role or higher
         has_permission = any(role >= minimum_image_role for role in message.author.roles)
-
+    
         # Filter images and GIFs for users without the minimum role or higher
         if not has_permission:
             contains_gif = re.search(r'\b(?:gif|giphy)\b', message.content, re.IGNORECASE)
             has_attachments = len(message.attachments) > 0
-            if contains_gif or has_attachments or has_embeds:
-                await message.delete()
-                await self.send_themed_message(message.channel, message.author, "low_rank_image", minimum_image_role)
+            if contains_gif or has_attachments or message.embeds:
+                await self.delete_and_warn(message, "low_rank_image", minimum_image_role)
                 return
-
+    
         # Check if the channel is restricted
         restricted_channels = await self.config.guild(message.guild).restricted_channels()
         if str(message.channel.id) in restricted_channels:
             required_role_id = restricted_channels[str(message.channel.id)]
             required_role = message.guild.get_role(required_role_id)
             if required_role and not any(role >= required_role for role in message.author.roles):
-                await message.delete()
-                await self.send_themed_message(message.channel, message.author, "restricted_channel", required_role)
+                await self.delete_and_warn(message, "restricted_channel", required_role)
                 return
-
+            
     async def send_themed_message(self, channel, user, message_type, role=None):
         messages = {
             "new_user_link": [
