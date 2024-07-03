@@ -261,7 +261,7 @@ class OnePieceMod(commands.Cog):
             channel = ctx.channel
 
         announcement = (
-            "🚨 **Attention All Crew Members (@700014289418977341> !** 🏴‍☠️\n\n"
+            "🚨 **Attention All Crew Members <@700014289418977341> !** 🏴‍☠️\n\n"
             "Captain's orders! We've upgraded our ship's systems to better maintain order and discipline among our crew. "
             "Here are the new and improved moderation commands:\n\n"
             "1. **Muting** (Sea Prism Handcuffs):\n"
