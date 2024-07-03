@@ -8,6 +8,8 @@ import asyncio
 import re
 import random
 
+original_commands = {}
+
 class MuteTime(commands.Converter):
     async def convert(self, ctx, argument):
         args = argument.split()
@@ -212,7 +214,23 @@ class OnePieceMod(commands.Cog):
             await ctx.send(f"There was an error trying to un-silence {user.name}. The Sea Kings must be interfering with our Den Den Mushi!")
 
 async def setup(bot):
-    await bot.add_cog(OnePieceMod(bot))
+    global original_commands
+    cog = OnePieceMod(bot)
+
+    command_names = ["kick", "ban", "mute", "unmute"]
+    for cmd_name in command_names:
+        original_cmd = bot.get_command(cmd_name)
+        if original_cmd:
+            original_commands[cmd_name] = original_cmd
+            bot.remove_command(cmd_name)
+
+    await bot.add_cog(cog)
 
 async def teardown(bot):
-    await bot.remove_cog("OnePieceMod")
+    global original_commands
+    for cmd_name, cmd in original_commands.items():
+        if bot.get_command(cmd_name):
+            bot.remove_command(cmd_name)
+        if cmd:
+            bot.add_command(cmd)
+    original_commands.clear()
