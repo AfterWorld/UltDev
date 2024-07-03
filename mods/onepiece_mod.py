@@ -2,6 +2,7 @@ import discord
 from redbot.core import commands, checks, modlog
 from redbot.core.bot import Red
 import asyncio
+import re
 
 original_commands = {}
 
@@ -10,6 +11,7 @@ class OnePieceMod(commands.Cog):
         self.bot = bot
         self.log_channel_id = 1245208777003634698
         self.mute_role_id = 808869058476769312
+        self.muted_users = {}  # Store muted users' roles
 
     async def log_action(self, ctx, member: discord.Member, action: str, reason: str):
         log_channel = self.bot.get_channel(self.log_channel_id)
@@ -75,28 +77,41 @@ class OnePieceMod(commands.Cog):
 
     @commands.command()
     @checks.admin_or_permissions(manage_roles=True)
-    async def mute(self, ctx, member: discord.Member, duration: str = None, *, reason: str = "Speaking out of turn during a crew meeting!"):
-        """Silence a crew member with Sea Prism handcuffs."""
+    async def mute(self, ctx, member: discord.Member, *, args: str = ""):
+        """Silence a crew member with Sea Prism handcuffs. Usage: .mute @member [duration] [reason]"""
         mute_role = ctx.guild.get_role(self.mute_role_id)
         if not mute_role:
             await ctx.send("The Mute role doesn't exist! We need to craft some Sea Prism handcuffs first.")
             return
 
+        duration = None
+        reason = "Speaking out of turn during a crew meeting!"
+
+        # Parse duration and reason
+        duration_match = re.match(r'(\d+)([mhd])', args)
+        if duration_match:
+            duration = duration_match.group(0)
+            reason = args[len(duration):].strip() or reason
+        else:
+            reason = args or reason
+
         try:
+            # Store the user's current roles
+            self.muted_users[member.id] = [role for role in member.roles if role != ctx.guild.default_role]
+
+            # Remove all roles and add mute role
+            await member.edit(roles=[])
             await member.add_roles(mute_role, reason=reason)
-            await ctx.send(f"🔇 {member.name} has been silenced with Sea Prism handcuffs!")
+            
+            await ctx.send(f"🔇 {member.name} has been silenced with Sea Prism handcuffs and stripped of all roles!")
             
             if duration:
-                try:
-                    duration_seconds = int(duration) * 60  # Convert minutes to seconds
-                except ValueError:
-                    await ctx.send("Invalid duration. Please provide a number of minutes.")
-                    return
-                await self.log_action(ctx, member, f"Muted for {duration} minutes", reason)
+                duration_seconds = self.parse_duration(duration)
+                await self.log_action(ctx, member, f"Muted for {duration}", reason)
                 await asyncio.sleep(duration_seconds)
                 await self.unmute(ctx, member)
             else:
-                await self.log_action(ctx, member, "Muted", reason)
+                await self.log_action(ctx, member, "Muted indefinitely", reason)
 
             case = await modlog.create_case(
                 ctx.bot, ctx.guild, ctx.message.created_at, action_type="mute",
@@ -124,8 +139,15 @@ class OnePieceMod(commands.Cog):
             return
 
         try:
+            # Remove mute role
             await member.remove_roles(mute_role, reason=reason)
-            await ctx.send(f"🔊 The Sea Prism effect has worn off. {member.name} can speak again!")
+            
+            # Restore original roles
+            if member.id in self.muted_users:
+                await member.add_roles(*self.muted_users[member.id], reason="Restoring roles after unmute")
+                del self.muted_users[member.id]
+            
+            await ctx.send(f"🔊 The Sea Prism effect has worn off. {member.name} can speak again and their roles have been restored!")
             await self.log_action(ctx, member, "Unmuted", reason)
 
             case = await modlog.create_case(
@@ -139,6 +161,19 @@ class OnePieceMod(commands.Cog):
             await ctx.send("I don't have the authority to remove Sea Prism handcuffs from that crew member!")
         except discord.HTTPException:
             await ctx.send("There was an error while trying to unmute that crew member. The Sea Kings must be interfering with our Den Den Mushi!")
+
+    def parse_duration(self, duration: str) -> int:
+        """Parse duration string into seconds."""
+        value = int(duration[:-1])
+        unit = duration[-1]
+        if unit == 'm':
+            return value * 60
+        elif unit == 'h':
+            return value * 3600
+        elif unit == 'd':
+            return value * 86400
+        else:
+            return 0
 
 async def setup(bot):
     global original_commands
