@@ -236,7 +236,7 @@ class OnePieceInfo(commands.Cog):
         roles = [role.name.replace('@', '@\u200b') for role in user.roles]
         
         embed = discord.Embed(title=f"Vivre Card of {user.name}", color=user.color)
-        embed.set_thumbnail(url=user.avatar_url)
+        embed.set_thumbnail(url=user.display_avatar.url)  # Updated to use display_avatar
         embed.add_field(name="Joined Crew", value=user.joined_at.strftime("%d %b %Y %H:%M"))
         embed.add_field(name="Crew Positions", value=", ".join(roles) if len(roles) < 10 else f"{len(roles)} positions")
         embed.add_field(name="Bounty", value="Coming soon...")  # Placeholder for future bounty system
