@@ -96,8 +96,15 @@ class OnePieceMod(commands.Cog):
         """Banish a pirate to Impel Down."""
         try:
             if delete_all:
-                # ... (delete_all logic remains unchanged)
+                # Delete all messages from the user across all channels
+                for channel in ctx.guild.text_channels:
+                    def check(message):
+                        return message.author == member
+
+                    await channel.purge(limit=None, check=check)
+                await ctx.send(f"🧹 All messages from {member.name} have been swept from the deck!")
             else:
+                # Use the standard delete_message_days parameter
                 await ctx.guild.ban(member, reason=reason, delete_message_days=delete_days)
 
             ban_message, ban_gif = random.choice(self.ban_messages)
