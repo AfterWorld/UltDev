@@ -8,6 +8,8 @@ import asyncio
 import re
 import random
 
+original_commands = {}
+
 class MuteTime(commands.Converter):
     async def convert(self, ctx, argument):
         try:
