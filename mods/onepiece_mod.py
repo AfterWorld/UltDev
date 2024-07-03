@@ -396,26 +396,31 @@ class OnePieceMod(commands.Cog):
         await self.send_themed_message(message.channel, message.author, message_type, role)
 
     async def send_themed_message(self, channel, user, message_type, role=None):
-        messages = {
-            "new_user_link": [
-                f"Avast ye, {user.mention}! New crew members can't be sharing treasure maps (links) until they've proven their sea legs for 24 hours!",
-                f"Shiver me timbers, {user.mention}! Ye can't be posting mysterious scrolls (links) 'til ye've sailed with us for a full day!",
-                f"Blimey, {user.mention}! No sharing secret routes (links) 'til ye've been part of the crew for 24 hours! Them's the rules of the sea!"
-            ],
-            "low_rank_image": [
-                f"Arr, {user.mention}! Yer bounty's not high enough to be sharing wanted posters (images) yet! Ye need to reach the rank of {role.name} first!",
-                f"Hold yer seahorses, {user.mention}! Only pirates ranked {role.name} or higher can show off their loot (images). Keep plunderin' and level up!",
-                f"Yo ho ho, {user.mention}! Ye need to be at least a {role.name} to unfurl yer map (share images). Hoist yer Jolly Roger higher!"
-            ],
-            "restricted_channel": [
-                f"Gaaar! {user.mention}, this be a restricted part of the ship. Only crew members ranked {role.name} or higher can enter these waters!",
-                f"Avast, {user.mention}! This channel be for {role.name}s and above. Swab the poop deck and come back when ye've earned yer stripes!",
-                f"Blimey, {user.mention}! This be the captain's quarters ({role.name}s and above). Ye'll be keel-hauled if ye try to enter without permission!"
-            ]
-        }
+    messages = {
+        "new_user_link": [
+            f"Avast ye, {user.mention}! New crew members can't be sharing treasure maps (links) until they've proven their sea legs for 24 hours!",
+            f"Shiver me timbers, {user.mention}! Ye can't be posting mysterious scrolls (links) 'til ye've sailed with us for a full day!",
+            f"Blimey, {user.mention}! No sharing secret routes (links) 'til ye've been part of the crew for 24 hours! Them's the rules of the sea!"
+        ],
+        "low_rank_image": [
+            f"Arr, {user.mention}! Yer bounty's not high enough to be sharing wanted posters (images) yet! Ye need to reach a higher rank first!",
+            f"Hold yer seahorses, {user.mention}! Only pirates of higher rank can show off their loot (images). Keep plunderin' and level up!",
+            f"Yo ho ho, {user.mention}! Ye need to rank up to unfurl yer map (share images). Hoist yer Jolly Roger higher!"
+        ],
+        "restricted_channel": [
+            f"Gaaar! {user.mention}, this be a restricted part of the ship. Only crew members of a certain rank can enter these waters!",
+            f"Avast, {user.mention}! This channel be for certain ranked crew members only. Swab the poop deck and come back when ye've earned yer stripes!",
+            f"Blimey, {user.mention}! This be the captain's quarters (restricted channel). Ye'll be keel-hauled if ye try to enter without permission!"
+        ]
+    }
 
-        themed_message = random.choice(messages[message_type])
-        await channel.send(themed_message, delete_after=15)
+    themed_message = random.choice(messages[message_type])
+    
+    if role is not None:
+        themed_message = themed_message.replace("higher rank", f"the rank of {role.name} or higher")
+        themed_message = themed_message.replace("certain rank", f"ranked {role.name} or higher")
+    
+    await channel.send(themed_message, delete_after=15)
 
             
     @commands.Cog.listener()
