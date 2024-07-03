@@ -141,9 +141,11 @@ class OnePieceMod(commands.Cog):
             else:
                 await self.log_action(ctx, member, "Muted indefinitely", reason)
 
+            # Create a case using a valid action type
             case = await modlog.create_case(
-                ctx.bot, ctx.guild, ctx.message.created_at, action_type="mute",
-                user=member, moderator=ctx.author, reason=reason
+                ctx.bot, ctx.guild, ctx.message.created_at, action_type="tempmute" if duration else "mute",
+                user=member, moderator=ctx.author, reason=reason,
+                until=(ctx.message.created_at + datetime.timedelta(seconds=duration_seconds)) if duration else None
             )
             if case:
                 await ctx.send(f"The incident has been recorded in the ship's log. Case number: {case.case_number}")
@@ -178,8 +180,9 @@ class OnePieceMod(commands.Cog):
             await ctx.send(f"🔊 The Sea Prism effect has worn off. {member.name} can speak again and their roles have been restored!")
             await self.log_action(ctx, member, "Unmuted", reason)
 
+            # Create a case for unmute
             case = await modlog.create_case(
-                ctx.bot, ctx.guild, ctx.message.created_at, action_type="unmute",
+                ctx.bot, ctx.guild, ctx.message.created_at, action_type="unMute",
                 user=member, moderator=ctx.author, reason=reason
             )
             if case:
