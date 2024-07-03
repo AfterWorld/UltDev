@@ -208,18 +208,34 @@ class OnePieceMod(commands.Cog):
             await user.remove_roles(mute_role, reason=reason)
             
             # Restore original roles
-            if user.id in self.muted_users:
-                await user.add_roles(*self.muted_users[user.id], reason="Restoring roles after unmute")
-                del self.muted_users[user.id]
+            await self._restore_roles(user, reason)
             
             await ctx.send(f"🔊 The Sea Prism effect has worn off. {user.name} can speak again and their roles have been restored!")
-            
-            # We're not logging or creating a case for unmute actions as per your request
             
         except discord.Forbidden:
             await ctx.send(f"I don't have the authority to remove Sea Prism handcuffs from {user.name}!")
         except discord.HTTPException:
             await ctx.send(f"There was an error trying to un-silence {user.name}. The Sea Kings must be interfering with our Den Den Mushi!")
+
+    async def _restore_roles(self, user: discord.Member, reason: str):
+        """Helper method to restore roles for a user."""
+        if user.id in self.muted_users:
+            roles_to_add = [role for role in self.muted_users[user.id] if role not in user.roles and role < user.guild.me.top_role]
+            if roles_to_add:
+                await user.add_roles(*roles_to_add, reason=f"Restoring roles after unmute: {reason}")
+            del self.muted_users[user.id]
+
+    @commands.Cog.listener()
+    async def on_member_update(self, before: discord.Member, after: discord.Member):
+        """Event listener to catch manual mute role removals."""
+        mute_role = before.guild.get_role(self.mute_role_id)
+        if not mute_role:
+            return
+
+        if mute_role in before.roles and mute_role not in after.roles:
+            # The mute role was manually removed
+            await self._restore_roles(after, "Manual unmute detected")
+            
 async def setup(bot):
     global original_commands
     cog = OnePieceMod(bot)
