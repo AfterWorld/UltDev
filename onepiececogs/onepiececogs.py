@@ -102,15 +102,15 @@ class OnePieceExpandedCogs(commands.Cog):
         else:
             await ctx.send("Looks like the fruit's powers remain a mystery!")
 
-    def create_cipher(self, difficulty):
-        alphabet = string.ascii_lowercase
-        shuffled = list(alphabet)
+    def create_cipher(self, message, difficulty):
+        unique_chars = list(set(message.lower()))
+        shuffled = unique_chars.copy()
         for _ in range(difficulty):
             random.shuffle(shuffled)
-        return dict(zip(alphabet, shuffled))
+        return dict(zip(unique_chars, shuffled))
 
     def encode_message(self, message, cipher):
-        return ''.join(cipher.get(c, c) for c in message.lower())
+        return ''.join(cipher.get(c.lower(), c) for c in message)
 
     @commands.command()
     async def poneglyph(self, ctx):
@@ -122,7 +122,7 @@ class OnePieceExpandedCogs(commands.Cog):
 
         while True:
             message = random.choice(self.poneglyph_messages)
-            cipher = self.create_cipher(difficulty)
+            cipher = self.create_cipher(message, difficulty)
             encoded = self.encode_message(message, cipher)
             await ctx.send(f"Difficulty Level {difficulty}\nDecipher this Poneglyph: `{encoded}`")
             await ctx.send(f"You have {60 // difficulty} seconds!")
