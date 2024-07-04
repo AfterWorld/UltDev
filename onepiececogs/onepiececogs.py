@@ -417,11 +417,13 @@ class OnePieceExpandedCogs(commands.Cog):
     @commands.command()
     async def butterfly(self, ctx, *, object: str):
         """Describe an object in the most attractive way possible"""
-        if await self.config.guild(ctx.guild).ongoing_games.get("butterfly", False):
+        guild_data = await self.config.guild(ctx.guild).all()
+        if guild_data["ongoing_games"].get("butterfly", False):
             await ctx.send("A Mero Mero challenge is already in progress!")
             return
 
-        await self.config.guild(ctx.guild).ongoing_games.set({"butterfly": True})
+        guild_data["ongoing_games"]["butterfly"] = True
+        await self.config.guild(ctx.guild).set(guild_data)
 
         await ctx.send(f"{ctx.author.mention} uses the power of the Mero Mero no Mi on a {object}!")
         await ctx.send(f"Everyone, you have 2 minutes to describe this {object} in the most attractive way possible!")
@@ -440,7 +442,8 @@ class OnePieceExpandedCogs(commands.Cog):
 
         if not descriptions:
             await ctx.send("No one was charmed enough to describe the object. The challenge is cancelled.")
-            await self.config.guild(ctx.guild).ongoing_games.clear()
+            guild_data["ongoing_games"]["butterfly"] = False
+            await self.config.guild(ctx.guild).set(guild_data)
             return
 
         # Create an embed for voting
@@ -465,8 +468,9 @@ class OnePieceExpandedCogs(commands.Cog):
 
         await ctx.send(f"The most charming description was by {winner.mention}! They've mastered the power of the Mero Mero no Mi!")
 
-        await self.config.guild(ctx.guild).ongoing_games.clear()
-        
+        guild_data["ongoing_games"]["butterfly"] = False
+        await self.config.guild(ctx.guild).set(guild_data)
+
     @commands.Cog.listener()
     async def on_message(self, message):
         """Update user's last activity when they send a message"""
