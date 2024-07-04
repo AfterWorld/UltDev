@@ -415,280 +415,280 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                     
                     await channel.send(embed=embed)
 
-    def generate_world_event(self, world_state):
-        events = [
-            {
-                "description": "A powerful pirate crew has emerged in the New World!",
-                "effects": {"piracy_level": 10, "marine_strength": -5}
-            },
-            {
-                "description": "The Revolutionary Army has liberated a kingdom from tyrannical rule!",
-                "effects": {"revolutionary_threat": 15, "civilian_approval": 5, "world_stability": -10}
-            },
-            {
-                "description": "A new breakthrough in Devil Fruit research has been made!",
-                "effects": {"scientific_advancement": 20, "economy": 5}
-            },
-            {
-                "description": "A Celestial Dragon has been attacked by pirates!",
-                "effects": {"world_stability": -15, "marine_strength": 5, "civilian_approval": 10}
-            },
-            {
-                "description": "A devastating natural disaster has struck multiple islands!",
-                "effects": {"economy": -10, "civilian_approval": -5, "world_stability": -5}
-            }
-        ]
-        
-        event = random.choice(events)
-        for key in event['effects']:
-            event['effects'][key] = max(-20, min(20, event['effects'][key] + random.randint(-5, 5)))
-        
-        return event
-
-    @tasks.loop(hours=1)
-    async def resource_update(self):
-        for guild in self.bot.guilds:
-            guild_data = await self.config.guild(guild).all()
-            if guild_data['wg_channel']:
-                guild_data['resources']['budget'] += 10000
-                guild_data['resources']['manpower'] += 100
-                guild_data['resources']['intelligence'] += 5
-                await self.config.guild(guild).set(guild_data)
-
-    async def check_wg_channel(self, ctx):
-        guild_data = await self.config.guild(ctx.guild).all()
-        if not guild_data['wg_channel']:
-            await ctx.send("The World Government Simulator channel has not been set up yet. An admin needs to use `!wg setup` first.")
-            return False
-        if ctx.channel.id != guild_data['wg_channel']:
-            wg_channel = self.bot.get_channel(guild_data['wg_channel'])
-            await ctx.send(f"This command can only be used in the designated World Government Simulator channel: {wg_channel.mention}")
-            return False
-        return True
-
-    def calculate_consequences(self, decision, approve, user_data, guild_data):
-        base_influence = 5 if approve else -2
-        consequences = {
-            "influence_change": base_influence + random.randint(-2, 2),
-            "world_state_changes": {k: 0 for k in guild_data['world_state']},
-            "resource_changes": {k: 0 for k in guild_data['resources']},
-            "skill_changes": {k: 0 for k in user_data['skills']},
-            "personal_resource_changes": {k: 0 for k in user_data['personal_resources']}
-        }
-
-        decision_effects = {
-            "Increase Marine presence in the New World": {
-                "world_state_changes": {"piracy_level": -10, "marine_strength": 5, "civilian_approval": -5},
-                "resource_changes": {"budget": -50000, "manpower": -5000},
-                "skill_changes": {"military": 1}
-            },
-            "Negotiate with the Revolutionary Army": {
-                "world_state_changes": {"revolutionary_threat": -15, "world_stability": 10, "civilian_approval": 5},
-                "resource_changes": {"intelligence": 50},
-                "skill_changes": {"diplomacy": 2}
-            },
-            "Invest in scientific research for advanced weapons": {
-                "world_state_changes": {"scientific_advancement": 15, "marine_strength": 5},
-                "resource_changes": {"budget": -100000},
-                "skill_changes": {"intelligence": 1}
-            },
-            "Host a Reverie to address global issues": {
-                "world_state_changes": {"world_stability": 20, "civilian_approval": 10},
-                "resource_changes": {"budget": -200000},
-                "skill_changes": {"diplomacy": 2}
-            },
-            "Implement stricter regulations on Devil Fruit users": {
-                "world_state_changes": {"world_stability": 5, "civilian_approval": -10},
-                "resource_changes": {"intelligence": 100},
-                "skill_changes": {"military": 1}
-            },
-            "Expand Cipher Pol operations in Paradise": {
-                "world_state_changes": {"revolutionary_threat": -5, "civilian_approval": -5},
-                "resource_changes": {"budget": -50000, "intelligence": 200},
-                "skill_changes": {"intelligence": 2}
-            },
-            "Allocate more resources to combating slavery": {
-                "world_state_changes": {"civilian_approval": 15, "economy": -5},
-                "resource_changes": {"budget": -100000, "manpower": -2000},
-                "skill_changes": {"diplomacy": 1}
-            },
-            "Increase funding for Marine training programs": {
-                "world_state_changes": {"marine_strength": 10},
-                "resource_changes": {"budget": -75000, "manpower": 1000},
-                "skill_changes": {"military": 1}
-            },
-            "Propose a global tax increase to fund the World Government": {
-                "world_state_changes": {"civilian_approval": -15, "economy": 10},
-                "resource_changes": {"budget": 300000},
-                "skill_changes": {"economy": 2}
-            },
-            "Launch a propaganda campaign to improve the World Government's image": {
-                "world_state_changes": {"civilian_approval": 10, "revolutionary_threat": -5},
-                "resource_changes": {"budget": -50000},
-                "skill_changes": {"diplomacy": 1}
-            }
-        }
-
-        if decision['description'] in decision_effects:
-            effects = decision_effects[decision['description']]
-            for category, changes in effects.items():
-                for key, value in changes.items():
-                    consequences[category][key] += value if approve else -value
-
-        # Adjust based on skills
-        for category in ['world_state_changes', 'resource_changes']:
-            for key in consequences[category]:
-                skill_factor = user_data['skills'].get(key, 1) / 10
-                consequences[category][key] *= (1 + skill_factor)
-
-        # Personal resource changes
-        consequences['personal_resource_changes']['wealth'] += random.randint(-100, 200)
-        consequences['personal_resource_changes']['connections'] += random.randint(-2, 5)
-
-        return consequences
-
-    @tasks.loop(hours=24)
-    async def crisis_check(self):
-        for guild in self.bot.guilds:
-            guild_data = await self.config.guild(guild).all()
-            if guild_data['wg_channel'] and not guild_data['current_crisis']:
-                if random.random() < 0.2:  # 20% chance of a crisis each day
-                    crisis = self.generate_crisis(guild_data)
-                    guild_data['current_crisis'] = crisis
-                    await self.config.guild(guild).set(guild_data)
-                    
-                    channel = self.bot.get_channel(guild_data['wg_channel'])
-                    if channel:
-                        embed = discord.Embed(title="Global Crisis!", description=crisis['description'], color=discord.Color.dark_red())
-                        embed.add_field(name="Required Actions", value=crisis['required_actions'], inline=False)
-                        embed.add_field(name="Time Limit", value=f"{crisis['time_limit']} hours", inline=False)
-                        await channel.send(embed=embed)
-
-    def generate_crisis(self, guild_data):
-        crises = [
-            {
-                "description": "A Yonko alliance is threatening to overtake a major kingdom!",
-                "required_actions": "Mobilize Marines, negotiate with kingdom, gather intelligence",
-                "time_limit": 48,
-                "difficulty": 8
-            },
-            {
-                "description": "An Ancient Weapon has been awakened and is causing chaos!",
-                "required_actions": "Research weapon weaknesses, evacuate civilians, coordinate military response",
-                "time_limit": 72,
-                "difficulty": 9
-            },
-            {
-                "description": "Multiple high-security prisoners have escaped from Impel Down!",
-                "required_actions": "Track escapees, reinforce prison security, alert Marine bases",
-                "time_limit": 36,
-                "difficulty": 7
-            },
-            {
-                "description": "A Celestial Dragon has been kidnapped by revolutionaries!",
-                "required_actions": "Negotiate with kidnappers, prepare rescue operation, manage public relations",
-                "time_limit": 24,
-                "difficulty": 6
-            }
-        ]
-        
-        crisis = random.choice(crises)
-        crisis['start_time'] = datetime.datetime.now()
-        crisis['participants'] = {}
-        return crisis
-
-    async def resolve_crisis(self, guild):
-        guild_data = await self.config.guild(guild).all()
-        crisis = guild_data['current_crisis']
-        
-        channel = self.bot.get_channel(guild_data['wg_channel'])
-        if channel:
-            embed = discord.Embed(title="Crisis Resolved!", description=f"The {crisis['description']} has been successfully resolved!", color=discord.Color.green())
+        def generate_world_event(self, world_state):
+            events = [
+                {
+                    "description": "A powerful pirate crew has emerged in the New World!",
+                    "effects": {"piracy_level": 10, "marine_strength": -5}
+                },
+                {
+                    "description": "The Revolutionary Army has liberated a kingdom from tyrannical rule!",
+                    "effects": {"revolutionary_threat": 15, "civilian_approval": 5, "world_stability": -10}
+                },
+                {
+                    "description": "A new breakthrough in Devil Fruit research has been made!",
+                    "effects": {"scientific_advancement": 20, "economy": 5}
+                },
+                {
+                    "description": "A Celestial Dragon has been attacked by pirates!",
+                    "effects": {"world_stability": -15, "marine_strength": 5, "civilian_approval": 10}
+                },
+                {
+                    "description": "A devastating natural disaster has struck multiple islands!",
+                    "effects": {"economy": -10, "civilian_approval": -5, "world_stability": -5}
+                }
+            ]
             
-            top_contributors = sorted(crisis['participants'].items(), key=lambda x: x[1], reverse=True)[:3]
-            for i, (user_id, contribution) in enumerate(top_contributors, 1):
-                user = guild.get_member(int(user_id))
-                if user:
-                    embed.add_field(name=f"Top Contributor #{i}", value=f"{user.name}: {contribution} points", inline=False)
+            event = random.choice(events)
+            for key in event['effects']:
+                event['effects'][key] = max(-20, min(20, event['effects'][key] + random.randint(-5, 5)))
+            
+            return event
+    
+        @tasks.loop(hours=1)
+        async def resource_update(self):
+            for guild in self.bot.guilds:
+                guild_data = await self.config.guild(guild).all()
+                if guild_data['wg_channel']:
+                    guild_data['resources']['budget'] += 10000
+                    guild_data['resources']['manpower'] += 100
+                    guild_data['resources']['intelligence'] += 5
+                    await self.config.guild(guild).set(guild_data)
+    
+        async def check_wg_channel(self, ctx):
+            guild_data = await self.config.guild(ctx.guild).all()
+            if not guild_data['wg_channel']:
+                await ctx.send("The World Government Simulator channel has not been set up yet. An admin needs to use `!wg setup` first.")
+                return False
+            if ctx.channel.id != guild_data['wg_channel']:
+                wg_channel = self.bot.get_channel(guild_data['wg_channel'])
+                await ctx.send(f"This command can only be used in the designated World Government Simulator channel: {wg_channel.mention}")
+                return False
+            return True
+    
+        def calculate_consequences(self, decision, approve, user_data, guild_data):
+            base_influence = 5 if approve else -2
+            consequences = {
+                "influence_change": base_influence + random.randint(-2, 2),
+                "world_state_changes": {k: 0 for k in guild_data['world_state']},
+                "resource_changes": {k: 0 for k in guild_data['resources']},
+                "skill_changes": {k: 0 for k in user_data['skills']},
+                "personal_resource_changes": {k: 0 for k in user_data['personal_resources']}
+            }
+    
+            decision_effects = {
+                "Increase Marine presence in the New World": {
+                    "world_state_changes": {"piracy_level": -10, "marine_strength": 5, "civilian_approval": -5},
+                    "resource_changes": {"budget": -50000, "manpower": -5000},
+                    "skill_changes": {"military": 1}
+                },
+                "Negotiate with the Revolutionary Army": {
+                    "world_state_changes": {"revolutionary_threat": -15, "world_stability": 10, "civilian_approval": 5},
+                    "resource_changes": {"intelligence": 50},
+                    "skill_changes": {"diplomacy": 2}
+                },
+                "Invest in scientific research for advanced weapons": {
+                    "world_state_changes": {"scientific_advancement": 15, "marine_strength": 5},
+                    "resource_changes": {"budget": -100000},
+                    "skill_changes": {"intelligence": 1}
+                },
+                "Host a Reverie to address global issues": {
+                    "world_state_changes": {"world_stability": 20, "civilian_approval": 10},
+                    "resource_changes": {"budget": -200000},
+                    "skill_changes": {"diplomacy": 2}
+                },
+                "Implement stricter regulations on Devil Fruit users": {
+                    "world_state_changes": {"world_stability": 5, "civilian_approval": -10},
+                    "resource_changes": {"intelligence": 100},
+                    "skill_changes": {"military": 1}
+                },
+                "Expand Cipher Pol operations in Paradise": {
+                    "world_state_changes": {"revolutionary_threat": -5, "civilian_approval": -5},
+                    "resource_changes": {"budget": -50000, "intelligence": 200},
+                    "skill_changes": {"intelligence": 2}
+                },
+                "Allocate more resources to combating slavery": {
+                    "world_state_changes": {"civilian_approval": 15, "economy": -5},
+                    "resource_changes": {"budget": -100000, "manpower": -2000},
+                    "skill_changes": {"diplomacy": 1}
+                },
+                "Increase funding for Marine training programs": {
+                    "world_state_changes": {"marine_strength": 10},
+                    "resource_changes": {"budget": -75000, "manpower": 1000},
+                    "skill_changes": {"military": 1}
+                },
+                "Propose a global tax increase to fund the World Government": {
+                    "world_state_changes": {"civilian_approval": -15, "economy": 10},
+                    "resource_changes": {"budget": 300000},
+                    "skill_changes": {"economy": 2}
+                },
+                "Launch a propaganda campaign to improve the World Government's image": {
+                    "world_state_changes": {"civilian_approval": 10, "revolutionary_threat": -5},
+                    "resource_changes": {"budget": -50000},
+                    "skill_changes": {"diplomacy": 1}
+                }
+            }
+    
+            if decision['description'] in decision_effects:
+                effects = decision_effects[decision['description']]
+                for category, changes in effects.items():
+                    for key, value in changes.items():
+                        consequences[category][key] += value if approve else -value
+    
+            # Adjust based on skills
+            for category in ['world_state_changes', 'resource_changes']:
+                for key in consequences[category]:
+                    skill_factor = user_data['skills'].get(key, 1) / 10
+                    consequences[category][key] *= (1 + skill_factor)
+    
+            # Personal resource changes
+            consequences['personal_resource_changes']['wealth'] += random.randint(-100, 200)
+            consequences['personal_resource_changes']['connections'] += random.randint(-2, 5)
+    
+            return consequences
+    
+        @tasks.loop(hours=24)
+        async def crisis_check(self):
+            for guild in self.bot.guilds:
+                guild_data = await self.config.guild(guild).all()
+                if guild_data['wg_channel'] and not guild_data['current_crisis']:
+                    if random.random() < 0.2:  # 20% chance of a crisis each day
+                        crisis = self.generate_crisis(guild_data)
+                        guild_data['current_crisis'] = crisis
+                        await self.config.guild(guild).set(guild_data)
+                        
+                        channel = self.bot.get_channel(guild_data['wg_channel'])
+                        if channel:
+                            embed = discord.Embed(title="Global Crisis!", description=crisis['description'], color=discord.Color.dark_red())
+                            embed.add_field(name="Required Actions", value=crisis['required_actions'], inline=False)
+                            embed.add_field(name="Time Limit", value=f"{crisis['time_limit']} hours", inline=False)
+                            await channel.send(embed=embed)
+    
+        def generate_crisis(self, guild_data):
+            crises = [
+                {
+                    "description": "A Yonko alliance is threatening to overtake a major kingdom!",
+                    "required_actions": "Mobilize Marines, negotiate with kingdom, gather intelligence",
+                    "time_limit": 48,
+                    "difficulty": 8
+                },
+                {
+                    "description": "An Ancient Weapon has been awakened and is causing chaos!",
+                    "required_actions": "Research weapon weaknesses, evacuate civilians, coordinate military response",
+                    "time_limit": 72,
+                    "difficulty": 9
+                },
+                {
+                    "description": "Multiple high-security prisoners have escaped from Impel Down!",
+                    "required_actions": "Track escapees, reinforce prison security, alert Marine bases",
+                    "time_limit": 36,
+                    "difficulty": 7
+                },
+                {
+                    "description": "A Celestial Dragon has been kidnapped by revolutionaries!",
+                    "required_actions": "Negotiate with kidnappers, prepare rescue operation, manage public relations",
+                    "time_limit": 24,
+                    "difficulty": 6
+                }
+            ]
+            
+            crisis = random.choice(crises)
+            crisis['start_time'] = datetime.datetime.now()
+            crisis['participants'] = {}
+            return crisis
+    
+        async def resolve_crisis(self, guild):
+            guild_data = await self.config.guild(guild).all()
+            crisis = guild_data['current_crisis']
+            
+            channel = self.bot.get_channel(guild_data['wg_channel'])
+            if channel:
+                embed = discord.Embed(title="Crisis Resolved!", description=f"The {crisis['description']} has been successfully resolved!", color=discord.Color.green())
+                
+                top_contributors = sorted(crisis['participants'].items(), key=lambda x: x[1], reverse=True)[:3]
+                for i, (user_id, contribution) in enumerate(top_contributors, 1):
+                    user = guild.get_member(int(user_id))
+                    if user:
+                        embed.add_field(name=f"Top Contributor #{i}", value=f"{user.name}: {contribution} points", inline=False)
+                
+                await channel.send(embed=embed)
+            
+            guild_data['current_crisis'] = None
+            await self.config.guild(guild).set(guild_data)
+    
+        @tasks.loop(hours=168)  # Weekly
+        async def promotion_cycle(self):
+            for guild in self.bot.guilds:
+                guild_data = await self.config.guild(guild).all()
+                if guild_data['wg_channel']:
+                    await self.start_promotion_cycle(guild)
+    
+        async def start_promotion_cycle(self, guild):
+            guild_data = await self.config.guild(guild).all()
+            channel = self.bot.get_channel(guild_data['wg_channel'])
+            
+            if not channel:
+                return
+    
+            positions_with_openings = [pos for pos in self.positions[1:] if pos not in [p['position'] for p in guild_data['active_players'].values()]]
+            
+            if not positions_with_openings:
+                await channel.send("There are currently no positions available for promotion.")
+                return
+    
+            position = random.choice(positions_with_openings)
+            eligible_candidates = [
+                (user_id, data) for user_id, data in guild_data['active_players'].items()
+                if self.positions.index(data['position']) == self.positions.index(position) - 1
+            ]
+    
+            if not eligible_candidates:
+                await channel.send(f"No eligible candidates for promotion to {position}.")
+                return
+    
+            guild_data['promotion_candidates'] = {user_id: 0 for user_id, _ in eligible_candidates}
+            await self.config.guild(guild).set(guild_data)
+    
+            embed = discord.Embed(title="Promotion Cycle", description=f"A position for {position} has opened up!", color=discord.Color.blue())
+            embed.add_field(name="Eligible Candidates", value="\n".join([f"<@{user_id}>" for user_id, _ in eligible_candidates]), inline=False)
+            embed.add_field(name="How to Participate", value="Use `!compete` to participate in the promotion cycle. The cycle will last for 7 days.", inline=False)
             
             await channel.send(embed=embed)
-        
-        guild_data['current_crisis'] = None
-        await self.config.guild(guild).set(guild_data)
-
-    @tasks.loop(hours=168)  # Weekly
-    async def promotion_cycle(self):
-        for guild in self.bot.guilds:
+    
+        @tasks.loop(hours=168)  # Weekly
+        async def end_promotion_cycle(self):
+            for guild in self.bot.guilds:
+                guild_data = await self.config.guild(guild).all()
+                if guild_data['wg_channel'] and guild_data['promotion_candidates']:
+                    await self.conclude_promotion(guild)
+    
+        async def conclude_promotion(self, guild):
             guild_data = await self.config.guild(guild).all()
-            if guild_data['wg_channel']:
-                await self.start_promotion_cycle(guild)
-
-    async def start_promotion_cycle(self, guild):
-        guild_data = await self.config.guild(guild).all()
-        channel = self.bot.get_channel(guild_data['wg_channel'])
-        
-        if not channel:
-            return
-
-        positions_with_openings = [pos for pos in self.positions[1:] if pos not in [p['position'] for p in guild_data['active_players'].values()]]
-        
-        if not positions_with_openings:
-            await channel.send("There are currently no positions available for promotion.")
-            return
-
-        position = random.choice(positions_with_openings)
-        eligible_candidates = [
-            (user_id, data) for user_id, data in guild_data['active_players'].items()
-            if self.positions.index(data['position']) == self.positions.index(position) - 1
-        ]
-
-        if not eligible_candidates:
-            await channel.send(f"No eligible candidates for promotion to {position}.")
-            return
-
-        guild_data['promotion_candidates'] = {user_id: 0 for user_id, _ in eligible_candidates}
-        await self.config.guild(guild).set(guild_data)
-
-        embed = discord.Embed(title="Promotion Cycle", description=f"A position for {position} has opened up!", color=discord.Color.blue())
-        embed.add_field(name="Eligible Candidates", value="\n".join([f"<@{user_id}>" for user_id, _ in eligible_candidates]), inline=False)
-        embed.add_field(name="How to Participate", value="Use `!compete` to participate in the promotion cycle. The cycle will last for 7 days.", inline=False)
-        
-        await channel.send(embed=embed)
-
-    @tasks.loop(hours=168)  # Weekly
-    async def end_promotion_cycle(self):
-        for guild in self.bot.guilds:
-            guild_data = await self.config.guild(guild).all()
-            if guild_data['wg_channel'] and guild_data['promotion_candidates']:
-                await self.conclude_promotion(guild)
-
-    async def conclude_promotion(self, guild):
-        guild_data = await self.config.guild(guild).all()
-        channel = self.bot.get_channel(guild_data['wg_channel'])
-        
-        if not channel:
-            return
-
-        if not guild_data['promotion_candidates']:
-            await channel.send("The promotion cycle has ended, but there were no participants.")
-            return
-
-        winner_id = max(guild_data['promotion_candidates'], key=guild_data['promotion_candidates'].get)
-        winner_data = guild_data['active_players'][winner_id]
-        new_position = self.positions[self.positions.index(winner_data['position']) + 1]
-
-        winner_data['position'] = new_position
-        guild_data['active_players'][winner_id] = winner_data
-
-        embed = discord.Embed(title="Promotion Cycle Concluded", color=discord.Color.green())
-        embed.add_field(name="Winner", value=f"<@{winner_id}>", inline=False)
-        embed.add_field(name="New Position", value=new_position, inline=False)
-        embed.add_field(name="Promotion Score", value=guild_data['promotion_candidates'][winner_id], inline=False)
-
-        await channel.send(embed=embed)
-
-        guild_data['promotion_candidates'] = {}
-        await self.config.guild(guild).set(guild_data)
+            channel = self.bot.get_channel(guild_data['wg_channel'])
+            
+            if not channel:
+                return
+    
+            if not guild_data['promotion_candidates']:
+                await channel.send("The promotion cycle has ended, but there were no participants.")
+                return
+    
+            winner_id = max(guild_data['promotion_candidates'], key=guild_data['promotion_candidates'].get)
+            winner_data = guild_data['active_players'][winner_id]
+            new_position = self.positions[self.positions.index(winner_data['position']) + 1]
+    
+            winner_data['position'] = new_position
+            guild_data['active_players'][winner_id] = winner_data
+    
+            embed = discord.Embed(title="Promotion Cycle Concluded", color=discord.Color.green())
+            embed.add_field(name="Winner", value=f"<@{winner_id}>", inline=False)
+            embed.add_field(name="New Position", value=new_position, inline=False)
+            embed.add_field(name="Promotion Score", value=guild_data['promotion_candidates'][winner_id], inline=False)
+    
+            await channel.send(embed=embed)
+    
+            guild_data['promotion_candidates'] = {}
+            await self.config.guild(guild).set(guild_data)
 
 def setup(bot):
     bot.add_cog(AdvancedWorldGovernmentSimulator(bot))
