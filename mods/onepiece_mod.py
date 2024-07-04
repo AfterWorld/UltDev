@@ -441,7 +441,8 @@ class OnePieceMod(commands.Cog):
         if channel is None:
             channel = ctx.channel
 
-        rules = """# 🏴‍☠️ Grand Line Pirates' Code of Conduct 🏴‍☠️
+        rules = """
+# 🏴‍☠️ Grand Line Pirates' Code of Conduct 🏴‍☠️
 
 Ahoy, fellow pirates! Welcome aboard the Grand Line Discord Server. Before ye set sail on this grand adventure, make sure to familiarize yourself with our code of conduct and Discord's Terms of Service. Remember, even pirates have rules to follow!
 
@@ -478,29 +479,29 @@ For the full terms, visit: https://discord.com/terms
 
 ## 👑 Crew Hierarchy
 
-- 👑 Pirate King 👑: Server Owner
-- ⭐️ Yonko ⭐️: High-ranking Administrators
-- ⚓️ Admirals ⚓️: Senior Moderators
-- 💎 Legends 💎: Trusted friends and partners
-- 👑 Shichibukai 👑: Novice Moderators
+- 👑 Pirate King: Server Owner
+- ⭐️ Yonko: High-ranking Administrators
+- ⚓️ Admirals: Senior Moderators
+- 💎 Legends: Trusted friends and partners
+- 👑 Shichibukai: Novice Moderators
 
 ## 🌊 Choose Your Sea
 
 Join one of the five seas from One Piece:
-- ⭕ Grand Line ⭕ 
-- 🔵 East Blue 🔵 
-- ⚪ West Blue ⚪ 
-- ⚫ North Blue ⚫ 
-- 🔴 South Blue 🔴 
+- ⭕ Grand Line 
+- 🔵 East Blue 
+- ⚪ West Blue 
+- ⚫ North Blue 
+- 🔴 South Blue 
 
 Select your sea in the designated channel to participate in sea tournaments!
 
 ## 🏴‍☠️ Join a Pirate Crew
 
 Enlist in one of our fearsome pirate crews:
-- 🕷️ Phantom Troupe 🕷️
-- 🦊 Foxy Pirates 🦊
-- 🐉 Revolutionary Army 🐉
+- 🕷️ Phantom Troupe
+- 🦊 Foxy Pirates
+- 🐉 Revolutionary Army
 
 Each crew has 4 ranks: Cabin Boy, First Mate, Commander, and Right Hand
 
@@ -508,41 +509,21 @@ Each crew has 4 ranks: Cabin Boy, First Mate, Commander, and Right Hand
 
 Climb the ranks from a lowly Chore Boy to the World's Worst Criminal!
 
-```
-╔═════╦══════════════════════════╦═══════╗
-║ No. ║           Rank           ║ Level ║
-╠═════╬══════════════════════════╬═══════╣
-║  1  ║        Chore Boy         ║   1   ║
-╠═════╬══════════════════════════╬═══════╣
-║  2  ║      Petty Officer       ║   5   ║
-╠═════╬══════════════════════════╬═══════╣
-║  3  ║   Chief Petty Officer    ║  10   ║
-╠═════╬══════════════════════════╬═══════╣
-║  4  ║     Warrant Officer      ║  15   ║
-╠═════╬══════════════════════════╬═══════╣
-║  5  ║        Lieutenant        ║  20   ║
-╠═════╬══════════════════════════╬═══════╣
-║  6  ║         Captain          ║  25   ║
-╠═════╬══════════════════════════╬═══════╣
-║  7  ║        Commodore         ║  30   ║
-╠═════╬══════════════════════════╬═══════╣
-║  8  ║       Rear Admiral       ║  35   ║
-╠═════╬══════════════════════════╬═══════╣
-║  9  ║       Vice Admiral       ║  40   ║
-╠═════╬══════════════════════════╬═══════╣
-║ 10  ║    Buggy's Right-Hand    ║  45   ║
-╠═════╬══════════════════════════╬═══════╣
-║ 11  ║    Kidd's Right-Hand     ║  50   ║
-╠═════╬══════════════════════════╬═══════╣
-║ 12  ║     Law's Right-Hand     ║  55   ║
-╠═════╬══════════════════════════╬═══════╣
-║ 13  ║   Shanks's Right-Hand    ║  65   ║
-╠═════╬══════════════════════════╬═══════╣
-║ 14  ║    Luffy's Right-Hand    ║  70   ║
-╠═════╬══════════════════════════╬═══════╣
-║ 15  ║  World's Worst Criminal  ║ 100   ║
-╚═════╩══════════════════════════╩═══════╝
-```
+1. **Chore Boy**: Level 1
+2. **Petty Officer**: Level 5
+3. **Chief Petty Officer**: Level 10
+4. **Warrant Officer**: Level 15
+5. **Lieutenant**: Level 20
+6. **Captain**: Level 25
+7. **Commodore**: Level 30
+8. **Rear Admiral**: Level 35
+9. **Vice Admiral**: Level 40
+10. **Buggy's Right-Hand**: Level 45
+11. **Kidd's Right-Hand**: Level 50
+12. **Law's Right-Hand**: Level 55
+13. **Shanks's Right-Hand**: Level 65
+14. **Luffy's Right-Hand**: Level 70
+15. **World's Worst Criminal**: Level 100
 
 Now, hoist the colors and set sail for adventure! If ye have any questions, consult yer Log Pose (ping a moderator). May the winds be ever in yer favor! ⛵🌊🏝️"""
 
