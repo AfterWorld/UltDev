@@ -134,7 +134,7 @@ class OnePieceExpandedCogs(commands.Cog):
             cipher = self.create_cipher(message, difficulty)
             encoded = self.encode_message(message, cipher)
             await ctx.send(f"Difficulty Level {difficulty}\nDecipher this Poneglyph: `{encoded}`")
-            await ctx.send(f"You have {60 // difficulty} seconds! Type '!hint' for a clue.")
+            await ctx.send(f"You have {60 // difficulty} seconds! Type '.hint' for a clue.")
 
             hint_level = 0
             hint_penalty = 0
@@ -145,7 +145,7 @@ class OnePieceExpandedCogs(commands.Cog):
             try:
                 while True:
                     msg = await self.bot.wait_for('message', timeout=60.0 / difficulty, check=check)
-                    if msg.content.lower() == '!hint':
+                    if msg.content.lower() == '.hint':
                         hint_level += 1
                         if hint_level <= 3:
                             hint = self.get_hint(message, hint_level)
