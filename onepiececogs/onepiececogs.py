@@ -36,7 +36,17 @@ class OnePieceExpandedCogs(commands.Cog):
             "When all moons align, the path will clear",
             "In the land of Wano, a secret sleeps",
             "The voice of all things speaks in silence",
-            "To reach Laugh Tale, follow the Road"
+            "To reach Laugh Tale, follow the Road",
+            "The true history lies hidden in the shadows",
+            "Only those with the will of D can change the world",
+            "The great kingdom fell, but its legacy endures",
+            "In the eye of the storm, the truth awaits",
+            "The three weapons united will bring about a new dawn",
+            "The twenty kingdoms formed a pact of silence",
+            "The void century holds the key to freedom",
+            "When sea and sky become one, the door will open",
+            "The one piece is more than just a treasure",
+            "The ancient kingdom's name must never be forgotten"
         ]
         self.sword_questions = [
             {"q": "Which sword is known as 'Black Blade'?", "a": "Yoru"},
@@ -123,29 +133,67 @@ class OnePieceExpandedCogs(commands.Cog):
                 await ctx.send(f"Only one idea was submitted for the {fusion_name} no Mi.")
         else:
             await ctx.send("No one suggested any powers. The fruit's abilities remain a mystery!")
+            
+    def create_cipher(self, message, difficulty):
+        unique_chars = list(set(message.lower()))
+        shuffled = unique_chars.copy()
+        for _ in range(difficulty):
+            random.shuffle(shuffled)
+        return dict(zip(unique_chars, shuffled))
+
+    def encode_message(self, message, cipher):
+        return ''.join(cipher.get(c.lower(), c) for c in message)
+
+    def get_hint(self, message, hint_level):
+        if hint_level == 1:
+            return f"The message starts with '{message[0]}' and ends with '{message[-1]}'."
+        elif hint_level == 2:
+            words = message.split()
+            return f"The message contains {len(words)} words."
+        elif hint_level == 3:
+            return f"A key word in the message is '{random.choice(message.split())}'."
+
     @commands.command()
     async def poneglyph(self, ctx):
-        """Start a Poneglyph decoding game with increasing difficulty"""
+        """Start a Poneglyph decoding game with increasing difficulty and hints"""
         difficulty = 1
         score = 0
         
-        await ctx.send("Welcome to the Poneglyph Decoding Challenge! Decipher as many Poneglyphs as you can. The difficulty will increase with each correct answer.")
+        await ctx.send("Welcome to the Poneglyph Decoding Challenge! Decipher as many Poneglyphs as you can. The difficulty will increase with each correct answer. Type '!hint' for a clue, but be aware it will reduce your score for the current round.")
 
         while True:
             message = random.choice(self.poneglyph_messages)
-            encoded = self.encode_message(message, difficulty)
+            cipher = self.create_cipher(message, difficulty)
+            encoded = self.encode_message(message, cipher)
             await ctx.send(f"Difficulty Level {difficulty}\nDecipher this Poneglyph: `{encoded}`")
-            await ctx.send(f"You have {60 // difficulty} seconds!")
+            await ctx.send(f"You have {60 // difficulty} seconds! Type '.hint' for a clue.")
+
+            hint_level = 0
+            hint_penalty = 0
 
             def check(m):
-                return m.channel == ctx.channel and m.content.lower() == message.lower()
+                return m.channel == ctx.channel and (m.content.lower() == message.lower() or m.content.lower() == '!hint')
 
             try:
-                msg = await self.bot.wait_for('message', timeout=60.0 / difficulty, check=check)
-                await ctx.send(f"Congratulations {msg.author.mention}! You've decoded the Poneglyph!")
-                score += difficulty * 10
+                while True:
+                    msg = await self.bot.wait_for('message', timeout=60.0 / difficulty, check=check)
+                    if msg.content.lower() == '.hint':
+                        hint_level += 1
+                        if hint_level <= 3:
+                            hint = self.get_hint(message, hint_level)
+                            hint_penalty += 2 * difficulty  # Increase penalty with difficulty
+                            await ctx.send(f"Hint {hint_level}: {hint}")
+                        else:
+                            await ctx.send("No more hints available!")
+                    else:
+                        await ctx.send(f"Congratulations {msg.author.mention}! You've decoded the Poneglyph!")
+                        round_score = max(0, difficulty * 10 - hint_penalty)
+                        score += round_score
+                        await ctx.send(f"Round score: {round_score} (Hint penalty: -{hint_penalty})")
+                        await ctx.send(f"Your total score: {score}")
+                        break
+
                 difficulty += 1
-                await ctx.send(f"Your current score: {score}")
                 await ctx.send("Prepare for the next Poneglyph! Type 'continue' to proceed or 'stop' to end the game.")
                 
                 def continue_check(m):
@@ -164,10 +212,6 @@ class OnePieceExpandedCogs(commands.Cog):
                 break
 
         await ctx.send(f"Game Over! Your final score is {score}. You reached difficulty level {difficulty}.")
-
-    def encode_message(self, message, difficulty):
-        shift = difficulty * 2
-        return ''.join(chr((ord(c) - 97 + shift) % 26 + 97) if c.isalpha() else c for c in message.lower())
 
     @commands.command()
     async def fruitinfo(self, ctx, *, fruit_name: str):
