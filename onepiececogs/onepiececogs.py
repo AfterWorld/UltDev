@@ -482,7 +482,7 @@ class OnePieceExpandedCogs(commands.Cog):
     async def cp(self, ctx):
         """Cipher Pol commands"""
         if ctx.invoked_subcommand is None:
-            await ctx.send("Use `!help cp` to see available Cipher Pol commands.")
+            await ctx.send("Use `.help cp` to see available Cipher Pol commands.")
 
     @cp.command(name="join")
     async def cp_join(self, ctx):
