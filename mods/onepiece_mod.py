@@ -525,7 +525,8 @@ Climb the ranks from a lowly Chore Boy to the World's Worst Criminal!
 14. **Luffy's Right-Hand**: Level 70
 15. **World's Worst Criminal**: Level 100
 
-Now, hoist the colors and set sail for adventure! If ye have any questions, consult yer Log Pose (ping a moderator). May the winds be ever in yer favor! ⛵🌊🏝️"""
+Now, hoist the colors and set sail for adventure! If ye have any questions, consult yer Log Pose (ping a moderator). May the winds be ever in yer favor! ⛵🌊🏝️
+"""
 
         # Split the message into chunks of 2000 characters or less
         chunks = [rules[i:i+2000] for i in range(0, len(rules), 2000)]
@@ -538,7 +539,7 @@ Now, hoist the colors and set sail for adventure! If ye have any questions, cons
             await ctx.send("I don't have permission to send messages in that channel!")
         except discord.HTTPException:
             await ctx.send("There was an error sending the rules. Please try again later.")
-            
+
 async def setup(bot):
     global original_commands
     cog = OnePieceMod(bot)
