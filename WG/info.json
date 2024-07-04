@@ -1,0 +1,10 @@
+{
+    "author": ["Your Name"],
+    "install_msg": "Thank you for installing the Advanced World Government Simulator! Use `[p]help AdvancedWorldGovernmentSimulator` to see all available commands. Make sure to set up a dedicated channel for the simulator using `[p]wg setup`.",
+    "name": "AdvancedWorldGovernmentSimulator",
+    "short": "A complex One Piece themed political simulator",
+    "description": "Engage in a deep, immersive political simulation set in the One Piece world. Climb the ranks of the World Government, make impactful decisions, and shape the course of history!",
+    "tags": ["game", "roleplay", "one piece", "simulation"],
+    "min_bot_version": "3.5.0",
+    "end_user_data_statement": "This cog stores user data including their position, influence, allies, enemies, decisions, skills, and personal resources within the World Government simulation. This data can be removed by leaving the simulation or by bot owner command."
+}
