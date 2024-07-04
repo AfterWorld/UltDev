@@ -12,7 +12,14 @@ class OnePieceExpandedCogs(commands.Cog):
             "character": None,
             "devil_fruit": None,
             "quiz_scores": {"sword": 0, "personality": ""},
-            "voice_of_all_things_score": 0
+            "voice_of_all_things_score": 0,
+            "cp_rank": None,
+            "void_century_knowledge": 0,
+            "revolutionary_status": None,
+            "world_noble_reputation": 0,
+            "poneglyph_fragments": [],
+            "rokushiki_techniques": [],
+            "fish_man_karate_level": 0
         }
         default_guild = {
             "ongoing_games": {}
@@ -470,6 +477,259 @@ class OnePieceExpandedCogs(commands.Cog):
 
         guild_data["ongoing_games"]["butterfly"] = False
         await self.config.guild(ctx.guild).set(guild_data)
+
+    @commands.group()
+    async def cp(self, ctx):
+        """Cipher Pol commands"""
+        if ctx.invoked_subcommand is None:
+            await ctx.send("Use `!help cp` to see available Cipher Pol commands.")
+
+    @cp.command(name="join")
+    async def cp_join(self, ctx):
+        """Join Cipher Pol as a rookie agent"""
+        user_data = await self.config.user(ctx.author).all()
+        if user_data['cp_rank']:
+            await ctx.send("You're already a member of Cipher Pol!")
+            return
+
+        user_data['cp_rank'] = "Rookie"
+        await self.config.user(ctx.author).set(user_data)
+        await ctx.send("Welcome to Cipher Pol, rookie! Your training begins now.")
+
+    @cp.command(name="mission")
+    async def cp_mission(self, ctx):
+        """Undertake a Cipher Pol mission"""
+        user_data = await self.config.user(ctx.author).all()
+        if not user_data['cp_rank']:
+            await ctx.send("You must join Cipher Pol first!")
+            return
+
+        missions = [
+            "Infiltrate a pirate crew",
+            "Gather intelligence on a Revolutionary Army base",
+            "Protect a Celestial Dragon during their visit to a kingdom",
+            "Investigate rumors of an Ancient Weapon",
+            "Assassinate a corrupt kingdom official"
+        ]
+
+        mission = random.choice(missions)
+        await ctx.send(f"Your mission, should you choose to accept it: {mission}")
+
+        await ctx.send("Do you accept this mission? (yes/no)")
+        
+        def check(m):
+            return m.author == ctx.author and m.channel == ctx.channel and m.content.lower() in ['yes', 'no']
+
+        try:
+            msg = await self.bot.wait_for('message', timeout=30.0, check=check)
+            if msg.content.lower() == 'yes':
+                success = random.choice([True, False])
+                if success:
+                    await ctx.send("Mission accomplished! Your rank in Cipher Pol has increased.")
+                    ranks = ["Rookie", "Agent", "Senior Agent", "CP9 Candidate", "CP9 Member"]
+                    current_rank_index = ranks.index(user_data['cp_rank'])
+                    if current_rank_index < len(ranks) - 1:
+                        user_data['cp_rank'] = ranks[current_rank_index + 1]
+                        await self.config.user(ctx.author).set(user_data)
+                else:
+                    await ctx.send("Mission failed. Better luck next time, agent.")
+            else:
+                await ctx.send("Mission declined. Remember, the World Government is always watching.")
+        except asyncio.TimeoutError:
+            await ctx.send("Time's up! The mission was reassigned to another agent.")
+
+    @commands.command()
+    async def void_century(self, ctx):
+        """Research the Void Century"""
+        user_data = await self.config.user(ctx.author).all()
+        
+        research_topics = [
+            "The Great Kingdom",
+            "The Ancient Weapons",
+            "The Will of D",
+            "The Creation of the World Government",
+            "The True History"
+        ]
+        
+        topic = random.choice(research_topics)
+        await ctx.send(f"You've uncovered information about: {topic}")
+        
+        await ctx.send("What do you think this means? (Enter your interpretation)")
+        
+        def check(m):
+            return m.author == ctx.author and m.channel == ctx.channel
+
+        try:
+            interpretation = await self.bot.wait_for('message', timeout=60.0, check=check)
+            user_data['void_century_knowledge'] += 1
+            user_data['poneglyph_fragments'].append({"topic": topic, "interpretation": interpretation.content})
+            await self.config.user(ctx.author).set(user_data)
+            await ctx.send(f"Interesting theory! Your Void Century knowledge has increased to {user_data['void_century_knowledge']}.")
+        except asyncio.TimeoutError:
+            await ctx.send("The secrets of the Void Century remain elusive...")
+
+    @commands.group()
+    async def revolutionary(self, ctx):
+        """Revolutionary Army commands"""
+        if ctx.invoked_subcommand is None:
+            await ctx.send("Use `!help revolutionary` to see available Revolutionary Army commands.")
+
+    @revolutionary.command(name="join")
+    async def revolutionary_join(self, ctx):
+        """Join the Revolutionary Army"""
+        user_data = await self.config.user(ctx.author).all()
+        if user_data['revolutionary_status']:
+            await ctx.send("You're already a member of the Revolutionary Army!")
+            return
+
+        user_data['revolutionary_status'] = "Recruit"
+        await self.config.user(ctx.author).set(user_data)
+        await ctx.send("Welcome to the Revolutionary Army! Together, we'll change the world.")
+
+    @revolutionary.command(name="mission")
+    async def revolutionary_mission(self, ctx):
+        """Undertake a mission for the Revolutionary Army"""
+        user_data = await self.config.user(ctx.author).all()
+        if not user_data['revolutionary_status']:
+            await ctx.send("You must join the Revolutionary Army first!")
+            return
+
+        missions = [
+            "Liberate a kingdom from a tyrannical ruler",
+            "Sabotage a World Government weapons facility",
+            "Rescue prisoners from a corrupt Marine base",
+            "Gather intelligence on Celestial Dragon activities",
+            "Distribute revolutionary propaganda in a controlled territory"
+        ]
+
+        mission = random.choice(missions)
+        await ctx.send(f"Your mission for the Revolutionary Army: {mission}")
+
+        await ctx.send("Do you accept this mission? (yes/no)")
+        
+        def check(m):
+            return m.author == ctx.author and m.channel == ctx.channel and m.content.lower() in ['yes', 'no']
+
+        try:
+            msg = await self.bot.wait_for('message', timeout=30.0, check=check)
+            if msg.content.lower() == 'yes':
+                success = random.choice([True, False])
+                if success:
+                    await ctx.send("Mission successful! You've struck a blow against the World Government.")
+                    ranks = ["Recruit", "Soldier", "Commander", "Chief of Staff", "Army General"]
+                    current_rank_index = ranks.index(user_data['revolutionary_status'])
+                    if current_rank_index < len(ranks) - 1:
+                        user_data['revolutionary_status'] = ranks[current_rank_index + 1]
+                        await self.config.user(ctx.author).set(user_data)
+                        await ctx.send(f"You've been promoted to {user_data['revolutionary_status']}!")
+                else:
+                    await ctx.send("Mission failed. The World Government's grip remains strong...")
+            else:
+                await ctx.send("Mission declined. Remember, the fate of the world hangs in the balance.")
+        except asyncio.TimeoutError:
+            await ctx.send("Time's up! The opportunity to make a difference has passed.")
+
+    @commands.command()
+    async def celestial_dragon(self, ctx):
+        """Interact with a Celestial Dragon"""
+        user_data = await self.config.user(ctx.author).all()
+        
+        scenarios = [
+            "A Celestial Dragon demands you bow before them.",
+            "A Celestial Dragon is mistreating a slave in front of you.",
+            "A Celestial Dragon offers you a large sum of money to perform a questionable task.",
+            "You witness a Celestial Dragon abusing their authority with the Marines.",
+            "A Celestial Dragon is about to shoot someone for bumping into them."
+        ]
+        
+        scenario = random.choice(scenarios)
+        await ctx.send(f"Scenario: {scenario}\n\nHow do you respond? (obey/defy)")
+        
+        def check(m):
+            return m.author == ctx.author and m.channel == ctx.channel and m.content.lower() in ['obey', 'defy']
+
+        try:
+            response = await self.bot.wait_for('message', timeout=30.0, check=check)
+            if response.content.lower() == 'obey':
+                user_data['world_noble_reputation'] += 1
+                await ctx.send("You've pleased the Celestial Dragon, but at what cost to your conscience?")
+            else:
+                user_data['world_noble_reputation'] -= 1
+                await ctx.send("You've defied the Celestial Dragon. Your actions may have consequences...")
+            
+            await self.config.user(ctx.author).set(user_data)
+            await ctx.send(f"Your reputation with World Nobles is now {user_data['world_noble_reputation']}.")
+        except asyncio.TimeoutError:
+            await ctx.send("You hesitated too long. The Celestial Dragon has lost interest in you.")
+
+    @commands.command()
+    async def rokushiki(self, ctx):
+        """Train in Rokushiki techniques"""
+        user_data = await self.config.user(ctx.author).all()
+        
+        techniques = [
+            "Geppo (Moon Step)",
+            "Tekkai (Iron Body)",
+            "Shigan (Finger Pistol)",
+            "Rankyaku (Storm Leg)",
+            "Soru (Shave)",
+            "Kami-e (Paper Art)"
+        ]
+        
+        available_techniques = [t for t in techniques if t not in user_data['rokushiki_techniques']]
+        
+        if not available_techniques:
+            await ctx.send("You have mastered all Rokushiki techniques!")
+            return
+        
+        technique = random.choice(available_techniques)
+        await ctx.send(f"You begin training in {technique}.")
+        
+        await ctx.send("React with 💪 when you're ready to attempt mastering this technique.")
+        
+        def check(reaction, user):
+            return user == ctx.author and str(reaction.emoji) == '💪'
+
+        try:
+            await self.bot.wait_for('reaction_add', timeout=60.0, check=check)
+            success = random.random() < 0.5  # 50% chance of success
+            if success:
+                user_data['rokushiki_techniques'].append(technique)
+                await self.config.user(ctx.author).set(user_data)
+                await ctx.send(f"Congratulations! You've mastered {technique}.")
+            else:
+                await ctx.send(f"You weren't able to master {technique} this time. Keep training!")
+        except asyncio.TimeoutError:
+            await ctx.send("Training session expired. Remember, mastering Rokushiki requires dedication!")
+
+    @commands.command()
+    async def fishman_karate(self, ctx):
+        """Train in Fish-Man Karate"""
+        user_data = await self.config.user(ctx.author).all()
+        
+        current_level = user_data['fish_man_karate_level']
+        
+        if current_level >= 10:
+            await ctx.send("You have mastered Fish-Man Karate!")
+            return
+        
+        await ctx.send(f"Current Fish-Man Karate Level: {current_level}")
+        await ctx.send("You begin your Fish-Man Karate training. React with 🌊 when you're ready to test your skills.")
+        
+        def check(reaction, user):
+            return user == ctx.author and str(reaction.emoji) == '🌊'
+
+        try:
+            await self.bot.wait_for('reaction_add', timeout=60.0, check=check)
+            success = random.random() < 0.7  # 70% chance of success
+            if success:
+                user_data['fish_man_karate_level'] += 1
+                await self.config.user(ctx.author).set(user_data)
+                await ctx.send(f"Your Fish-Man Karate skills have improved! New level: {user_data['fish_man_karate_level']}")
+            else:
+                await ctx.send("Your training was unsuccessful this time. Keep practicing!")
+        except asyncio.TimeoutError:
+            await ctx.send("Training session expired. The secrets of Fish-Man Karate require patience and dedication!")
 
     @commands.Cog.listener()
     async def on_message(self, message):
