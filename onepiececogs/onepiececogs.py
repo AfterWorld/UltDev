@@ -112,30 +112,56 @@ class OnePieceExpandedCogs(commands.Cog):
     def encode_message(self, message, cipher):
         return ''.join(cipher.get(c.lower(), c) for c in message)
 
+    def get_hint(self, message, hint_level):
+        if hint_level == 1:
+            return f"The message starts with '{message[0]}' and ends with '{message[-1]}'."
+        elif hint_level == 2:
+            words = message.split()
+            return f"The message contains {len(words)} words."
+        elif hint_level == 3:
+            return f"A key word in the message is '{random.choice(message.split())}'."
+
     @commands.command()
     async def poneglyph(self, ctx):
-        """Start a Poneglyph decoding game with increasing difficulty"""
+        """Start a Poneglyph decoding game with increasing difficulty and hints"""
         difficulty = 1
         score = 0
         
-        await ctx.send("Welcome to the Poneglyph Decoding Challenge! Decipher as many Poneglyphs as you can. The difficulty will increase with each correct answer.")
+        await ctx.send("Welcome to the Poneglyph Decoding Challenge! Decipher as many Poneglyphs as you can. The difficulty will increase with each correct answer. Type '!hint' for a clue, but be aware it will reduce your score for the current round.")
 
         while True:
             message = random.choice(self.poneglyph_messages)
             cipher = self.create_cipher(message, difficulty)
             encoded = self.encode_message(message, cipher)
             await ctx.send(f"Difficulty Level {difficulty}\nDecipher this Poneglyph: `{encoded}`")
-            await ctx.send(f"You have {60 // difficulty} seconds!")
+            await ctx.send(f"You have {60 // difficulty} seconds! Type '!hint' for a clue.")
+
+            hint_level = 0
+            hint_penalty = 0
 
             def check(m):
-                return m.channel == ctx.channel and m.content.lower() == message.lower()
+                return m.channel == ctx.channel and (m.content.lower() == message.lower() or m.content.lower() == '!hint')
 
             try:
-                msg = await self.bot.wait_for('message', timeout=60.0 / difficulty, check=check)
-                await ctx.send(f"Congratulations {msg.author.mention}! You've decoded the Poneglyph!")
-                score += difficulty * 10
+                while True:
+                    msg = await self.bot.wait_for('message', timeout=60.0 / difficulty, check=check)
+                    if msg.content.lower() == '!hint':
+                        hint_level += 1
+                        if hint_level <= 3:
+                            hint = self.get_hint(message, hint_level)
+                            hint_penalty += 2 * difficulty  # Increase penalty with difficulty
+                            await ctx.send(f"Hint {hint_level}: {hint}")
+                        else:
+                            await ctx.send("No more hints available!")
+                    else:
+                        await ctx.send(f"Congratulations {msg.author.mention}! You've decoded the Poneglyph!")
+                        round_score = max(0, difficulty * 10 - hint_penalty)
+                        score += round_score
+                        await ctx.send(f"Round score: {round_score} (Hint penalty: -{hint_penalty})")
+                        await ctx.send(f"Your total score: {score}")
+                        break
+
                 difficulty += 1
-                await ctx.send(f"Your current score: {score}")
                 await ctx.send("Prepare for the next Poneglyph! Type 'continue' to proceed or 'stop' to end the game.")
                 
                 def continue_check(m):
@@ -154,6 +180,7 @@ class OnePieceExpandedCogs(commands.Cog):
                 break
 
         await ctx.send(f"Game Over! Your final score is {score}. You reached difficulty level {difficulty}.")
+
 
     @commands.command()
     async def buildship(self, ctx):
