@@ -398,7 +398,7 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
 
         await ctx.send(embed=embed)
      @tasks.loop(hours=24)
-    async def world_events(self):
+     async def world_events(self):
         for guild in self.bot.guilds:
             guild_data = await self.config.guild(guild).all()
             if guild_data['wg_channel']:
