@@ -101,58 +101,58 @@ class OnePieceExpandedCogs(commands.Cog):
         else:
             await ctx.send("Looks like the fruit's powers remain a mystery!")
 
-        def create_cipher(self, difficulty):
-            alphabet = string.ascii_lowercase
-            shuffled = list(alphabet)
-            for _ in range(difficulty):
-                random.shuffle(shuffled)
-            return dict(zip(alphabet, shuffled))
+    def create_cipher(self, difficulty):
+        alphabet = string.ascii_lowercase
+        shuffled = list(alphabet)
+        for _ in range(difficulty):
+            random.shuffle(shuffled)
+        return dict(zip(alphabet, shuffled))
 
-        def encode_message(self, message, cipher):
-            return ''.join(cipher.get(c, c) for c in message.lower())
+    def encode_message(self, message, cipher):
+        return ''.join(cipher.get(c, c) for c in message.lower())
 
-        @commands.command()
-        async def poneglyph(self, ctx):
-            """Start a Poneglyph decoding game with increasing difficulty"""
-            difficulty = 1
-            score = 0
-            
-            await ctx.send("Welcome to the Poneglyph Decoding Challenge! Decipher as many Poneglyphs as you can. The difficulty will increase with each correct answer.")
+    @commands.command()
+    async def poneglyph(self, ctx):
+        """Start a Poneglyph decoding game with increasing difficulty"""
+        difficulty = 1
+        score = 0
+        
+        await ctx.send("Welcome to the Poneglyph Decoding Challenge! Decipher as many Poneglyphs as you can. The difficulty will increase with each correct answer.")
 
-            while True:
-                message = random.choice(self.poneglyph_messages)
-                cipher = self.create_cipher(difficulty)
-                encoded = self.encode_message(message, cipher)
-                await ctx.send(f"Difficulty Level {difficulty}\nDecipher this Poneglyph: `{encoded}`")
-                await ctx.send(f"You have {60 // difficulty} seconds!")
+        while True:
+            message = random.choice(self.poneglyph_messages)
+            cipher = self.create_cipher(difficulty)
+            encoded = self.encode_message(message, cipher)
+            await ctx.send(f"Difficulty Level {difficulty}\nDecipher this Poneglyph: `{encoded}`")
+            await ctx.send(f"You have {60 // difficulty} seconds!")
 
-                def check(m):
-                    return m.channel == ctx.channel and m.content.lower() == message.lower()
+            def check(m):
+                return m.channel == ctx.channel and m.content.lower() == message.lower()
+
+            try:
+                msg = await self.bot.wait_for('message', timeout=60.0 / difficulty, check=check)
+                await ctx.send(f"Congratulations {msg.author.mention}! You've decoded the Poneglyph!")
+                score += difficulty * 10
+                difficulty += 1
+                await ctx.send(f"Your current score: {score}")
+                await ctx.send("Prepare for the next Poneglyph! Type 'continue' to proceed or 'stop' to end the game.")
+                
+                def continue_check(m):
+                    return m.author == msg.author and m.content.lower() in ['continue', 'stop']
 
                 try:
-                    msg = await self.bot.wait_for('message', timeout=60.0 / difficulty, check=check)
-                    await ctx.send(f"Congratulations {msg.author.mention}! You've decoded the Poneglyph!")
-                    score += difficulty * 10
-                    difficulty += 1
-                    await ctx.send(f"Your current score: {score}")
-                    await ctx.send("Prepare for the next Poneglyph! Type 'continue' to proceed or 'stop' to end the game.")
-                    
-                    def continue_check(m):
-                        return m.author == msg.author and m.content.lower() in ['continue', 'stop']
-
-                    try:
-                        continue_msg = await self.bot.wait_for('message', timeout=15.0, check=continue_check)
-                        if continue_msg.content.lower() == 'stop':
-                            break
-                    except asyncio.TimeoutError:
-                        await ctx.send("No response received. Ending the game.")
+                    continue_msg = await self.bot.wait_for('message', timeout=15.0, check=continue_check)
+                    if continue_msg.content.lower() == 'stop':
                         break
-
                 except asyncio.TimeoutError:
-                    await ctx.send(f"Time's up! The correct decoding was: {message}")
+                    await ctx.send("No response received. Ending the game.")
                     break
 
-            await ctx.send(f"Game Over! Your final score is {score}. You reached difficulty level {difficulty}.")
+            except asyncio.TimeoutError:
+                await ctx.send(f"Time's up! The correct decoding was: {message}")
+                break
+
+        await ctx.send(f"Game Over! Your final score is {score}. You reached difficulty level {difficulty}.")
 
     @commands.command()
     async def buildship(self, ctx):
