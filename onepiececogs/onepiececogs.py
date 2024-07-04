@@ -11,7 +11,8 @@ class OnePieceExpandedCogs(commands.Cog):
             "last_activity": None,
             "character": None,
             "devil_fruit": None,
-            "quiz_scores": {"sword": 0, "personality": ""}
+            "quiz_scores": {"sword": 0, "personality": ""},
+            "voice_of_all_things_score": 0
         }
         default_guild = {
             "ongoing_games": {}
@@ -92,15 +93,23 @@ class OnePieceExpandedCogs(commands.Cog):
             "AACBC": "Doflamingo", "BCBAA": "Kaido", "CAABC": "Big Mom",
             "ABABB": "Blackbeard", "BACBA": "Marco", "CBAAA": "Rayleigh"
         }
-        self.cryptic_responses = [
-            "The sea whispers of ancient battles...",
-            "Echoes of lost kingdoms resonate...",
-            "The wind carries tales of forgotten treasures...",
-            "Shadows of the void century linger...",
-            "The rhythm of the world pulses beneath...",
-            "Voices of the past call out for justice...",
-            "The truth of history lies hidden in plain sight..."
-        ]
+        self.cryptic_messages = {
+            "The ancient weapon lies beneath the sea": "Poseidon is hidden in Fishman Island",
+            "When all moons align, the path will clear": "The Road Poneglyphs will reveal the way to Laugh Tale",
+            "In the land of Wano, a secret sleeps": "The truth about the Void Century is connected to Wano",
+            "The voice of all things speaks in silence": "The ability to hear the Voice of All Things is rare and powerful",
+            "To reach Laugh Tale, follow the Road": "The Road Poneglyphs are needed to find the final island",
+            "The true history lies hidden in the shadows": "The World Government is hiding the truth about the Void Century",
+            "Only those with the will of D can change the world": "The D. clan has a special role in the world's destiny",
+            "The great kingdom fell, but its legacy endures": "The Ancient Kingdom's ideals live on through its descendants",
+            "In the eye of the storm, the truth awaits": "Im-sama holds the secrets of the World Government",
+            "The three weapons united will bring about a new dawn": "Pluton, Poseidon, and Uranus together can change the world",
+            "The twenty kingdoms formed a pact of silence": "The World Government was founded on a conspiracy of silence",
+            "The void century holds the key to freedom": "Understanding the Void Century is crucial for world liberation",
+            "When sea and sky become one, the door will open": "The All Blue and the One Piece are connected",
+            "The one piece is more than just a treasure": "The One Piece represents the truth of the world",
+            "The ancient kingdom's name must never be forgotten": "The name of the Ancient Kingdom is a key to understanding history"
+        }
         self.riddles = [
             {"question": "I am not alive, but I grow; I don't have lungs, but I need air; I don't have a mouth, but water kills me. What am I?", "answer": "fire"},
             {"question": "I have cities, but no houses. I have mountains, but no trees. I have water, but no fish. What am I?", "answer": "map"},
@@ -307,11 +316,58 @@ class OnePieceExpandedCogs(commands.Cog):
         await self.config.user(ctx.author).quiz_scores.personality.set(character)
 
     @commands.command()
-    async def voiceofallthings(self, ctx, *, message: str):
-        """Attempt to decipher cryptic messages as if you had the Voice of All Things ability"""
-        decoded = ' '.join(random.choice(self.cryptic_responses) for _ in range(3))
-        await ctx.send(f"You hear: {decoded}\nCan you interpret its meaning?")
+    async def voiceofallthings(self, ctx):
+        """Use the Voice of All Things to decipher cryptic messages"""
+        if await self.config.guild(ctx.guild).ongoing_games.get("voice_of_all_things", False):
+            await ctx.send("A Voice of All Things challenge is already in progress!")
+            return
 
+        await self.config.guild(ctx.guild).ongoing_games.set({"voice_of_all_things": True})
+
+        await ctx.send("You've awakened the Voice of All Things! Decipher the cryptic messages to uncover the world's secrets.")
+        
+        score = 0
+        rounds = 3
+
+        for round in range(1, rounds + 1):
+            cryptic_message, true_meaning = random.choice(list(self.cryptic_messages.items()))
+            
+            embed = discord.Embed(title=f"Round {round}: Voice of All Things", color=discord.Color.purple())
+            embed.add_field(name="Cryptic Message", value=cryptic_message, inline=False)
+            embed.add_field(name="Instructions", value="Interpret the meaning of this message. You have 60 seconds!", inline=False)
+            await ctx.send(embed=embed)
+
+            def check(m):
+                return m.author == ctx.author and m.channel == ctx.channel
+
+            try:
+                user_interpretation = await self.bot.wait_for('message', timeout=60.0, check=check)
+                
+                # Simple similarity check (you might want to use a more sophisticated method)
+                similarity = sum(word in user_interpretation.content.lower() for word in true_meaning.lower().split())
+                similarity_score = similarity / len(true_meaning.split())
+
+                if similarity_score > 0.5:
+                    await ctx.send(f"Your interpretation resonates with the Voice of All Things! The true meaning was: {true_meaning}")
+                    score += 1
+                else:
+                    await ctx.send(f"Your interpretation was close, but not quite there. The true meaning was: {true_meaning}")
+
+            except asyncio.TimeoutError:
+                await ctx.send(f"Time's up! The true meaning was: {true_meaning}")
+
+            await asyncio.sleep(2)  # Short pause between rounds
+
+        await ctx.send(f"Challenge complete! You correctly interpreted {score} out of {rounds} messages.")
+        
+        user_data = await self.config.user(ctx.author).all()
+        user_data["voice_of_all_things_score"] += score
+        await self.config.user(ctx.author).set(user_data)
+
+        await ctx.send(f"Your total Voice of All Things score is now {user_data['voice_of_all_things_score']}!")
+
+        await self.config.guild(ctx.guild).ongoing_games.clear
+        
     @commands.command()
     async def eatingcontest(self, ctx):
         """Compete in Luffy's Eating Contest"""
