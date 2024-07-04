@@ -436,45 +436,127 @@ class OnePieceMod(commands.Cog):
 
     @commands.command()
     @checks.admin_or_permissions(manage_guild=True)
-    async def send_staff_announcement(self, ctx, channel: discord.TextChannel = None):
-        """Send the staff announcement about updated moderation commands to the specified channel."""
+    async def send_server_rules(self, ctx, channel: discord.TextChannel = None):
+        """Send the full server rules and information to the specified channel."""
         if channel is None:
             channel = ctx.channel
 
-        announcement = (
-            "🚨 **Attention All Crew Members !** 🏴‍☠️\n\n"
-            "Captain's orders! We've upgraded our ship's systems to better maintain order and discipline among our crew. "
-            "Here are the new and improved moderation commands:\n\n"
-            "1. **Muting** (Sea Prism Handcuffs):\n"
-            "   - Command: `.mute <user(s)> [duration] [reason]`\n"
-            "   - Duration can be specified in minutes (m), hours (h), days (d), or weeks (w).\n"
-            "   - If no duration is given, the default is 24 hours.\n"
-            "   - Example: `.mute @LuffyFan123 2h Excessive shouting about becoming Pirate King`\n\n"
-            "2. **Kicking** (Walking the Plank):\n"
-            "   - Command: `.kick <user> [reason]`\n"
-            "   - Example: `.kick @ZoroStan456 Sleeping on watch duty again`\n\n"
-            "3. **Banning** (Banishment to Impel Down):\n"
-            "   - Command: `.ban <user> [delete_days] [reason]`\n"
-            "   - `delete_days` specifies how many days of messages to delete (default is 1).\n"
-            "   - Example: `.ban @SanjiSimp789 7 Harassing female crew members`\n\n"
-            "4. **Unmuting** (Removing Sea Prism Handcuffs):\n"
-            "   - Command: `.unmute <user> [reason]`\n"
-            "   - Example: `.unmute @ChopperLover101 Has learned their lesson about proper medical practices`\n\n"
-            "Remember, with great power comes great responsibility. Use these commands wisely and fairly. "
-            "We're not the World Government, after all!\n\n"
-            "If you have any questions about these new features, please consult with your division commander "
-            "or send a message in a bottle to the tech support Den Den Mushi.\n\n"
-            "Stay vigilant and keep our seas safe!\n\n"
-            "- Your Friendly Neighborhood Sunny Go Support System 🌞"
-        )
+        rules = """# 🏴‍☠️ Grand Line Pirates' Code of Conduct 🏴‍☠️
+
+Ahoy, fellow pirates! Welcome aboard the Grand Line Discord Server. Before ye set sail on this grand adventure, make sure to familiarize yourself with our code of conduct and Discord's Terms of Service. Remember, even pirates have rules to follow!
+
+## 📜 Discord Terms of Service
+
+All crew members must adhere to Discord's Terms of Service. Here are some key points:
+
+- 🔞 You must be at least 13 years old to use Discord
+- 🚫 No harassment, hate speech, or extreme political content
+- 🔒 Respect others' privacy and intellectual property
+- 🛡️ Don't share or promote harmful content or illegal activities
+- 🤖 Don't use self-bots or user-bots
+
+For the full terms, visit: https://discord.com/terms
+
+## 🏴‍☠️ Server Rules (Applies to all crew members, from cabin boys to Yonko)
+
+1. 🤝 Respect yer fellow pirates. Swearing be allowed, but mind yer tongue and respect others' boundaries.
+2. 🤐 Sensitive topics such as politics, religion, or personal matters are off-limits. Keep 'em in Davy Jones' locker!
+3. 🌈 No discriminatin' against race, religion, or background. We be a diverse crew, savvy?
+4. 🔇 No spammin' outside the designated areas. Don't make us walk ye off the plank!
+5. 📢 Advertisin' other pirate crews (Discord servers) without permission is mutiny. Ye've been warned!
+6. 🤫 Keep manga spoilers in the appropriate channels. Don't ruin the adventure for others!
+7. 💡 Respect others' ideas and theories. Ask permission and give credit where it's due.
+8. 📖 Read the channel topics before postin'. They contain valuable treasure maps of information!
+9. 🔞 No NSFW content. Keep it family-friendly, ye scurvy dogs!
+10. 👨‍⚖️ The Moderators and Admins have the final say in disputes. Respect their authority or face the consequences!
+
+## ⚓ Consequences for Breakin' the Code
+
+1. ⚠️ First offense: Ye'll get a warnin' shot across the bow
+2. 🔇 Second offense: Ye'll be thrown in the brig (muted)
+3. 🏝️ Third offense: Ye'll be marooned (banned)
+
+## 👑 Crew Hierarchy
+
+- 👑 Pirate King 👑: Server Owner
+- ⭐️ Yonko ⭐️: High-ranking Administrators
+- ⚓️ Admirals ⚓️: Senior Moderators
+- 💎 Legends 💎: Trusted friends and partners
+- 👑 Shichibukai 👑: Novice Moderators
+
+## 🌊 Choose Your Sea
+
+Join one of the five seas from One Piece:
+- ⭕ Grand Line ⭕ 
+- 🔵 East Blue 🔵 
+- ⚪ West Blue ⚪ 
+- ⚫ North Blue ⚫ 
+- 🔴 South Blue 🔴 
+
+Select your sea in the designated channel to participate in sea tournaments!
+
+## 🏴‍☠️ Join a Pirate Crew
+
+Enlist in one of our fearsome pirate crews:
+- 🕷️ Phantom Troupe 🕷️
+- 🦊 Foxy Pirates 🦊
+- 🐉 Revolutionary Army 🐉
+
+Each crew has 4 ranks: Cabin Boy, First Mate, Commander, and Right Hand
+
+## 📈 Pirate Ranking System
+
+Climb the ranks from a lowly Chore Boy to the World's Worst Criminal!
+
+```
+╔═════╦══════════════════════════╦═══════╗
+║ No. ║           Rank           ║ Level ║
+╠═════╬══════════════════════════╬═══════╣
+║  1  ║        Chore Boy         ║   1   ║
+╠═════╬══════════════════════════╬═══════╣
+║  2  ║      Petty Officer       ║   5   ║
+╠═════╬══════════════════════════╬═══════╣
+║  3  ║   Chief Petty Officer    ║  10   ║
+╠═════╬══════════════════════════╬═══════╣
+║  4  ║     Warrant Officer      ║  15   ║
+╠═════╬══════════════════════════╬═══════╣
+║  5  ║        Lieutenant        ║  20   ║
+╠═════╬══════════════════════════╬═══════╣
+║  6  ║         Captain          ║  25   ║
+╠═════╬══════════════════════════╬═══════╣
+║  7  ║        Commodore         ║  30   ║
+╠═════╬══════════════════════════╬═══════╣
+║  8  ║       Rear Admiral       ║  35   ║
+╠═════╬══════════════════════════╬═══════╣
+║  9  ║       Vice Admiral       ║  40   ║
+╠═════╬══════════════════════════╬═══════╣
+║ 10  ║    Buggy's Right-Hand    ║  45   ║
+╠═════╬══════════════════════════╬═══════╣
+║ 11  ║    Kidd's Right-Hand     ║  50   ║
+╠═════╬══════════════════════════╬═══════╣
+║ 12  ║     Law's Right-Hand     ║  55   ║
+╠═════╬══════════════════════════╬═══════╣
+║ 13  ║   Shanks's Right-Hand    ║  65   ║
+╠═════╬══════════════════════════╬═══════╣
+║ 14  ║    Luffy's Right-Hand    ║  70   ║
+╠═════╬══════════════════════════╬═══════╣
+║ 15  ║  World's Worst Criminal  ║ 100   ║
+╚═════╩══════════════════════════╩═══════╝
+```
+
+Now, hoist the colors and set sail for adventure! If ye have any questions, consult yer Log Pose (ping a moderator). May the winds be ever in yer favor! ⛵🌊🏝️"""
+
+        # Split the message into chunks of 2000 characters or less
+        chunks = [rules[i:i+2000] for i in range(0, len(rules), 2000)]
 
         try:
-            await channel.send(announcement)
-            await ctx.send(f"Staff announcement sent to {channel.mention}!")
+            for chunk in chunks:
+                await channel.send(chunk)
+            await ctx.send(f"Full server rules and information sent to {channel.mention}!")
         except discord.Forbidden:
             await ctx.send("I don't have permission to send messages in that channel!")
         except discord.HTTPException:
-            await ctx.send("There was an error sending the announcement. Please try again later.")
+            await ctx.send("There was an error sending the rules. Please try again later.")
             
 async def setup(bot):
     global original_commands
