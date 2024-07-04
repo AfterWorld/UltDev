@@ -20,7 +20,7 @@ class OnePieceExpandedCogs(commands.Cog):
         self.config.register_guild(**default_guild)
         
         self.devil_fruits = {
-            'Gomu Gomu': 'Grants the user body the properties of rubber',
+            'Gomu Gomu': 'Grants the user\'s body the properties of rubber',
             'Mera Mera': 'Allows the user to create, control, and transform into fire',
             'Hie Hie': 'Allows the user to create, control, and transform into ice',
             'Gura Gura': 'Allows the user to create vibrations, or "quakes"',
@@ -29,7 +29,17 @@ class OnePieceExpandedCogs(commands.Cog):
             'Pika Pika': 'Allows the user to create, control, and transform into light',
             'Mochi Mochi': 'Allows the user to create, control, and transform into mochi',
             'Gasu Gasu': 'Allows the user to create, control, and transform into gas',
-            'Suna Suna': 'Allows the user to create, control, and transform into sand'
+            'Suna Suna': 'Allows the user to create, control, and transform into sand',
+            'Bara Bara': 'Allows the user to split their body into separate parts',
+            'Hana Hana': 'Allows the user to replicate and sprout body parts',
+            'Doku Doku': 'Allows the user to create and control poison',
+            'Magu Magu': 'Allows the user to create, control, and transform into magma',
+            'Goro Goro': 'Allows the user to create, control, and transform into electricity',
+            'Kilo Kilo': 'Allows the user to change their body weight',
+            'Bane Bane': 'Allows the user to turn their limbs into springs',
+            'Ito Ito': 'Allows the user to create and manipulate strings',
+            'Awa Awa': 'Allows the user to create and control soap bubbles',
+            'Noro Noro': 'Allows the user to slow down anything and anyone'
         }
         self.poneglyph_messages = [
             "The ancient weapon lies beneath the sea",
@@ -53,7 +63,17 @@ class OnePieceExpandedCogs(commands.Cog):
             {"q": "Who wields the Wado Ichimonji?", "a": "Zoro"},
             {"q": "What grade is the sword Enma?", "a": "Great Grade"},
             {"q": "Who forged the Kitetsu swords?", "a": "Kitetsu"},
-            {"q": "What is the name of Mihawk's sword?", "a": "Yoru"}
+            {"q": "What is the name of Mihawk's sword?", "a": "Yoru"},
+            {"q": "What is the name of Zoro's cursed sword?", "a": "Sandai Kitetsu"},
+            {"q": "Which sword did Kozuki Oden wield?", "a": "Enma"},
+            {"q": "What is the highest grade of swords in One Piece?", "a": "Supreme Grade"},
+            {"q": "Who is the current owner of the Nidai Kitetsu?", "a": "Tenguyama Hitetsu"},
+            {"q": "What type of sword is Shusui?", "a": "Black Blade"},
+            {"q": "Which sword is known as the 'Sword of the Sea Kings'?", "a": "Kiribachi"},
+            {"q": "What is the name of Brook's sword?", "a": "Soul Solid"},
+            {"q": "Which sword was made by the legendary swordsmith Shimotsuki Kozaburo?", "a": "Wado Ichimonji"},
+            {"q": "What is the name of the sword that 'drinks' blood?", "a": "Shodai Kitetsu"},
+            {"q": "Which sword is known as one of the 21 Great Grade swords?", "a": "Shusui"}
         ]
         self.personality_questions = [
             {"q": "How do you approach problems?", "options": ["A) Head-on", "B) Strategically", "C) With help from friends"]},
@@ -65,7 +85,12 @@ class OnePieceExpandedCogs(commands.Cog):
         self.character_results = {
             "AAAAA": "Luffy", "BBBBB": "Nami", "CCCCC": "Usopp",
             "AABBC": "Zoro", "BBCCA": "Robin", "CACAB": "Sanji",
-            "ACBCA": "Chopper", "BAACC": "Franky", "CBACB": "Brook"
+            "ACBCA": "Chopper", "BAACC": "Franky", "CBACB": "Brook",
+            "ABAAC": "Ace", "BCAAB": "Sabo", "CABBA": "Law",
+            "ABCCC": "Buggy", "BAAAA": "Shanks", "CBBBA": "Whitebeard",
+            "ACCBB": "Jinbe", "BABAC": "Boa Hancock", "CBABA": "Crocodile",
+            "AACBC": "Doflamingo", "BCBAA": "Kaido", "CAABC": "Big Mom",
+            "ABABB": "Blackbeard", "BACBA": "Marco", "CBAAA": "Rayleigh"
         }
         self.cryptic_responses = [
             "The sea whispers of ancient battles...",
@@ -81,7 +106,17 @@ class OnePieceExpandedCogs(commands.Cog):
             {"question": "I have cities, but no houses. I have mountains, but no trees. I have water, but no fish. What am I?", "answer": "map"},
             {"question": "What has keys, but no locks; space, but no room; you can enter, but not go in?", "answer": "keyboard"},
             {"question": "I am always hungry; I must always be fed. The finger I touch, will soon turn red. What am I?", "answer": "fire"},
-            {"question": "I have a head and a tail that will never meet. Having too many of me is always a treat. What am I?", "answer": "coin"}
+            {"question": "I have a head and a tail that will never meet. Having too many of me is always a treat. What am I?", "answer": "coin"},
+            {"question": "I speak without a mouth and hear without ears. I have no body, but I come alive with wind. What am I?", "answer": "echo"},
+            {"question": "You see a boat filled with people. It has not sunk, but when you look again you don't see a single person on the boat. Why?", "answer": "All the people were married"},
+            {"question": "What has branches, but no fruit, trunk or leaves?", "answer": "bank"},
+            {"question": "What can travel around the world while staying in a corner?", "answer": "stamp"},
+            {"question": "I have cities, but no houses; forests, but no trees; and rivers, but no water. What am I?", "answer": "map"},
+            {"question": "What has a head and a tail that are only made of digits?", "answer": "coin"},
+            {"question": "I am taken from a mine and shut up in a wooden case, from which I am never released, and yet I am used by everyone. What am I?", "answer": "pencil lead"},
+            {"question": "What belongs to you, but other people use it more than you?", "answer": "your name"},
+            {"question": "The more you take, the more you leave behind. What am I?", "answer": "footsteps"},
+            {"question": "What has many keys, but no locks; space, but no room; you can enter, but not go in?", "answer": "keyboard"}
         ]
 
     @commands.command()
