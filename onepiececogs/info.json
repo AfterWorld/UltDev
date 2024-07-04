@@ -1,0 +1,21 @@
+{
+    "name": "OnePieceExpandedCogs",
+    "short": "One Piece themed games and commands",
+    "description": "A collection of One Piece themed games and commands for your Discord server. Includes Devil Fruit fusions, Poneglyph decoding, shipwright challenges, and more!",
+    "end_user_data_statement": "This cog stores user IDs for game progression and activity tracking. No personal information is stored.",
+    "author": [
+        "UltPanda"
+    ],
+    "required_cogs": {},
+    "requirements": [],
+    "tags": [
+        "games",
+        "fun",
+        "anime",
+        "one piece"
+    ],
+    "min_bot_version": "3.5.0",
+    "hidden": false,
+    "disabled": false,
+    "type": "COG"
+}
