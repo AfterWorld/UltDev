@@ -1,5 +1,6 @@
 import random
 import asyncio
+import string
 from datetime import datetime, timedelta
 from redbot.core import commands, Config
 import discord
