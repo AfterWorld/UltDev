@@ -325,7 +325,8 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             success_chance = user_data['skills'][task] * 10
             success = random.randint(1, 100) <= success_chance
 
-            guild_data['promotion_candidates'][str(ctx.author.id)] += 1
+            if success:
+                guild_data['promotion_candidates'][str(ctx.author.id)] += 1
                 await ctx.send(f"Task completed successfully! Your promotion score is now {guild_data['promotion_candidates'][str(ctx.author.id)]}.")
             else:
                 await ctx.send("You were unable to complete the task successfully. Better luck next time!")
