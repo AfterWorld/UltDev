@@ -736,7 +736,7 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
     async def check_wg_channel(self, ctx):
         guild_data = await self.config.guild(ctx.guild).all()
         if not guild_data['wg_channel']:
-            await ctx.send("The World Government Simulator channel has not been set up yet. An admin needs to use `!wg setup` first.")
+            await ctx.send("The World Government Simulator channel has not been set up yet. An admin needs to use `.wg setup` first.")
             return False
         if ctx.channel.id != guild_data['wg_channel']:
             wg_channel = self.bot.get_channel(guild_data['wg_channel'])
