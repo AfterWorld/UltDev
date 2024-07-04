@@ -201,18 +201,20 @@ class OnePieceExpandedCogs(commands.Cog):
             cipher = self.create_cipher(message, difficulty)
             encoded = self.encode_message(message, cipher)
             await ctx.send(f"Difficulty Level {difficulty}\nDecipher this Poneglyph: `{encoded}`")
-            await ctx.send(f"You have {60 // difficulty} seconds! Type '.hint' for a clue.")
+            await ctx.send(f"You have {60 // difficulty} seconds! Type '!hint' for a clue.")
 
             hint_level = 0
             hint_penalty = 0
 
             def check(m):
-                return m.channel == ctx.channel and (m.content.lower() == message.lower() or m.content.lower() == '!hint')
+                return m.channel == ctx.channel and m.author == ctx.author and (m.content.lower() == message.lower() or m.content.lower() == '!hint')
 
-            try:
-                while True:
-                    msg = await self.bot.wait_for('message', timeout=60.0 / difficulty, check=check)
-                    if msg.content.lower() == '.hint':
+            end_time = asyncio.get_event_loop().time() + 60.0 / difficulty
+
+            while asyncio.get_event_loop().time() < end_time:
+                try:
+                    msg = await self.bot.wait_for('message', timeout=end_time - asyncio.get_event_loop().time(), check=check)
+                    if msg.content.lower() == '!hint':
                         hint_level += 1
                         if hint_level <= 3:
                             hint = self.get_hint(message, hint_level)
@@ -227,23 +229,22 @@ class OnePieceExpandedCogs(commands.Cog):
                         await ctx.send(f"Round score: {round_score} (Hint penalty: -{hint_penalty})")
                         await ctx.send(f"Your total score: {score}")
                         break
-
-                difficulty += 1
-                await ctx.send("Prepare for the next Poneglyph! Type 'continue' to proceed or 'stop' to end the game.")
-                
-                def continue_check(m):
-                    return m.author == msg.author and m.content.lower() in ['continue', 'stop']
-
-                try:
-                    continue_msg = await self.bot.wait_for('message', timeout=15.0, check=continue_check)
-                    if continue_msg.content.lower() == 'stop':
-                        break
                 except asyncio.TimeoutError:
-                    await ctx.send("No response received. Ending the game.")
+                    await ctx.send(f"Time's up! The correct decoding was: {message}")
                     break
 
+            difficulty += 1
+            await ctx.send("Prepare for the next Poneglyph! Type 'continue' to proceed or 'stop' to end the game.")
+            
+            def continue_check(m):
+                return m.author == ctx.author and m.content.lower() in ['continue', 'stop']
+
+            try:
+                continue_msg = await self.bot.wait_for('message', timeout=15.0, check=continue_check)
+                if continue_msg.content.lower() == 'stop':
+                    break
             except asyncio.TimeoutError:
-                await ctx.send(f"Time's up! The correct decoding was: {message}")
+                await ctx.send("No response received. Ending the game.")
                 break
 
         await ctx.send(f"Game Over! Your final score is {score}. You reached difficulty level {difficulty}.")
@@ -279,13 +280,30 @@ class OnePieceExpandedCogs(commands.Cog):
     async def whichcharacter(self, ctx):
         """Take a personality quiz to find out which One Piece character you're most like"""
         answers = ""
-        for q in self.personality_questions:
-            await ctx.send(f"{q['q']}\n" + "\n".join(q['options']))
-            answer = await self.bot.wait_for('message', check=lambda m: m.author == ctx.author and m.content.upper() in "ABC")
-            answers += answer.content.upper()
+        embed = discord.Embed(title="One Piece Character Quiz", color=discord.Color.blue())
+        
+        for i, q in enumerate(self.personality_questions, start=1):
+            embed.clear_fields()
+            embed.add_field(name=f"Question {i}", value=q['q'], inline=False)
+            for option in q['options']:
+                embed.add_field(name=option[0], value=option[2:], inline=True)
+            
+            await ctx.send(embed=embed)
+            
+            def check(m):
+                return m.author == ctx.author and m.content.upper() in "ABC"
+            
+            try:
+                answer = await self.bot.wait_for('message', timeout=30.0, check=check)
+                answers += answer.content.upper()
+            except asyncio.TimeoutError:
+                await ctx.send("You took too long to answer. Quiz cancelled.")
+                return
 
         character = self.character_results.get(answers, "Pandaman")
-        await ctx.send(f"You're most like {character}!")
+        result_embed = discord.Embed(title="Quiz Result", color=discord.Color.green())
+        result_embed.add_field(name="Your One Piece Character", value=f"You're most like {character}!")
+        await ctx.send(embed=result_embed)
         await self.config.user(ctx.author).quiz_scores.personality.set(character)
 
     @commands.command()
@@ -349,7 +367,7 @@ class OnePieceExpandedCogs(commands.Cog):
 
         await self.config.guild(ctx.guild).ongoing_games.set({"butterfly": True})
 
-        await ctx.send(f"{ctx.author.name} uses the power of the Mero Mero no Mi on a {object}!")
+        await ctx.send(f"{ctx.author.mention} uses the power of the Mero Mero no Mi on a {object}!")
         await ctx.send(f"Everyone, you have 2 minutes to describe this {object} in the most attractive way possible!")
 
         descriptions = {}
@@ -358,7 +376,7 @@ class OnePieceExpandedCogs(commands.Cog):
             return m.channel == ctx.channel and m.author != self.bot.user and m.author not in descriptions
 
         try:
-            while True:
+            while len(descriptions) < 10:  # Limit to 10 entries
                 msg = await self.bot.wait_for('message', timeout=120.0, check=check)
                 descriptions[msg.author] = msg.content
         except asyncio.TimeoutError:
@@ -385,14 +403,14 @@ class OnePieceExpandedCogs(commands.Cog):
         await asyncio.sleep(30)  # Allow 30 seconds for voting
 
         vote_msg = await ctx.channel.fetch_message(vote_msg.id)
-        votes = {r.emoji: r.count for r in vote_msg.reactions}
+        votes = {r.emoji: r.count - 1 for r in vote_msg.reactions}  # Subtract 1 to account for bot's reaction
         winner_emoji = max(votes, key=votes.get)
         winner = list(descriptions.keys())[int(winner_emoji[0]) - 1]
 
         await ctx.send(f"The most charming description was by {winner.mention}! They've mastered the power of the Mero Mero no Mi!")
 
         await self.config.guild(ctx.guild).ongoing_games.clear()
-
+        
     @commands.Cog.listener()
     async def on_message(self, message):
         """Update user's last activity when they send a message"""
