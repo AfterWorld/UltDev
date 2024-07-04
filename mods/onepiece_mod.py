@@ -97,21 +97,19 @@ class OnePieceMod(commands.Cog):
 
     @commands.command()
     @checks.admin_or_permissions(ban_members=True)
-    async def ban(self, ctx, member: discord.Member, delete_days: int = 1, delete_all: bool = False, *, reason: str = "Mutiny against the crew!"):
-        """Banish a pirate to Impel Down."""
+    async def ban(self, ctx, member: discord.Member, *, reason: str = "Mutiny against the crew!"):
+        """Banish a pirate to Impel Down and erase their messages."""
         try:
-            if delete_all:
-                # Delete all messages from the user across all channels
-                for channel in ctx.guild.text_channels:
-                    def check(message):
-                        return message.author == member
-
-                    await channel.purge(limit=None, check=check)
-                await ctx.send(f"🧹 All messages from {member.name} have been swept from the deck!")
-            else:
-                # Use the standard delete_message_days parameter
-                await ctx.guild.ban(member, reason=reason, delete_message_days=delete_days)
-
+            # Delete all messages from the user across all channels
+            for channel in ctx.guild.text_channels:
+                def check(message):
+                    return message.author == member
+    
+                await channel.purge(limit=None, check=check)
+    
+            # Ban the user
+            await ctx.guild.ban(member, reason=reason, delete_message_days=7)
+    
             ban_message, ban_gif = random.choice(self.ban_messages)
             
             embed = discord.Embed(title="⛓️ Pirate Banished to Impel Down! ⛓️", description=f"{member.name} has been locked away!", color=0xff0000)
@@ -125,7 +123,7 @@ class OnePieceMod(commands.Cog):
             else:
                 await ctx.send("Couldn't find the general chat channel. Posting here instead:", embed=embed)
             
-            await self.log_action(ctx, member, f"Banished to Impel Down (messages deleted: {'all' if delete_all else f'{delete_days} days'})", reason, moderator=ctx.author)
+            await self.log_action(ctx, member, "Banished to Impel Down (all messages deleted)", reason, moderator=ctx.author)
             
             case = await modlog.create_case(
                 self.bot, ctx.guild, ctx.message.created_at, action_type="ban",
