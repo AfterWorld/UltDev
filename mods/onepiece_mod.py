@@ -470,7 +470,9 @@ For the full terms, visit: [Discord Terms of Service](https://discord.com/\u200B
 8. 📖 Read the channel topics before postin'. They contain valuable treasure maps of information!
 9. 🔞 No NSFW content. Keep it family-friendly, ye scurvy dogs!
 10. 👨‍⚖️ The Moderators and Admins have the final say in disputes. Respect their authority or face the consequences!
+"""
 
+        rules_part2 = """
 ## ⚓ Consequences for Breakin' the Code
 
 1. ⚠️ First offense: Ye'll get a warnin' shot across the bow
@@ -484,7 +486,9 @@ For the full terms, visit: [Discord Terms of Service](https://discord.com/\u200B
 - ⚓️ Admirals: Senior Moderators
 - 💎 Legends: Trusted friends and partners
 - 👑 Shichibukai: Novice Moderators
+"""
 
+        rules_part3 = """
 ## 🌊 Choose Your Sea
 
 Join one of the five seas from One Piece:
@@ -528,8 +532,7 @@ Climb the ranks from a lowly Chore Boy to the World's Worst Criminal!
 Now, hoist the colors and set sail for adventure! If ye have any questions, consult yer Log Pose (ping a moderator). May the winds be ever in yer favor! ⛵🌊🏝️
 """
 
-        # Split the message into chunks of 2000 characters or less
-        chunks = [rules[i:i+2000] for i in range(0, len(rules), 2000)]
+        chunks = [rules, rules_part2, rules_part3]
 
         try:
             for chunk in chunks:
@@ -539,7 +542,7 @@ Now, hoist the colors and set sail for adventure! If ye have any questions, cons
             await ctx.send("I don't have permission to send messages in that channel!")
         except discord.HTTPException:
             await ctx.send("There was an error sending the rules. Please try again later.")
-
+            
 async def setup(bot):
     global original_commands
     cog = OnePieceMod(bot)
