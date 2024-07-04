@@ -2,403 +2,412 @@ import random
 import asyncio
 from redbot.core import commands, Config
 import discord
+from discord.ext import tasks
+import datetime
 
-class OnePieceExpandedCogs(commands.Cog):
+class AdvancedWorldGovernmentSimulator(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.config = Config.get_conf(self, identifier=1234567890)
-        default_user = {
-            "last_activity": None,
-            "character": None,
-            "devil_fruit": None,
-            "quiz_scores": {"sword": 0, "personality": ""}
-        }
         default_guild = {
-            "ongoing_games": {}
+            "wg_channel": None,
+            "active_players": {},
+            "world_state": {
+                "piracy_level": 50,
+                "revolutionary_threat": 50,
+                "civilian_approval": 50,
+                "marine_strength": 50,
+                "world_stability": 50,
+                "economy": 50,
+                "scientific_advancement": 50
+            },
+            "ongoing_events": [],
+            "current_year": 1500,
+            "resources": {
+                "budget": 1000000,
+                "manpower": 100000,
+                "intelligence": 500
+            }
         }
-        self.config.register_user(**default_user)
+        default_user = {
+            "position": None,
+            "influence": 0,
+            "allies": [],
+            "enemies": [],
+            "decisions": [],
+            "skills": {
+                "diplomacy": 1,
+                "military": 1,
+                "economy": 1,
+                "intelligence": 1
+            },
+            "personal_resources": {
+                "wealth": 1000,
+                "connections": 10
+            }
+        }
         self.config.register_guild(**default_guild)
+        self.config.register_user(**default_user)
         
-        self.devil_fruits = {
-            'Gomu Gomu': 'Grants the user\'s body the properties of rubber',
-            'Mera Mera': 'Allows the user to create, control, and transform into fire',
-            'Hie Hie': 'Allows the user to create, control, and transform into ice',
-            'Gura Gura': 'Allows the user to create vibrations, or "quakes"',
-            'Ope Ope': 'Allows the user to create a spherical space or "room"',
-            'Yami Yami': 'Allows the user to create and control darkness',
-            'Pika Pika': 'Allows the user to create, control, and transform into light',
-            'Mochi Mochi': 'Allows the user to create, control, and transform into mochi',
-            'Gasu Gasu': 'Allows the user to create, control, and transform into gas',
-            'Suna Suna': 'Allows the user to create, control, and transform into sand',
-            'Bara Bara': 'Allows the user to split their body into separate parts',
-            'Hana Hana': 'Allows the user to replicate and sprout body parts',
-            'Doku Doku': 'Allows the user to create and control poison',
-            'Magu Magu': 'Allows the user to create, control, and transform into magma',
-            'Goro Goro': 'Allows the user to create, control, and transform into electricity',
-            'Kilo Kilo': 'Allows the user to change their body weight',
-            'Bane Bane': 'Allows the user to turn their limbs into springs',
-            'Ito Ito': 'Allows the user to create and manipulate strings',
-            'Awa Awa': 'Allows the user to create and control soap bubbles',
-            'Noro Noro': 'Allows the user to slow down anything and anyone'
-        }
-        self.poneglyph_messages = [
-            "The ancient weapon lies beneath the sea",
-            "When all moons align, the path will clear",
-            "In the land of Wano, a secret sleeps",
-            "The voice of all things speaks in silence",
-            "To reach Laugh Tale, follow the Road",
-            "The true history lies hidden in the shadows",
-            "Only those with the will of D can change the world",
-            "The great kingdom fell, but its legacy endures",
-            "In the eye of the storm, the truth awaits",
-            "The three weapons united will bring about a new dawn",
-            "The twenty kingdoms formed a pact of silence",
-            "The void century holds the key to freedom",
-            "When sea and sky become one, the door will open",
-            "The one piece is more than just a treasure",
-            "The ancient kingdom's name must never be forgotten"
+        self.positions = [
+            "Recruit", "Junior Official", "Senior Official", "Department Head", 
+            "Commodore", "Vice Admiral", "Admiral", "Fleet Admiral", "Gorosei Member", "Im-sama"
         ]
-        self.sword_questions = [
-            {"q": "Which sword is known as 'Black Blade'?", "a": "Yoru"},
-            {"q": "Who wields the Wado Ichimonji?", "a": "Zoro"},
-            {"q": "What grade is the sword Enma?", "a": "Great Grade"},
-            {"q": "Who forged the Kitetsu swords?", "a": "Kitetsu"},
-            {"q": "What is the name of Mihawk's sword?", "a": "Yoru"},
-            {"q": "What is the name of Zoro's cursed sword?", "a": "Sandai Kitetsu"},
-            {"q": "Which sword did Kozuki Oden wield?", "a": "Enma"},
-            {"q": "What is the highest grade of swords in One Piece?", "a": "Supreme Grade"},
-            {"q": "Who is the current owner of the Nidai Kitetsu?", "a": "Tenguyama Hitetsu"},
-            {"q": "What type of sword is Shusui?", "a": "Black Blade"},
-            {"q": "Which sword is known as the 'Sword of the Sea Kings'?", "a": "Kiribachi"},
-            {"q": "What is the name of Brook's sword?", "a": "Soul Solid"},
-            {"q": "Which sword was made by the legendary swordsmith Shimotsuki Kozaburo?", "a": "Wado Ichimonji"},
-            {"q": "What is the name of the sword that 'drinks' blood?", "a": "Shodai Kitetsu"},
-            {"q": "Which sword is known as one of the 21 Great Grade swords?", "a": "Shusui"}
-        ]
-        self.personality_questions = [
-            {"q": "How do you approach problems?", "options": ["A) Head-on", "B) Strategically", "C) With help from friends"]},
-            {"q": "What's your dream?", "options": ["A) To be the strongest", "B) To find a legendary treasure", "C) To see the world"]},
-            {"q": "How do you treat your friends?", "options": ["A) Protect them at all costs", "B) Rely on them for support", "C) Tease them playfully"]},
-            {"q": "What's your favorite type of island?", "options": ["A) Summer island", "B) Winter island", "C) Sky island"]},
-            {"q": "How do you feel about the World Government?", "options": ["A) They're the enemy", "B) They're necessary for order", "C) I don't really care"]}
-        ]
-        self.character_results = {
-            "AAAAA": "Luffy", "BBBBB": "Nami", "CCCCC": "Usopp",
-            "AABBC": "Zoro", "BBCCA": "Robin", "CACAB": "Sanji",
-            "ACBCA": "Chopper", "BAACC": "Franky", "CBACB": "Brook",
-            "ABAAC": "Ace", "BCAAB": "Sabo", "CABBA": "Law",
-            "ABCCC": "Buggy", "BAAAA": "Shanks", "CBBBA": "Whitebeard",
-            "ACCBB": "Jinbe", "BABAC": "Boa Hancock", "CBABA": "Crocodile",
-            "AACBC": "Doflamingo", "BCBAA": "Kaido", "CAABC": "Big Mom",
-            "ABABB": "Blackbeard", "BACBA": "Marco", "CBAAA": "Rayleigh"
-        }
-        self.cryptic_responses = [
-            "The sea whispers of ancient battles...",
-            "Echoes of lost kingdoms resonate...",
-            "The wind carries tales of forgotten treasures...",
-            "Shadows of the void century linger...",
-            "The rhythm of the world pulses beneath...",
-            "Voices of the past call out for justice...",
-            "The truth of history lies hidden in plain sight..."
-        ]
-        self.riddles = [
-            {"question": "I am not alive, but I grow; I don't have lungs, but I need air; I don't have a mouth, but water kills me. What am I?", "answer": "fire"},
-            {"question": "I have cities, but no houses. I have mountains, but no trees. I have water, but no fish. What am I?", "answer": "map"},
-            {"question": "What has keys, but no locks; space, but no room; you can enter, but not go in?", "answer": "keyboard"},
-            {"question": "I am always hungry; I must always be fed. The finger I touch, will soon turn red. What am I?", "answer": "fire"},
-            {"question": "I have a head and a tail that will never meet. Having too many of me is always a treat. What am I?", "answer": "coin"},
-            {"question": "I speak without a mouth and hear without ears. I have no body, but I come alive with wind. What am I?", "answer": "echo"},
-            {"question": "You see a boat filled with people. It has not sunk, but when you look again you don't see a single person on the boat. Why?", "answer": "All the people were married"},
-            {"question": "What has branches, but no fruit, trunk or leaves?", "answer": "bank"},
-            {"question": "What can travel around the world while staying in a corner?", "answer": "stamp"},
-            {"question": "I have cities, but no houses; forests, but no trees; and rivers, but no water. What am I?", "answer": "map"},
-            {"question": "What has a head and a tail that are only made of digits?", "answer": "coin"},
-            {"question": "I am taken from a mine and shut up in a wooden case, from which I am never released, and yet I am used by everyone. What am I?", "answer": "pencil lead"},
-            {"question": "What belongs to you, but other people use it more than you?", "answer": "your name"},
-            {"question": "The more you take, the more you leave behind. What am I?", "answer": "footsteps"},
-            {"question": "What has many keys, but no locks; space, but no room; you can enter, but not go in?", "answer": "keyboard"}
-        ]
-
-    @commands.command()
-    async def fusefruit(self, ctx):
-        """Generate a fusion of two Devil Fruits and discuss its powers"""
-        fruit1 = random.choice(list(self.devil_fruits.keys()))
-        fruit2 = random.choice(list(self.devil_fruits.keys()))
-        while fruit1 == fruit2:
-            fruit2 = random.choice(list(self.devil_fruits.keys()))
         
-        fusion_name = f"{fruit1.split()[0]} {fruit2.split()[1]}"
-        await ctx.send(f"New Devil Fruit Fusion: {fusion_name} no Mi!")
-        await ctx.send("What powers do you think this fruit would have? You have 60 seconds to discuss. Each user can submit one idea.")
+        self.world_events.start()
+        self.resource_update.start()
 
-        responses = {}
-        discussion_duration = 60  # 60 seconds for discussion
+    def cog_unload(self):
+        self.world_events.cancel()
+        self.resource_update.cancel()
 
-        def check(m):
-            return m.channel == ctx.channel and m.author != self.bot.user and m.author not in responses
+    @commands.group(name="wg")
+    async def wg(self, ctx):
+        """World Government Simulator commands"""
+        if ctx.invoked_subcommand is None:
+            await ctx.send("Use `!help wg` to see available World Government Simulator commands.")
 
-        end_time = asyncio.get_event_loop().time() + discussion_duration
+    @wg.command(name="setup")
+    @commands.admin()
+    async def wg_setup(self, ctx, channel: discord.TextChannel):
+        """Set up the World Government Simulator channel"""
+        await self.config.guild(ctx.guild).wg_channel.set(channel.id)
+        await ctx.send(f"World Government Simulator channel set to {channel.mention}")
 
-        while asyncio.get_event_loop().time() < end_time:
-            try:
-                msg = await self.bot.wait_for('message', timeout=end_time - asyncio.get_event_loop().time(), check=check)
-                responses[msg.author] = msg.content
-                await msg.add_reaction("👍")  # React to confirm the response was recorded
-            except asyncio.TimeoutError:
-                break
-
-        if responses:
-            await ctx.send("Here are the ideas for the fusion fruit's powers:")
-            for author, response in responses.items():
-                await ctx.send(f"{author.name}: {response}")
-            
-            if len(responses) > 1:
-                vote_msg = await ctx.send("Vote for the best power idea by reacting with the corresponding number:")
-                for i, (author, response) in enumerate(list(responses.items())[:5], start=1):
-                    await vote_msg.add_reaction(f"{i}\N{COMBINING ENCLOSING KEYCAP}")
-
-                await asyncio.sleep(30)  # 30 seconds for voting
-                vote_msg = await ctx.channel.fetch_message(vote_msg.id)
-                votes = {r.emoji: r.count for r in vote_msg.reactions}
-                winner = max(votes, key=votes.get)
-                winning_author, winning_idea = list(responses.items())[int(winner[0]) - 1]
-
-                await ctx.send(f"The most popular power for the {fusion_name} no Mi is:\n{winning_author.name}: {winning_idea}")
-            else:
-                await ctx.send(f"Only one idea was submitted for the {fusion_name} no Mi.")
-        else:
-            await ctx.send("No one suggested any powers. The fruit's abilities remain a mystery!")
-            
-    def create_cipher(self, message, difficulty):
-        unique_chars = list(set(message.lower()))
-        shuffled = unique_chars.copy()
-        for _ in range(difficulty):
-            random.shuffle(shuffled)
-        return dict(zip(unique_chars, shuffled))
-
-    def encode_message(self, message, cipher):
-        return ''.join(cipher.get(c.lower(), c) for c in message)
-
-    def get_hint(self, message, hint_level):
-        if hint_level == 1:
-            return f"The message starts with '{message[0]}' and ends with '{message[-1]}'."
-        elif hint_level == 2:
-            words = message.split()
-            return f"The message contains {len(words)} words."
-        elif hint_level == 3:
-            return f"A key word in the message is '{random.choice(message.split())}'."
-
-    @commands.command()
-    async def poneglyph(self, ctx):
-        """Start a Poneglyph decoding game with increasing difficulty and hints"""
-        difficulty = 1
-        score = 0
-        
-        await ctx.send("Welcome to the Poneglyph Decoding Challenge! Decipher as many Poneglyphs as you can. The difficulty will increase with each correct answer. Type '!hint' for a clue, but be aware it will reduce your score for the current round.")
-
-        while True:
-            message = random.choice(self.poneglyph_messages)
-            cipher = self.create_cipher(message, difficulty)
-            encoded = self.encode_message(message, cipher)
-            await ctx.send(f"Difficulty Level {difficulty}\nDecipher this Poneglyph: `{encoded}`")
-            await ctx.send(f"You have {60 // difficulty} seconds! Type '.hint' for a clue.")
-
-            hint_level = 0
-            hint_penalty = 0
-
-            def check(m):
-                return m.channel == ctx.channel and (m.content.lower() == message.lower() or m.content.lower() == '!hint')
-
-            try:
-                while True:
-                    msg = await self.bot.wait_for('message', timeout=60.0 / difficulty, check=check)
-                    if msg.content.lower() == '.hint':
-                        hint_level += 1
-                        if hint_level <= 3:
-                            hint = self.get_hint(message, hint_level)
-                            hint_penalty += 2 * difficulty  # Increase penalty with difficulty
-                            await ctx.send(f"Hint {hint_level}: {hint}")
-                        else:
-                            await ctx.send("No more hints available!")
-                    else:
-                        await ctx.send(f"Congratulations {msg.author.mention}! You've decoded the Poneglyph!")
-                        round_score = max(0, difficulty * 10 - hint_penalty)
-                        score += round_score
-                        await ctx.send(f"Round score: {round_score} (Hint penalty: -{hint_penalty})")
-                        await ctx.send(f"Your total score: {score}")
-                        break
-
-                difficulty += 1
-                await ctx.send("Prepare for the next Poneglyph! Type 'continue' to proceed or 'stop' to end the game.")
-                
-                def continue_check(m):
-                    return m.author == msg.author and m.content.lower() in ['continue', 'stop']
-
-                try:
-                    continue_msg = await self.bot.wait_for('message', timeout=15.0, check=continue_check)
-                    if continue_msg.content.lower() == 'stop':
-                        break
-                except asyncio.TimeoutError:
-                    await ctx.send("No response received. Ending the game.")
-                    break
-
-            except asyncio.TimeoutError:
-                await ctx.send(f"Time's up! The correct decoding was: {message}")
-                break
-
-        await ctx.send(f"Game Over! Your final score is {score}. You reached difficulty level {difficulty}.")
-
-    @commands.command()
-    async def fruitinfo(self, ctx, *, fruit_name: str):
-        """Get detailed information about a specific Devil Fruit"""
-        fruit_name = fruit_name.lower().title()
-        if fruit_name in self.devil_fruits:
-            await ctx.send(f"Devil Fruit: {fruit_name} no Mi\nAbility: {self.devil_fruits[fruit_name]}")
-        else:
-            await ctx.send("That Devil Fruit is not in our database!")
-
-    @commands.command()
-    async def swordquiz(self, ctx):
-        """Start a sword knowledge quiz"""
-        score = 0
-        for q in self.sword_questions:
-            await ctx.send(q["q"])
-            try:
-                answer = await self.bot.wait_for('message', timeout=30.0, check=lambda m: m.author == ctx.author)
-                if answer.content.lower() == q["a"].lower():
-                    await ctx.send("Correct!")
-                    score += 1
-                else:
-                    await ctx.send(f"Wrong! The correct answer was {q['a']}.")
-            except asyncio.TimeoutError:
-                await ctx.send("Time's up!")
-        await ctx.send(f"Quiz over! Your score: {score}/{len(self.sword_questions)}")
-        await self.config.user(ctx.author).quiz_scores.sword.set(score)
-
-    @commands.command()
-    async def whichcharacter(self, ctx):
-        """Take a personality quiz to find out which One Piece character you're most like"""
-        answers = ""
-        for q in self.personality_questions:
-            await ctx.send(f"{q['q']}\n" + "\n".join(q['options']))
-            answer = await self.bot.wait_for('message', check=lambda m: m.author == ctx.author and m.content.upper() in "ABC")
-            answers += answer.content.upper()
-
-        character = self.character_results.get(answers, "Pandaman")
-        await ctx.send(f"You're most like {character}!")
-        await self.config.user(ctx.author).quiz_scores.personality.set(character)
-
-    @commands.command()
-    async def voiceofallthings(self, ctx, *, message: str):
-        """Attempt to decipher cryptic messages as if you had the Voice of All Things ability"""
-        decoded = ' '.join(random.choice(self.cryptic_responses) for _ in range(3))
-        await ctx.send(f"You hear: {decoded}\nCan you interpret its meaning?")
-
-    @commands.command()
-    async def eatingcontest(self, ctx):
-        """Compete in Luffy's Eating Contest"""
-        await ctx.send("Luffy's Eating Contest begins! Type food emojis as fast as you can for 30 seconds!")
-        
-        def check(m):
-            return m.author == ctx.author and any(c in m.content for c in '🍖🍗🍔🍕🍟🌭🥩🍣')
-
-        count = 0
-        end_time = asyncio.get_event_loop().time() + 30.0
-
-        while asyncio.get_event_loop().time() < end_time:
-            try:
-                await self.bot.wait_for('message', timeout=end_time - asyncio.get_event_loop().time(), check=check)
-                count += 1
-            except asyncio.TimeoutError:
-                break
-
-        await ctx.send(f"Time's up! You ate {count} items. {'Luffy would be proud!' if count > 20 else 'Keep practicing!'}")
-
-    @commands.command()
-    async def rogerriddle(self, ctx):
-        """Get a riddle from Gol D. Roger"""
-        riddle = random.choice(self.riddles)
-        await ctx.send(f"Gol D. Roger's Riddle: {riddle['question']}")
-
-        hints = [
-            f"The first letter of the answer is '{riddle['answer'][0]}'",
-            f"The answer has {len(riddle['answer'])} letters",
-            f"The last letter of the answer is '{riddle['answer'][-1]}'"
-        ]
-
-        def check(m):
-            return m.channel == ctx.channel and m.content.lower() == riddle['answer'].lower()
-
-        for i in range(3):  # 3 attempts with hints
-            try:
-                msg = await self.bot.wait_for('message', timeout=30.0, check=check)
-                await ctx.send(f"Congratulations, {msg.author.name}! You've solved Roger's riddle!")
-                return
-            except asyncio.TimeoutError:
-                if i < 2:  # Don't give a hint after the last attempt
-                    await ctx.send(f"Not quite! Here's a hint: {hints[i]}")
-
-        await ctx.send(f"Time's up! The answer was: {riddle['answer']}")
-
-    @commands.command()
-    async def butterfly(self, ctx, *, object: str):
-        """Describe an object in the most attractive way possible"""
-        if await self.config.guild(ctx.guild).ongoing_games.get("butterfly", False):
-            await ctx.send("A Mero Mero challenge is already in progress!")
+    @wg.command(name="join")
+    async def wg_join(self, ctx):
+        """Join the World Government as a recruit"""
+        if not await self.check_wg_channel(ctx):
             return
 
-        await self.config.guild(ctx.guild).ongoing_games.set({"butterfly": True})
+        user_data = await self.config.user(ctx.author).all()
+        if user_data['position']:
+            await ctx.send(f"You are already a {user_data['position']} in the World Government!")
+            return
 
-        await ctx.send(f"{ctx.author.name} uses the power of the Mero Mero no Mi on a {object}!")
-        await ctx.send(f"Everyone, you have 2 minutes to describe this {object} in the most attractive way possible!")
+        user_data['position'] = "Recruit"
+        guild_data = await self.config.guild(ctx.guild).all()
+        guild_data['active_players'][str(ctx.author.id)] = user_data
+        await self.config.guild(ctx.guild).set(guild_data)
+        await self.config.user(ctx.author).set(user_data)
+        await ctx.send("Welcome to the World Government! You start as a Recruit. Work hard to climb the ranks.")
 
-        descriptions = {}
+    @wg.command(name="status")
+    async def wg_status(self, ctx):
+        """Check your status and the current world state"""
+        if not await self.check_wg_channel(ctx):
+            return
 
-        def check(m):
-            return m.channel == ctx.channel and m.author != self.bot.user and m.author not in descriptions
+        guild_data = await self.config.guild(ctx.guild).all()
+        user_data = guild_data['active_players'].get(str(ctx.author.id))
+        if not user_data:
+            await ctx.send("You haven't joined the World Government yet! Use `!wg join` to start.")
+            return
+
+        embed = discord.Embed(title="World Government Status", color=discord.Color.blue())
+        embed.add_field(name="Your Position", value=user_data['position'], inline=False)
+        embed.add_field(name="Influence", value=user_data['influence'], inline=False)
+        embed.add_field(name="Allies", value=", ".join(user_data['allies']) if user_data['allies'] else "None", inline=False)
+        embed.add_field(name="Enemies", value=", ".join(user_data['enemies']) if user_data['enemies'] else "None", inline=False)
+
+        embed.add_field(name="Skills", value="\n".join(f"{k.title()}: {v}" for k, v in user_data['skills'].items()), inline=False)
+        embed.add_field(name="Personal Resources", value="\n".join(f"{k.title()}: {v}" for k, v in user_data['personal_resources'].items()), inline=False)
+
+        embed.add_field(name="World State", value="\n".join(f"{k.replace('_', ' ').title()}: {v}%" for k, v in guild_data['world_state'].items()), inline=False)
+        embed.add_field(name="Current Year", value=guild_data['current_year'], inline=False)
+        embed.add_field(name="Global Resources", value="\n".join(f"{k.title()}: {v}" for k, v in guild_data['resources'].items()), inline=False)
+
+        await ctx.send(embed=embed)
+
+    @wg.command(name="decide")
+    async def wg_decide(self, ctx):
+        """Make a political decision"""
+        if not await self.check_wg_channel(ctx):
+            return
+
+        guild_data = await self.config.guild(ctx.guild).all()
+        user_data = guild_data['active_players'].get(str(ctx.author.id))
+        if not user_data:
+            await ctx.send("You haven't joined the World Government yet! Use `!wg join` to start.")
+            return
+
+        decision = self.generate_decision(user_data['position'], guild_data['world_state'])
+        embed = discord.Embed(title="Political Decision", description=f"As a {user_data['position']}, you must decide:", color=discord.Color.gold())
+        embed.add_field(name="Decision", value=decision['description'], inline=False)
+        embed.add_field(name="Options", value="React with 👍 to approve or 👎 to reject", inline=False)
+
+        message = await ctx.send(embed=embed)
+        await message.add_reaction("👍")
+        await message.add_reaction("👎")
+
+        def check(reaction, user):
+            return user == ctx.author and str(reaction.emoji) in ["👍", "👎"] and reaction.message.id == message.id
 
         try:
-            while True:
-                msg = await self.bot.wait_for('message', timeout=120.0, check=check)
-                descriptions[msg.author] = msg.content
+            reaction, user = await self.bot.wait_for('reaction_add', timeout=60.0, check=check)
+            approve = str(reaction.emoji) == "👍"
+            
+            consequences = self.calculate_consequences(decision, approve, user_data, guild_data)
+            user_data['decisions'].append({"decision": decision['description'], "approved": approve})
+            user_data['influence'] += consequences['influence_change']
+
+            for key, value in consequences['world_state_changes'].items():
+                guild_data['world_state'][key] = max(0, min(100, guild_data['world_state'][key] + value))
+
+            for key, value in consequences['resource_changes'].items():
+                guild_data['resources'][key] += value
+
+            for key, value in consequences['skill_changes'].items():
+                user_data['skills'][key] = max(1, user_data['skills'][key] + value)
+
+            for key, value in consequences['personal_resource_changes'].items():
+                user_data['personal_resources'][key] += value
+
+            guild_data['active_players'][str(ctx.author.id)] = user_data
+            await self.config.guild(ctx.guild).set(guild_data)
+
+            result_embed = discord.Embed(title="Decision Results", color=discord.Color.green() if approve else discord.Color.red())
+            result_embed.add_field(name="Decision", value=f"{'Approved' if approve else 'Rejected'}: {decision['description']}", inline=False)
+            result_embed.add_field(name="Influence Change", value=f"{consequences['influence_change']:+d}", inline=False)
+            for key, value in consequences['world_state_changes'].items():
+                result_embed.add_field(name=key.replace("_", " ").title(), value=f"{value:+d}%", inline=True)
+            for key, value in consequences['resource_changes'].items():
+                result_embed.add_field(name=f"Global {key.title()}", value=f"{value:+d}", inline=True)
+            for key, value in consequences['skill_changes'].items():
+                result_embed.add_field(name=f"{key.title()} Skill", value=f"{value:+d}", inline=True)
+            for key, value in consequences['personal_resource_changes'].items():
+                result_embed.add_field(name=f"Personal {key.title()}", value=f"{value:+d}", inline=True)
+
+            await ctx.send(embed=result_embed)
+
+            await self.check_for_promotion(ctx, user_data)
+
         except asyncio.TimeoutError:
-            pass
+            await ctx.send("You took too long to decide. The opportunity has passed.")
 
-        if not descriptions:
-            await ctx.send("No one was charmed enough to describe the object. The challenge is cancelled.")
-            await self.config.guild(ctx.guild).ongoing_games.clear()
-            return
+    def generate_decision(self, position, world_state):
+        decisions = [
+            {
+                "description": "Increase Marine presence in the New World",
+                "required_position": "Vice Admiral",
+                "required_state": {"piracy_level": 70}
+            },
+            {
+                "description": "Negotiate with the Revolutionary Army",
+                "required_position": "Fleet Admiral",
+                "required_state": {"revolutionary_threat": 80}
+            },
+            {
+                "description": "Invest in scientific research for advanced weapons",
+                "required_position": "Department Head",
+                "required_state": {"scientific_advancement": 40}
+            },
+            {
+                "description": "Host a Reverie to address global issues",
+                "required_position": "Gorosei Member",
+                "required_state": {"world_stability": 30}
+            },
+            {
+                "description": "Implement stricter regulations on Devil Fruit users",
+                "required_position": "Admiral",
+                "required_state": {}
+            },
+            {
+                "description": "Expand Cipher Pol operations in Paradise",
+                "required_position": "Fleet Admiral",
+                "required_state": {"civilian_approval": 60}
+            },
+            {
+                "description": "Allocate more resources to combating slavery",
+                "required_position": "Vice Admiral",
+                "required_state": {"civilian_approval": 40}
+            },
+            {
+                "description": "Increase funding for Marine training programs",
+                "required_position": "Commodore",
+                "required_state": {"marine_strength": 50}
+            },
+            {
+                "description": "Propose a global tax increase to fund the World Government",
+                "required_position": "Gorosei Member",
+                "required_state": {"economy": 70}
+            },
+            {
+                "description": "Launch a propaganda campaign to improve the World Government's image",
+                "required_position": "Department Head",
+                "required_state": {"civilian_approval": 30}
+            }
+        ]
 
-        # Create an embed for voting
-        embed = discord.Embed(title=f"Mero Mero Challenge: {object}", color=discord.Color.pink())
-        for i, (author, desc) in enumerate(descriptions.items(), start=1):
-            embed.add_field(name=f"{i}. {author.name}'s description", value=desc, inline=False)
+        eligible_decisions = [
+            d for d in decisions
+            if self.positions.index(position) >= self.positions.index(d["required_position"])
+            and all(world_state[k] >= v for k, v in d["required_state"].items())
+        ]
 
-        vote_msg = await ctx.send(embed=embed)
+        return random.choice(eligible_decisions) if eligible_decisions else {"description": "Handle routine administrative tasks", "required_position": "Recruit", "required_state": {}}
 
-        # Add reaction options for voting
-        for i in range(1, len(descriptions) + 1):
-            await vote_msg.add_reaction(f"{i}\N{COMBINING ENCLOSING KEYCAP}")
+    def calculate_consequences(self, decision, approve, user_data, guild_data):
+        base_influence = 5 if approve else -2
+        consequences = {
+            "influence_change": base_influence + random.randint(-2, 2),
+            "world_state_changes": {k: 0 for k in guild_data['world_state']},
+            "resource_changes": {k: 0 for k in guild_data['resources']},
+            "skill_changes": {k: 0 for k in user_data['skills']},
+            "personal_resource_changes": {k: 0 for k in user_data['personal_resources']}
+        }
 
-        await ctx.send("Vote for the most charming description by reacting to the message above!")
+        decision_effects = {
+            "Increase Marine presence in the New World": {
+                "world_state_changes": {"piracy_level": -10, "marine_strength": 5, "civilian_approval": -5},
+                "resource_changes": {"budget": -50000, "manpower": -5000},
+                "skill_changes": {"military": 1}
+            },
+            "Negotiate with the Revolutionary Army": {
+                "world_state_changes": {"revolutionary_threat": -15, "world_stability": 10, "civilian_approval": 5},
+                "resource_changes": {"intelligence": 50},
+                "skill_changes": {"diplomacy": 2}
+            },
+            "Invest in scientific research for advanced weapons": {
+                "world_state_changes": {"scientific_advancement": 15, "marine_strength": 5},
+                "resource_changes": {"budget": -100000},
+                "skill_changes": {"intelligence": 1}
+            },
+            "Host a Reverie to address global issues": {
+                "world_state_changes": {"world_stability": 20, "civilian_approval": 10},
+                "resource_changes": {"budget": -200000},
+                "skill_changes": {"diplomacy": 2}
+            },
+            "Implement stricter regulations on Devil Fruit users": {
+                "world_state_changes": {"world_stability": 5, "civilian_approval": -10},
+                "resource_changes": {"intelligence": 100},
+                "skill_changes": {"military": 1}
+            },
+            "Expand Cipher Pol operations in Paradise": {
+                "world_state_changes": {"revolutionary_threat": -5, "civilian_approval": -5},
+                "resource_changes": {"budget": -50000, "intelligence": 200},
+                "skill_changes": {"intelligence": 2}
+            },
+            "Allocate more resources to combating slavery": {
+                "world_state_changes": {"civilian_approval": 15, "economy": -5},
+                "resource_changes": {"budget": -100000, "manpower": -2000},
+                "skill_changes": {"diplomacy": 1}
+            },
+            "Increase funding for Marine training programs": {
+                "world_state_changes": {"marine_strength": 10},
+                "resource_changes": {"budget": -75000, "manpower": 1000},
+                "skill_changes": {"military": 1}
+            },
+            "Propose a global tax increase to fund the World Government": {
+                "world_state_changes": {"civilian_approval": -15, "economy": 10},
+                "resource_changes": {"budget": 300000},
+                "skill_changes": {"economy": 2}
+            },
+            "Launch a propaganda campaign to improve the World Government's image": {
+                "world_state_changes": {"civilian_approval": 10, "revolutionary_threat": -5},
+                "resource_changes": {"budget": -50000},
+                "skill_changes": {"diplomacy": 1}
+            }
+        }
 
-        await asyncio.sleep(30)  # Allow 30 seconds for voting
+        if decision['description'] in decision_effects:
+            effects = decision_effects[decision['description']]
+            for category, changes in effects.items():
+                for key, value in changes.items():
+                    consequences[category][key] += value if approve else -value
 
-        vote_msg = await ctx.channel.fetch_message(vote_msg.id)
-        votes = {r.emoji: r.count for r in vote_msg.reactions}
-        winner_emoji = max(votes, key=votes.get)
-        winner = list(descriptions.keys())[int(winner_emoji[0]) - 1]
+        # Adjust based on skills
+        for category in ['world_state_changes', 'resource_changes']:
+            for key in consequences[category]:
+                skill_factor = user_data['skills'].get(key, 1) / 10
+                consequences[category][key] *= (1 + skill_factor)
 
-        await ctx.send(f"The most charming description was by {winner.mention}! They've mastered the power of the Mero Mero no Mi!")
+        # Personal resource changes
+        consequences['personal_resource_changes']['wealth'] += random.randint(-100, 200)
+        consequences['personal_resource_changes']['connections'] += random.randint(-2, 5)
 
-        await self.config.guild(ctx.guild).ongoing_games.clear()
+        return consequences
 
-    @commands.Cog.listener()
-    async def on_message(self, message):
-        """Update user's last activity when they send a message"""
-        if message.author.bot:
-            return
-        await self.config.user(message.author).last_activity.set(int(message.created_at.timestamp()))
+    async def check_for_promotion(self, ctx, user_data):
+        current_position = user_data['position']
+        current_index = self.positions.index(current_position)
+
+        if user_data['influence'] >= (current_index + 1) * 50 and current_index < len(self.positions) - 1:
+            new_position = self.positions[current_index + 1]
+            user_data['position'] = new_position
+            guild_data = await self.config.guild(ctx.guild).all()
+            guild_data['active_players'][str(ctx.author.id)] = user_data
+            await self.config.guild(ctx.guild).set(guild_data)
+            await ctx.send(f"Congratulations! You've been promoted to {new_position}!")
+
+    @tasks.loop(hours=24)
+    async def world_events(self):
+        for guild in self.bot.guilds:
+            guild_data = await self.config.guild(guild).all()
+            if guild_data['wg_channel']:
+                channel = self.bot.get_channel(guild_data['wg_channel'])
+                if channel:
+                    event = self.generate_world_event(guild_data['world_state'])
+                    guild_data['ongoing_events'].append(event)
+                    guild_data['current_year'] += 1
+                    await self.config.guild(guild).set(guild_data)
+                    
+                    embed = discord.Embed(title="World Event", description=event['description'], color=discord.Color.red())
+                    for key, value in event['effects'].items():
+                        embed.add_field(name=key.replace("_", " ").title(), value=f"{value:+d}%", inline=True)
+                    
+                    await channel.send(embed=embed)
+
+    def generate_world_event(self, world_state):
+        events = [
+            {
+                "description": "A powerful pirate crew has emerged in the New World!",
+                "effects": {"piracy_level": 10, "marine_strength": -5}
+            },
+            {
+                "description": "The Revolutionary Army has liberated a kingdom from tyrannical rule!",
+                "effects": {"revolutionary_threat": 15, "civilian_approval": 5, "world_stability": -10}
+            },
+            {
+                "description": "A new breakthrough in Devil Fruit research has been made!",
+                "effects": {"scientific_advancement": 20, "economy": 5}
+            },
+            {
+                "description": "A Celestial Dragon has been attacked by pirates!",
+                "effects": {"world_stability": -15, "marine_strength": 5, "civilian_approval": 10}
+            },
+            {
+                "description": "A devastating natural disaster has struck multiple islands!",
+                "effects": {"economy": -10, "civilian_approval": -5, "world_stability": -5}
+            }
+        ]
+        
+        event = random.choice(events)
+        for key in event['effects']:
+            event['effects'][key] = max(-20, min(20, event['effects'][key] + random.randint(-5, 5)))
+        
+        return event
+
+    @tasks.loop(hours=1)
+    async def resource_update(self):
+        for guild in self.bot.guilds:
+            guild_data = await self.config.guild(guild).all()
+            if guild_data['wg_channel']:
+                guild_data['resources']['budget'] += 10000
+                guild_data['resources']['manpower'] += 100
+                guild_data['resources']['intelligence'] += 5
+                await self.config.guild(guild).set(guild_data)
+
+    async def check_wg_channel(self, ctx):
+        guild_data = await self.config.guild(ctx.guild).all()
+        if not guild_data['wg_channel']:
+            await ctx.send("The World Government Simulator channel has not been set up yet. An admin needs to use `!wg setup` first.")
+            return False
+        if ctx.channel.id != guild_data['wg_channel']:
+            wg_channel = self.bot.get_channel(guild_data['wg_channel'])
+            await ctx.send(f"This command can only be used in the designated World Government Simulator channel: {wg_channel.mention}")
+            return False
+        return True
 
 def setup(bot):
-    bot.add_cog(OnePieceExpandedCogs(bot))
+    bot.add_cog(AdvancedWorldGovernmentSimulator(bot))
