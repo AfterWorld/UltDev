@@ -456,7 +456,7 @@ All crew members must adhere to Discord's Terms of Service. Here are some key po
 - 🛡️ Don't share or promote harmful content or illegal activities
 - 🤖 Don't use self-bots or user-bots
 
-For the full terms, visit: https://discord.com/terms
+For the full terms, visit: [Discord Terms of Service](https://discord.com/terms)
 
 ## 🏴‍☠️ Server Rules (Applies to all crew members, from cabin boys to Yonko)
 
