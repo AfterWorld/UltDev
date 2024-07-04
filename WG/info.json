@@ -1,5 +1,5 @@
 {
-    "author": ["Your Name"],
+    "author": ["UltPanda"],
     "install_msg": "Thank you for installing the Advanced World Government Simulator! Use `[p]help AdvancedWorldGovernmentSimulator` to see all available commands. Make sure to set up a dedicated channel for the simulator using `[p]wg setup`.",
     "name": "AdvancedWorldGovernmentSimulator",
     "short": "A complex One Piece themed political simulator",
