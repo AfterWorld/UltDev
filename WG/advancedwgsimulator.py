@@ -346,7 +346,7 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             await ctx.send("You took too long to respond. The task opportunity has passed.")
 
     @commands.command()
-    async def leaderboard(self, ctx):
+    async def topboard(self, ctx):
         """View the leaderboard of World Government officials"""
         if not await self.check_wg_channel(ctx):
             return
