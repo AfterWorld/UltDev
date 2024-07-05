@@ -8,6 +8,7 @@ import asyncio
 import re
 import random
 import pytz
+from typing import Optional  # Add this line
 
 original_commands = {}
 original_permissions_command = None
