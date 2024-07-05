@@ -201,9 +201,6 @@ class OnePieceMod(commands.Cog):
                     if embed.title and embed.title.startswith(f"⚠️ Warning Log for {member.display_name}"):
                         await message.delete()
                         break
-
-        # Log the clearing of warnings
-        await self.log_action(ctx, member, "Warnings Cleared", "All warnings removed", moderator=ctx.author)
         
     @commands.command()
     @checks.admin_or_permissions(kick_members=True)
