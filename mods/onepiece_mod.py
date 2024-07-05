@@ -474,7 +474,7 @@ class OnePieceMod(commands.Cog):
         if ctx.invoked_subcommand is None:
             await ctx.send_help(ctx.command)
     
-   @new_permissions.command(name="add")
+    @new_permissions.command(name="add")
     async def add_permission(self, ctx, cog_or_command: str, *channels: discord.TextChannel):
         """Allow a cog or command to be used in specific channels."""
         if not channels:
