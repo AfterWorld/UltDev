@@ -504,14 +504,19 @@ class OnePieceMod(commands.Cog):
         for cog_or_command, perm_data in permissions.items():
             allowed_channels = []
             denied_channels = []
-            for channel_id, allowed in perm_data.items():
-                if channel_id != 'channel':  # Skip the 'channel' key
-                    channel = ctx.guild.get_channel(int(channel_id))
-                    if channel:
-                        if allowed:
-                            allowed_channels.append(channel.mention)
-                        else:
-                            denied_channels.append(channel.mention)
+            if isinstance(perm_data, dict):
+                for channel_id, allowed in perm_data.items():
+                    if channel_id not in ('channel', 'allowed'):
+                        try:
+                            channel = ctx.guild.get_channel(int(channel_id))
+                            if channel:
+                                if allowed:
+                                    allowed_channels.append(channel.mention)
+                                else:
+                                    denied_channels.append(channel.mention)
+                        except ValueError:
+                            # If channel_id is not a valid integer, skip it
+                            continue
             
             value = ""
             if allowed_channels:
@@ -521,6 +526,8 @@ class OnePieceMod(commands.Cog):
             
             if value:
                 embed.add_field(name=cog_or_command, value=value, inline=False)
+            else:
+                embed.add_field(name=cog_or_command, value="No channel-specific permissions set", inline=False)
     
         await ctx.send(embed=embed)
 
@@ -536,7 +543,7 @@ class OnePieceMod(commands.Cog):
                 action = "allowed to dock in" if allowed else "banned from"
                 channel = ctx.guild.get_channel(channel_id)
                 await ctx.send(f"🏴‍☠️ The {cog_or_command} ship is now {action} the waters of {channel.mention}!")
-            
+                
     @commands.Cog.listener()
     async def on_command(self, ctx):
         if ctx.guild is None:
