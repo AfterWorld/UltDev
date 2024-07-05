@@ -77,7 +77,7 @@ class OnePieceMod(commands.Cog):
             await log_channel.send(log_message)
 
     @commands.command()
-    @checks.admin_or_permissions(manage_messages=True)
+    @checks.mod_or_permissions(manage_messages=True)
     async def warn(self, ctx, member: discord.Member, *, reason: str = "No reason provided"):
         """Warn a crew member for breaking the Pirate Code."""
         if member.bot:
@@ -165,7 +165,7 @@ class OnePieceMod(commands.Cog):
         return embed
 
     @commands.command()
-    @checks.admin_or_permissions(manage_messages=True)
+    @checks.mod_or_permissions(manage_messages=True)
     async def warnings(self, ctx, member: discord.Member):
         """Check a crew member's recent warnings."""
         async with self.config.guild(ctx.guild).warned_users() as warned_users:
@@ -203,7 +203,7 @@ class OnePieceMod(commands.Cog):
                         break
         
     @commands.command()
-    @checks.admin_or_permissions(kick_members=True)
+    @checks.mod_or_permissions(kick_members=True)
     async def kick(self, ctx, member: discord.Member, *, reason: str = "Disrespecting the captain's orders!"):
         """Force a crew member to walk the plank."""
         try:
@@ -223,7 +223,7 @@ class OnePieceMod(commands.Cog):
             await ctx.send("There was an error while trying to make that crew member walk the plank. The Sea Kings must be interfering with our Den Den Mushi!")
 
     @commands.command()
-    @checks.admin_or_permissions(ban_members=True)
+    @checks.mod_or_permissions(ban_members=True)
     async def ban(self, ctx, member: discord.Member, *, reason: str = "Mutiny against the crew!"):
         """Banish a pirate to Impel Down and erase their messages."""
         try:
@@ -264,7 +264,7 @@ class OnePieceMod(commands.Cog):
             await ctx.send("There was an error while trying to banish that pirate. The Marines must be jamming our signals!")
             
     @commands.command()
-    @checks.admin_or_permissions(manage_roles=True)
+    @checks.mod_or_permissions(manage_roles=True)
     async def mute(
         self,
         ctx: commands.Context,
@@ -397,7 +397,7 @@ class OnePieceMod(commands.Cog):
             await self.unmute(ctx, user, reason="Scheduled unmute: Void Century banishment has ended")
 
     @commands.command()
-    @checks.admin_or_permissions(manage_roles=True)
+    @checks.mod_or_permissions(manage_roles=True)
     async def unmute(self, ctx: commands.Context, user: discord.Member, *, reason: str = "Void Century banishment has ended"):
         """Return a crew member from the Void Century."""
         mute_role = ctx.guild.get_role(self.mute_role_id)
