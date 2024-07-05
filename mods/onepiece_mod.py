@@ -469,20 +469,59 @@ class OnePieceMod(commands.Cog):
             await ctx.send_help(ctx.command)
     
     @new_permissions.command(name="add")
-    async def add_permission(self, ctx, cog_or_command: str, channel: discord.TextChannel):
-        """Allow a cog or command to be used in a specific channel."""
-        await self._set_permission(ctx, cog_or_command, channel.id, True)
+    async def add_permission(self, ctx, cog_or_command: str, *channels: discord.TextChannel):
+        """Allow a cog or command to be used in specific channels."""
+        if not channels:
+            return await ctx.send("Ye need to specify at least one channel, ye scurvy dog!")
+        for channel in channels:
+            await self._set_permission(ctx, cog_or_command, channel.id, True)
     
     @new_permissions.command(name="deny")
-    async def deny_permission(self, ctx, cog_or_command: str, channel: discord.TextChannel):
-        """Deny a cog or command from being used in a specific channel."""
-        await self._set_permission(ctx, cog_or_command, channel.id, False)
+    async def deny_permission(self, ctx, cog_or_command: str, *channels: discord.TextChannel):
+        """Deny a cog or command from being used in specific channels."""
+        if not channels:
+            return await ctx.send("Ye need to specify at least one channel, ye landlubber!")
+        for channel in channels:
+            await self._set_permission(ctx, cog_or_command, channel.id, False)
     
     @new_permissions.command(name="reset")
     async def reset_permission(self, ctx, cog_or_command: str):
         """Reset permissions for a cog or command."""
         await self._set_permission(ctx, cog_or_command, None, None)
     
+    @new_permissions.command(name="list")
+    async def list_permissions(self, ctx):
+        """List all current permissions."""
+        guild_data = await self.config.guild(ctx.guild).all()
+        permissions = guild_data.get("permissions", {})
+        
+        if not permissions:
+            return await ctx.send("There be no permissions set, ye empty-headed animal food trough wiper!")
+    
+        embed = discord.Embed(title="🏴‍☠️ Permissions Map 🗺️", color=discord.Color.blue())
+        
+        for cog_or_command, perm_data in permissions.items():
+            allowed_channels = []
+            denied_channels = []
+            for channel_id, allowed in perm_data.items():
+                channel = ctx.guild.get_channel(int(channel_id))
+                if channel:
+                    if allowed:
+                        allowed_channels.append(channel.mention)
+                    else:
+                        denied_channels.append(channel.mention)
+            
+            value = ""
+            if allowed_channels:
+                value += f"Allowed in: {', '.join(allowed_channels)}\n"
+            if denied_channels:
+                value += f"Denied in: {', '.join(denied_channels)}\n"
+            
+            if value:
+                embed.add_field(name=cog_or_command, value=value, inline=False)
+    
+        await ctx.send(embed=embed)
+
     async def _set_permission(self, ctx, cog_or_command: str, channel_id: int, allowed: bool):
         async with self.config.guild(ctx.guild).all() as guild_data:
             guild_data.setdefault("permissions", {})
@@ -490,7 +529,8 @@ class OnePieceMod(commands.Cog):
                 guild_data["permissions"].pop(cog_or_command, None)
                 await ctx.send(f"🏴‍☠️ Permissions reset for {cog_or_command}. It's free to sail all seas now!")
             else:
-                guild_data["permissions"][cog_or_command] = {"channel": channel_id, "allowed": allowed}
+                guild_data["permissions"].setdefault(cog_or_command, {})
+                guild_data["permissions"][cog_or_command][str(channel_id)] = allowed
                 action = "allowed to dock in" if allowed else "banned from"
                 channel = ctx.guild.get_channel(channel_id)
                 await ctx.send(f"🏴‍☠️ The {cog_or_command} ship is now {action} the waters of {channel.mention}!")
@@ -506,16 +546,17 @@ class OnePieceMod(commands.Cog):
     
         for item in [ctx.command.qualified_name, cog_name]:
             if item in permissions:
-                perm = permissions[item]
-                if perm["channel"] != ctx.channel.id:
-                    if perm["allowed"]:
-                        allowed_channel = ctx.guild.get_channel(perm["channel"])
-                        await ctx.send(f"🏴‍☠️ Avast ye! This command can only be used in the waters of {allowed_channel.mention}.")
-                        return await ctx.message.delete()
-                    else:
+                channel_perms = permissions[item]
+                if str(ctx.channel.id) in channel_perms:
+                    if not channel_perms[str(ctx.channel.id)]:
                         await ctx.send("🏴‍☠️ Shiver me timbers! This command be not allowed in these waters.")
                         return await ctx.message.delete()
-
+                elif any(channel_perms.values()):  # If there are any allowed channels
+                    allowed_channels = [ctx.guild.get_channel(int(c)) for c, a in channel_perms.items() if a]
+                    allowed_channels = [c.mention for c in allowed_channels if c]
+                    await ctx.send(f"🏴‍☠️ Avast ye! This command can only be used in the waters of: {', '.join(allowed_channels)}.")
+                    return await ctx.message.delete()
+                    
     @commands.Cog.listener()
     async def on_message(self, message):
         if message.author.bot or not message.guild:
