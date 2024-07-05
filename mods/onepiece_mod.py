@@ -523,8 +523,8 @@ class OnePieceMod(commands.Cog):
                 embed.add_field(name=cog_or_command, value=value, inline=False)
     
         await ctx.send(embed=embed)
-    
-        async def _set_permission(self, ctx, cog_or_command: str, channel_id: Optional[int], allowed: Optional[bool]):
+
+    async def _set_permission(self, ctx, cog_or_command: str, channel_id: Optional[int], allowed: Optional[bool]):
         async with self.config.guild(ctx.guild).all() as guild_data:
             guild_data.setdefault("permissions", {})
             if channel_id is None and allowed is None:
@@ -536,30 +536,7 @@ class OnePieceMod(commands.Cog):
                 action = "allowed to dock in" if allowed else "banned from"
                 channel = ctx.guild.get_channel(channel_id)
                 await ctx.send(f"🏴‍☠️ The {cog_or_command} ship is now {action} the waters of {channel.mention}!")
-    
-            async def check_permissions(self, ctx, command_name):
-            guild_data = await self.config.guild(ctx.guild).all()
-            permissions = guild_data.get("permissions", {})
-        
-            # Check command-specific permissions
-            if command_name in permissions:
-                channel_perms = permissions[command_name]
-                if str(ctx.channel.id) in channel_perms:
-                    return channel_perms[str(ctx.channel.id)]
-                elif any(channel_perms.values()):  # If there are any allowed channels
-                    return False  # Deny if not in an explicitly allowed channel
-        
-            # Check cog-level permissions
-            cog_name = ctx.command.cog.__class__.__name__ if ctx.command.cog else "No Cog"
-            if cog_name in permissions:
-                channel_perms = permissions[cog_name]
-                if str(ctx.channel.id) in channel_perms:
-                    return channel_perms[str(ctx.channel.id)]
-                elif any(channel_perms.values()):  # If there are any allowed channels
-                    return False  # Deny if not in an explicitly allowed channel
-        
-            return True  # Allow by default if no specific permissions are set
-
+            
     @commands.Cog.listener()
     async def on_command(self, ctx):
         if ctx.guild is None:
