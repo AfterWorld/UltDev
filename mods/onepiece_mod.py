@@ -558,10 +558,14 @@ class OnePieceMod(commands.Cog):
                     
     @commands.Cog.listener()
     async def on_command(self, ctx):
-        if not self.check_permissions(ctx):
-            await ctx.send("🏴‍☠️ Avast ye! Ye can't use that command in these waters, ye scurvy dog!")
-            await ctx.message.delete()
-            raise commands.CheckFailure("Permission denied based on channel restrictions.")
+        is_allowed = self.check_permissions(ctx)
+        print(f"Command allowed: {is_allowed}")
+        if not is_allowed:
+            print("Command would be blocked here")
+            # Commenting out the blocking code for now
+            # await ctx.send("🏴‍☠️ Avast ye! Ye can't use that command in these waters, ye scurvy dog!")
+            # await ctx.message.delete()
+            # raise commands.CheckFailure("Permission denied based on channel restrictions.")
 
     def check_permissions(self, ctx):
         cog_name = ctx.command.cog.__class__.__name__ if ctx.command.cog else "No Cog"
@@ -571,19 +575,25 @@ class OnePieceMod(commands.Cog):
         guild_data = self.config.guild(ctx.guild).all()  # This is now synchronous
         permissions = guild_data.get("permissions", {})
     
+        print(f"Checking permissions for command: {command_name} in cog: {cog_name}")
+        print(f"Current channel: {channel_id}")
+        print(f"Permissions data: {permissions}")
+    
         # Check command-specific permissions
         if command_name in permissions:
             channel_perms = permissions[command_name]
+            print(f"Command-specific permissions: {channel_perms}")
             if channel_id in channel_perms:
                 return channel_perms[channel_id]
-            return False  # If command is restricted but not allowed in this channel
+            return True  # Changed to True for now
     
         # Check cog-level permissions
         if cog_name in permissions:
             channel_perms = permissions[cog_name]
+            print(f"Cog-level permissions: {channel_perms}")
             if channel_id in channel_perms:
                 return channel_perms[channel_id]
-            return False  # If cog is restricted but not allowed in this channel
+            return True  # Changed to True for now
     
         return True  # Allow by default if no specific permissions are set
                     
