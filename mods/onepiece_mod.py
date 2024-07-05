@@ -606,8 +606,6 @@ Enlist in one of our fearsome pirate crews:
 Each crew has 4 ranks: Cabin Boy, First Mate, Commander, and Right Hand
 
 ## 📈 Pirate Ranking System
-
-```markdown
 ╔═════╦════════════════════════════╦═══════╗
 ║ No. ║            Rank            ║ Level ║
 ╠═════╬════════════════════════════╬═══════╣
@@ -641,7 +639,6 @@ Each crew has 4 ranks: Cabin Boy, First Mate, Commander, and Right Hand
 ╠═════╬════════════════════════════╬═══════╣
 ║  15 ║    World's Worst Criminal  ║  100  ║
 ╚═════╬════════════════════════════╬═══════╝
-````
 
 Now, hoist the colors and set sail for adventure! If ye have any questions, consult yer Log Pose (ping a moderator). May the winds be ever in yer favor! ⛵🌊🏝️
 """
