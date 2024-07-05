@@ -607,23 +607,6 @@ Each crew has 4 ranks: Cabin Boy, First Mate, Commander, and Right Hand
 
 ## 📈 Pirate Ranking System
 
-Climb the ranks from a lowly Chore Boy to the World's Worst Criminal!
-
-1. **Chore Boy**: Level 1
-2. **Petty Officer**: Level 5
-3. **Chief Petty Officer**: Level 10
-4. **Warrant Officer**: Level 15
-5. **Lieutenant**: Level 20
-6. **Captain**: Level 25
-7. **Commodore**: Level 30
-8. **Rear Admiral**: Level 35
-9. **Vice Admiral**: Level 40
-10. **Buggy's Right-Hand**: Level 45
-11. **Kidd's Right-Hand**: Level 50
-12. **Law's Right-Hand**: Level 55
-13. **Shanks's Right-Hand**: Level 65
-14. **Luffy's Right-Hand**: Level 70
-15. **World's Worst Criminal**: Level 100
 
 Now, hoist the colors and set sail for adventure! If ye have any questions, consult yer Log Pose (ping a moderator). May the winds be ever in yer favor! ⛵🌊🏝️
 """
