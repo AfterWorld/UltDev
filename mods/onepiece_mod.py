@@ -521,11 +521,11 @@ class OnePieceMod(commands.Cog):
                 embed.add_field(name=cog_or_command, value=value, inline=False)
     
         await ctx.send(embed=embed)
-
-    async def _set_permission(self, ctx, cog_or_command: str, channel_id: int, allowed: bool):
+    
+    async def _set_permission(self, ctx, cog_or_command: str, channel_id: Optional[int], allowed: Optional[bool]):
         async with self.config.guild(ctx.guild).all() as guild_data:
             guild_data.setdefault("permissions", {})
-            if allowed is None:
+            if channel_id is None and allowed is None:
                 guild_data["permissions"].pop(cog_or_command, None)
                 await ctx.send(f"🏴‍☠️ Permissions reset for {cog_or_command}. It's free to sail all seas now!")
             else:
