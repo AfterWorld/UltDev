@@ -10,6 +10,7 @@ import random
 import pytz
 
 original_commands = {}
+original_permissions_command = None
 
 class MuteTime(commands.Converter):
     async def convert(self, ctx, argument):
@@ -459,6 +460,62 @@ class OnePieceMod(commands.Cog):
         await channel.set_permissions(ctx.guild.default_role, send_messages=None, add_reactions=None)
         await ctx.send(f"🔓 The restrictions on {channel.mention} have been removed.")
 
+    @commands.group(name="permissions")
+    @commands.guild_only()
+    @checks.admin_or_permissions(manage_guild=True)
+    async def new_permissions(self, ctx):
+        """Manage permissions for cogs and commands."""
+        if ctx.invoked_subcommand is None:
+            await ctx.send_help(ctx.command)
+    
+    @new_permissions.command(name="add")
+    async def add_permission(self, ctx, cog_or_command: str, channel: discord.TextChannel):
+        """Allow a cog or command to be used in a specific channel."""
+        await self._set_permission(ctx, cog_or_command, channel.id, True)
+    
+    @new_permissions.command(name="deny")
+    async def deny_permission(self, ctx, cog_or_command: str, channel: discord.TextChannel):
+        """Deny a cog or command from being used in a specific channel."""
+        await self._set_permission(ctx, cog_or_command, channel.id, False)
+    
+    @new_permissions.command(name="reset")
+    async def reset_permission(self, ctx, cog_or_command: str):
+        """Reset permissions for a cog or command."""
+        await self._set_permission(ctx, cog_or_command, None, None)
+    
+    async def _set_permission(self, ctx, cog_or_command: str, channel_id: int, allowed: bool):
+        async with self.config.guild(ctx.guild).all() as guild_data:
+            guild_data.setdefault("permissions", {})
+            if allowed is None:
+                guild_data["permissions"].pop(cog_or_command, None)
+                await ctx.send(f"🏴‍☠️ Permissions reset for {cog_or_command}. It's free to sail all seas now!")
+            else:
+                guild_data["permissions"][cog_or_command] = {"channel": channel_id, "allowed": allowed}
+                action = "allowed to dock in" if allowed else "banned from"
+                channel = ctx.guild.get_channel(channel_id)
+                await ctx.send(f"🏴‍☠️ The {cog_or_command} ship is now {action} the waters of {channel.mention}!")
+
+    @commands.Cog.listener()
+    async def on_command(self, ctx):
+        if ctx.guild is None:
+            return
+    
+        cog_name = ctx.command.cog.__class__.__name__ if ctx.command.cog else "No Cog"
+        guild_data = await self.config.guild(ctx.guild).all()
+        permissions = guild_data.get("permissions", {})
+    
+        for item in [ctx.command.qualified_name, cog_name]:
+            if item in permissions:
+                perm = permissions[item]
+                if perm["channel"] != ctx.channel.id:
+                    if perm["allowed"]:
+                        allowed_channel = ctx.guild.get_channel(perm["channel"])
+                        await ctx.send(f"🏴‍☠️ Avast ye! This command can only be used in the waters of {allowed_channel.mention}.")
+                        return await ctx.message.delete()
+                    else:
+                        await ctx.send("🏴‍☠️ Shiver me timbers! This command be not allowed in these waters.")
+                        return await ctx.message.delete()
+
     @commands.Cog.listener()
     async def on_message(self, message):
         if message.author.bot or not message.guild:
@@ -660,7 +717,7 @@ Now, hoist the colors and set sail for adventure! If ye have any questions, cons
             await ctx.send("There was an error sending the rules. Please try again later.")
             
 async def setup(bot):
-    global original_commands
+    global original_commands, original_permissions_command
     cog = OnePieceMod(bot)
 
     command_names = ["kick", "ban", "mute", "unmute"]
@@ -670,13 +727,23 @@ async def setup(bot):
             original_commands[cmd_name] = original_cmd
             bot.remove_command(cmd_name)
 
+    # Store and remove the original permissions command
+    original_permissions_command = bot.get_command("permissions")
+    if original_permissions_command:
+        bot.remove_command("permissions")
+
     await bot.add_cog(cog)
 
 async def teardown(bot):
-    global original_commands
+    global original_commands, original_permissions_command
     for cmd_name, cmd in original_commands.items():
         if bot.get_command(cmd_name):
             bot.remove_command(cmd_name)
         if cmd:
             bot.add_command(cmd)
     original_commands.clear()
+
+    # Restore the original permissions command
+    if original_permissions_command:
+        bot.add_command(original_permissions_command)
+    original_permissions_command = None
