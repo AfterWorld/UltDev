@@ -88,21 +88,25 @@ class OnePieceMod(commands.Cog):
 
         current_time = datetime.utcnow()
         async with self.config.guild(ctx.guild).warned_users() as warned_users:
-            user_warns = warned_users.get(str(member.id), [])
+            user_warns = warned_users.get(str(member.id), {})
             
-            # Remove warns older than 24 hours
-            user_warns = [warn for warn in user_warns if current_time - datetime.fromisoformat(warn['timestamp']) < timedelta(hours=24)]
-            
-            # Add new warning
-            user_warns.append({
-                'reason': reason,
-                'moderator': ctx.author.id,
-                'timestamp': current_time.isoformat()
-            })
+            if user_warns and current_time - datetime.fromisoformat(user_warns['timestamp']) < timedelta(hours=24):
+                # Update existing warning
+                user_warns['count'] += 1
+                user_warns['reasons'].append(reason)
+                user_warns['timestamp'] = current_time.isoformat()
+            else:
+                # Create new warning
+                user_warns = {
+                    'count': 1,
+                    'reasons': [reason],
+                    'moderator': ctx.author.id,
+                    'timestamp': current_time.isoformat()
+                }
             
             warned_users[str(member.id)] = user_warns
 
-        warn_count = len(user_warns)
+        warn_count = user_warns['count']
         
         pirate_warnings = [
             f"Ahoy, {member.mention}! Ye've been given a black spot for breakin' the Pirate Code!",
@@ -119,36 +123,62 @@ class OnePieceMod(commands.Cog):
 
         await ctx.send(warning_message)
 
-        # Log the warning
-        await self.log_action(ctx, member, f"Warned (Warning #{warn_count} in 24h)", reason, moderator=ctx.author)
+        # Update or create the log message
+        await self.update_warn_log(ctx.guild, member, user_warns)
 
         if warn_count >= 5:
             recommendation = f"⚠️ {member.mention} has received 5 or more warnings in 24 hours. Consider muting them for 30 minutes using the following command:\n`[p]mute {member.mention} 30m Multiple infractions of the Pirate Code`"
             await ctx.send(recommendation)
+
+    async def update_warn_log(self, guild, member, warn_data):
+        log_channel = self.bot.get_channel(self.log_channel_id)
+        if not log_channel:
+            return  # Log channel not found
+
+        # Check if there's an existing log message for this user's current warning period
+        async for message in log_channel.history(limit=100):
+            if message.author == self.bot.user and message.embeds:
+                embed = message.embeds[0]
+                if embed.title and embed.title.startswith(f"⚠️ Warning Log for {member.display_name}"):
+                    # Update existing log message
+                    new_embed = self.create_warn_embed(member, warn_data)
+                    await message.edit(embed=new_embed)
+                    return
+
+        # If no existing message found, create a new one
+        new_embed = self.create_warn_embed(member, warn_data)
+        await log_channel.send(embed=new_embed)
+
+    def create_warn_embed(self, member, warn_data):
+        embed = discord.Embed(
+            title=f"⚠️ Warning Log for {member.display_name}",
+            color=discord.Color.red(),
+            timestamp=datetime.fromisoformat(warn_data['timestamp'])
+        )
+        embed.set_thumbnail(url=member.avatar.url)
+        embed.add_field(name="Warning Count", value=str(warn_data['count']), inline=False)
+        embed.add_field(name="Reasons", value="\n".join(f"• {reason}" for reason in warn_data['reasons']), inline=False)
+        moderator = member.guild.get_member(warn_data['moderator'])
+        mod_name = moderator.display_name if moderator else "Unknown Moderator"
+        embed.add_field(name="Last Updated By", value=mod_name, inline=False)
+        embed.set_footer(text=f"User ID: {member.id}")
+        return embed
 
     @commands.command()
     @checks.admin_or_permissions(manage_messages=True)
     async def warnings(self, ctx, member: discord.Member):
         """Check a crew member's recent warnings."""
         async with self.config.guild(ctx.guild).warned_users() as warned_users:
-            user_warns = warned_users.get(str(member.id), [])
+            user_warns = warned_users.get(str(member.id), {})
 
         if not user_warns:
             return await ctx.send(f"{member.mention} has a clean record, sailin' smooth seas!")
 
         current_time = datetime.utcnow()
-        recent_warns = [warn for warn in user_warns if current_time - datetime.fromisoformat(warn['timestamp']) < timedelta(hours=24)]
-
-        if not recent_warns:
+        if current_time - datetime.fromisoformat(user_warns['timestamp']) >= timedelta(hours=24):
             return await ctx.send(f"{member.mention} has no warnings in the last 24 hours. They've straightened their course!")
 
-        embed = discord.Embed(title=f"🏴‍☠️ Warning Log for {member.display_name}", color=discord.Color.red())
-        for i, warn in enumerate(recent_warns, 1):
-            moderator = ctx.guild.get_member(warn['moderator'])
-            mod_name = moderator.display_name if moderator else "Unknown Moderator"
-            embed.add_field(name=f"Warning #{i}", value=f"Reason: {warn['reason']}\nModerator: {mod_name}\nTime: {warn['timestamp']}", inline=False)
-
-        embed.set_footer(text=f"Total Warnings in Last 24 Hours: {len(recent_warns)}")
+        embed = self.create_warn_embed(member, user_warns)
         await ctx.send(embed=embed)
 
     @commands.command()
@@ -162,9 +192,19 @@ class OnePieceMod(commands.Cog):
             else:
                 await ctx.send(f"{member.mention} had no warnings to clear. They be sailin' with a clean record already!")
 
+        # Update the log to reflect cleared warnings
+        log_channel = self.bot.get_channel(self.log_channel_id)
+        if log_channel:
+            async for message in log_channel.history(limit=100):
+                if message.author == self.bot.user and message.embeds:
+                    embed = message.embeds[0]
+                    if embed.title and embed.title.startswith(f"⚠️ Warning Log for {member.display_name}"):
+                        await message.delete()
+                        break
+
         # Log the clearing of warnings
         await self.log_action(ctx, member, "Warnings Cleared", "All warnings removed", moderator=ctx.author)
-            
+        
     @commands.command()
     @checks.admin_or_permissions(kick_members=True)
     async def kick(self, ctx, member: discord.Member, *, reason: str = "Disrespecting the captain's orders!"):
