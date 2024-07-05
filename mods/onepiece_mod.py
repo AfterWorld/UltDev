@@ -77,7 +77,7 @@ class OnePieceMod(commands.Cog):
             await log_channel.send(log_message)
 
     @commands.command()
-    @checks.admin_or_permissions(manage_messages=True)
+    @checks.moderator_or_permissions(manage_messages=True)
     async def warn(self, ctx, member: discord.Member, *, reason: str = "No reason provided"):
         """Warn a crew member for breaking the Pirate Code."""
         if member.bot:
