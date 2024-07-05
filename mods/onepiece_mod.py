@@ -261,7 +261,12 @@ class OnePieceMod(commands.Cog):
         # Check if the user is still muted
         mute_role = guild.get_role(self.mute_role_id)
         if mute_role and mute_role in user.roles:
-            ctx = await self.bot.get_context(await self.bot.get_message(guild, user.id))
+            # Create a mock context for the unmute command
+            channel = self.bot.get_channel(self.general_chat_id) or guild.text_channels[0]
+            mock_message = await channel.send(f"Scheduled unmute for {user.mention}")
+            ctx = await self.bot.get_context(mock_message)
+            await ctx.message.delete()  # Delete the mock message
+            
             await self.unmute(ctx, user, reason="Scheduled unmute: Void Century banishment has ended")
 
     @commands.command()
@@ -287,6 +292,9 @@ class OnePieceMod(commands.Cog):
             
             message = f"🕰️ {user.name} has returned from the Void Century and can speak again! Their roles have been restored."
             await ctx.send(message)
+            
+            # Log the unmute action
+            await self.log_action(ctx, user, "Returned from Void Century", reason, moderator=ctx.author)
             
         except discord.Forbidden:
             await ctx.send(f"I don't have the authority to return {user.name} from the Void Century!")
