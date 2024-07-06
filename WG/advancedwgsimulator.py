@@ -745,10 +745,137 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                 for faction in guild_data['factions']
             }
         }
-
-        # Existing event effects logic would go here
-        # ...
-
+    
+        event_effects = {
+        "A powerful pirate crew has been spotted near a major trade route.": {
+            "A": {
+                "world_state_changes": {"piracy_level": -10.0, "marine_strength": 5.0, "civilian_approval": -2.0},
+                "resource_changes": {"budget": -30000.0, "manpower": -2000.0},
+                "skill_changes": {"military": 1.0}
+            },
+            "B": {
+                "world_state_changes": {"piracy_level": 5.0, "economy": 3.0, "civilian_approval": 2.0},
+                "resource_changes": {"budget": 10000.0},
+                "skill_changes": {"diplomacy": 1.0}
+            }
+        },
+        "A kingdom is showing signs of joining the Revolutionary Army.": {
+            "A": {
+                "world_state_changes": {"revolutionary_threat": -5.0, "world_stability": 3.0, "civilian_approval": 2.0},
+                "resource_changes": {"budget": -20000.0},
+                "skill_changes": {"diplomacy": 1.5}
+            },
+            "B": {
+                "world_state_changes": {"revolutionary_threat": 5.0, "world_stability": -3.0, "marine_strength": 2.0},
+                "resource_changes": {"intelligence": 100.0, "manpower": 1000.0},
+                "skill_changes": {"military": 1.0, "intelligence": 0.5}
+            }
+        },
+        "A new type of Devil Fruit has been discovered.": {
+            "A": {
+                "world_state_changes": {"scientific_advancement": 10.0, "marine_strength": 3.0},
+                "resource_changes": {"budget": -50000.0},
+                "skill_changes": {"intelligence": 1.5}
+            },
+            "B": {
+                "world_state_changes": {"world_stability": 5.0, "civilian_approval": 3.0},
+                "resource_changes": {"intelligence": 50.0},
+                "skill_changes": {"diplomacy": 1.0}
+            }
+        },
+        "A celestial dragon demands more protection during their visit to a kingdom.": {
+            "A": {
+                "world_state_changes": {"civilian_approval": -10.0, "world_stability": 5.0},
+                "resource_changes": {"budget": -100000.0, "manpower": -5000.0},
+                "skill_changes": {"diplomacy": 1.0, "military": 1.0}
+            },
+            "B": {
+                "world_state_changes": {"civilian_approval": 5.0, "world_stability": -5.0},
+                "resource_changes": {"budget": 20000.0},
+                "skill_changes": {"diplomacy": 0.5}
+            }
+        },
+        "A legendary weapon has been rumored to be hidden on a remote island.": {
+            "A": {
+                "world_state_changes": {"piracy_level": 10.0, "marine_strength": 5.0},
+                "resource_changes": {"budget": -80000.0, "manpower": -3000.0},
+                "skill_changes": {"intelligence": 2.0, "military": 1.0}
+            },
+            "B": {
+                "world_state_changes": {"world_stability": -5.0, "revolutionary_threat": 5.0},
+                "resource_changes": {"intelligence": 200.0},
+                "skill_changes": {"intelligence": 1.5}
+            }
+        },
+        "A prominent scientist offers to join the World Government's research division.": {
+            "A": {
+                "world_state_changes": {"scientific_advancement": 15.0, "economy": 5.0},
+                "resource_changes": {"budget": -50000.0},
+                "skill_changes": {"science": 2.0}
+            },
+            "B": {
+                "world_state_changes": {"scientific_advancement": -5.0, "civilian_approval": 2.0},
+                "resource_changes": {"budget": 10000.0},
+                "skill_changes": {"economy": 0.5}
+            }
+        },
+        "A major prison break has occurred at Impel Down.": {
+            "A": {
+                "world_state_changes": {"world_stability": -15.0, "piracy_level": 10.0, "marine_strength": 5.0},
+                "resource_changes": {"budget": -200000.0, "manpower": -10000.0},
+                "skill_changes": {"military": 2.0, "intelligence": 1.0}
+            },
+            "B": {
+                "world_state_changes": {"world_stability": -5.0, "civilian_approval": -10.0},
+                "resource_changes": {"intelligence": 100.0},
+                "skill_changes": {"diplomacy": 1.0}
+            }
+        },
+        "A new sea route has been discovered, potentially revolutionizing trade.": {
+            "A": {
+                "world_state_changes": {"economy": 10.0, "piracy_level": 5.0},
+                "resource_changes": {"budget": 100000.0},
+                "skill_changes": {"economy": 1.5}
+            },
+            "B": {
+                "world_state_changes": {"economy": 5.0, "world_stability": 3.0},
+                "resource_changes": {"budget": 50000.0, "intelligence": 50.0},
+                "skill_changes": {"diplomacy": 1.0, "intelligence": 0.5}
+            }
+        },
+        "A powerful Yonko is threatening to attack a World Government allied nation.": {
+            "A": {
+                "world_state_changes": {"world_stability": -10.0, "marine_strength": 10.0},
+                "resource_changes": {"budget": -300000.0, "manpower": -15000.0},
+                "skill_changes": {"military": 2.5, "diplomacy": 1.0}
+            },
+            "B": {
+                "world_state_changes": {"world_stability": -5.0, "civilian_approval": -5.0},
+                "resource_changes": {"budget": -50000.0, "intelligence": 150.0},
+                "skill_changes": {"diplomacy": 2.0, "intelligence": 1.0}
+            }
+        }
+    }
+    
+        if event['description'] in event_effects:
+            effects = event_effects[event['description']][choice]
+            for category, changes in effects.items():
+                for key, value in changes.items():
+                    consequences[category][key] += value
+    
+        # Adjust based on skills
+        for category in ['world_state_changes', 'resource_changes']:
+            for key in consequences[category]:
+                skill_factor = user_data['skills'].get(key, 1) / 10
+                consequences[category][key] *= (1 + skill_factor)
+    
+        # Personal resource changes
+        consequences['personal_resource_changes']['wealth'] += random.randint(-100, 200)
+        consequences['personal_resource_changes']['connections'] += random.randint(-2, 5)
+    
+        # Influence change
+        consequences['influence_change'] = random.uniform(1.0, 5.0) if choice == 'A' else random.uniform(-2.0, 2.0)
+    
         # Add faction-specific consequences
         faction = user_data['faction']
         if faction == "Marines":
@@ -760,7 +887,7 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         elif faction == "Science Division":
             consequences['faction_changes'][faction]['resources']['research_points'] = 5 if choice == 'A' else -2
             consequences['world_state_changes']['scientific_advancement'] += 2.0 if choice == 'A' else -1.0
-
+    
         return consequences
         
     event_effects = {
