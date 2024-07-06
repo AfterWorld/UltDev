@@ -1047,7 +1047,6 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                     "skill_changes": {"intelligence": 1.0}
                 }
             }
-        }
     
     if event['description'] in event_effects:
         effects = event_effects[event['description']][choice]
