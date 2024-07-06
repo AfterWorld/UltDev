@@ -130,7 +130,7 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
 
     @wg.command(name="decide")
     async def wg_decide(self, ctx):
-        """Make a political decision"""
+        """Make a political decision on current events"""
         if not await self.check_wg_channel(ctx):
             return
     
@@ -140,24 +140,26 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             await ctx.send("You haven't joined the World Government yet! Use `!wg join` to start.")
             return
     
-        decision = self.generate_decision(user_data['position'], guild_data['world_state'])
+        event = self.generate_event(user_data['position'], guild_data['world_state'])
         embed = discord.Embed(title="Political Decision", description=f"As a {user_data['position']}, you must decide:", color=discord.Color.gold())
-        embed.add_field(name="Decision", value=decision['description'], inline=False)
-        embed.add_field(name="Options", value="React with 👍 to approve or 👎 to reject", inline=False)
+        embed.add_field(name="Event", value=event['description'], inline=False)
+        embed.add_field(name="Option A", value=event['option_a'], inline=True)
+        embed.add_field(name="Option B", value=event['option_b'], inline=True)
+        embed.add_field(name="How to Decide", value="React with 🅰️ for Option A or 🅱️ for Option B", inline=False)
     
         message = await ctx.send(embed=embed)
-        await message.add_reaction("👍")
-        await message.add_reaction("👎")
+        await message.add_reaction("🅰️")
+        await message.add_reaction("🅱️")
     
         def check(reaction, user):
-            return user == ctx.author and str(reaction.emoji) in ["👍", "👎"] and reaction.message.id == message.id
+            return user == ctx.author and str(reaction.emoji) in ["🅰️", "🅱️"] and reaction.message.id == message.id
     
         try:
             reaction, user = await self.bot.wait_for('reaction_add', timeout=60.0, check=check)
-            approve = str(reaction.emoji) == "👍"
+            choice = 'A' if str(reaction.emoji) == "🅰️" else 'B'
             
-            consequences = self.calculate_consequences(decision, approve, user_data, guild_data)
-            user_data['decisions'].append({"decision": decision['description'], "approved": approve})
+            consequences = self.calculate_event_consequences(event, choice, user_data, guild_data)
+            user_data['decisions'].append({"event": event['description'], "choice": choice})
             user_data['influence'] += consequences['influence_change']
     
             for key, value in consequences['world_state_changes'].items():
@@ -175,8 +177,9 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             guild_data['active_players'][str(ctx.author.id)] = user_data
             await self.config.guild(ctx.guild).set(guild_data)
     
-            result_embed = discord.Embed(title="Decision Results", color=discord.Color.green() if approve else discord.Color.red())
-            result_embed.add_field(name="Decision", value=f"{'Approved' if approve else 'Rejected'}: {decision['description']}", inline=False)
+            result_embed = discord.Embed(title="Decision Results", color=discord.Color.blue())
+            result_embed.add_field(name="Event", value=event['description'], inline=False)
+            result_embed.add_field(name="Your Choice", value=f"Option {choice}: {event[f'option_{choice.lower()}']}", inline=False)
             result_embed.add_field(name="Influence Change", value=f"{consequences['influence_change']:+.1f}", inline=False)
             for key, value in consequences['world_state_changes'].items():
                 result_embed.add_field(name=key.replace("_", " ").title(), value=f"{value:+.1f}%", inline=True)
