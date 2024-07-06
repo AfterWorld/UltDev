@@ -177,15 +177,15 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
     
             result_embed = discord.Embed(title="Decision Results", color=discord.Color.green() if approve else discord.Color.red())
             result_embed.add_field(name="Decision", value=f"{'Approved' if approve else 'Rejected'}: {decision['description']}", inline=False)
-            result_embed.add_field(name="Influence Change", value=f"{consequences['influence_change']:+d}", inline=False)
+            result_embed.add_field(name="Influence Change", value=f"{consequences['influence_change']:+.1f}", inline=False)
             for key, value in consequences['world_state_changes'].items():
                 result_embed.add_field(name=key.replace("_", " ").title(), value=f"{value:+.1f}%", inline=True)
             for key, value in consequences['resource_changes'].items():
-                result_embed.add_field(name=f"Global {key.title()}", value=f"{value:+d}", inline=True)
+                result_embed.add_field(name=f"Global {key.title()}", value=f"{value:+.1f}", inline=True)
             for key, value in consequences['skill_changes'].items():
-                result_embed.add_field(name=f"{key.title()} Skill", value=f"{value:+d}", inline=True)
+                result_embed.add_field(name=f"{key.title()} Skill", value=f"{value:+.1f}", inline=True)
             for key, value in consequences['personal_resource_changes'].items():
-                result_embed.add_field(name=f"Personal {key.title()}", value=f"{value:+d}", inline=True)
+                result_embed.add_field(name=f"Personal {key.title()}", value=f"{value:+.1f}", inline=True)
     
             await ctx.send(embed=result_embed)
     
@@ -435,13 +435,13 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         return random.choice(eligible_decisions) if eligible_decisions else {"description": "Handle routine administrative tasks", "required_position": "Recruit", "required_state": {}}
 
     def calculate_consequences(self, decision, approve, user_data, guild_data):
-        base_influence = 5 if approve else -2
+        base_influence = 5.0 if approve else -2.0
         consequences = {
-            "influence_change": base_influence + random.randint(-2, 2),
-            "world_state_changes": {k: 0 for k in guild_data['world_state']},
-            "resource_changes": {k: 0 for k in guild_data['resources']},
-            "skill_changes": {k: 0 for k in user_data['skills']},
-            "personal_resource_changes": {k: 0 for k in user_data['personal_resources']}
+            "influence_change": base_influence + random.uniform(-2.0, 2.0),
+            "world_state_changes": {k: 0.0 for k in guild_data['world_state']},
+            "resource_changes": {k: 0.0 for k in guild_data['resources']},
+            "skill_changes": {k: 0.0 for k in user_data['skills']},
+            "personal_resource_changes": {k: 0.0 for k in user_data['personal_resources']}
         }
 
         decision_effects = {
