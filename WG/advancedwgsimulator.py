@@ -196,7 +196,7 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         await ctx.send(embed=embed)
 
     @wg.command(name="join")
-    async def wg_join(self, ctx, faction: str):
+    async def wg_join(self, ctx, *, faction: str):
         """Join the World Government as a recruit in a specific faction"""
         if not await self.check_wg_channel(ctx):
             return
@@ -207,6 +207,10 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             return
     
         guild_data = await self.config.guild(ctx.guild).all()
+        
+        # Normalize faction input
+        faction = faction.strip().title()
+        
         if faction not in guild_data['factions']:
             await ctx.send(f"Invalid faction. Choose from: {', '.join(guild_data['factions'].keys())}")
             return
