@@ -826,20 +826,21 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         
     def calculate_event_consequences(self, event, choice, user_data, guild_data):
         consequences = {
-            "influence_change": 0.0,
-            "world_state_changes": {k: 0.0 for k in guild_data['world_state']},
-            "resource_changes": {k: 0.0 for k in guild_data['resources']},
-            "skill_changes": {k: 0.0 for k in user_data['skills']},
-            "personal_resource_changes": {k: 0.0 for k in user_data['personal_resources']},
-            "reputation_changes": {k: 0.0 for k in user_data['reputation']},
-            "faction_changes": {
-                faction: {"strength": 0.0, "reputation": 0.0, "resources": {}}
-                for faction in guild_data['factions'],
-            "faction_relation_changes": {
-                faction: {other: 0 for other in guild_data['faction_relations'][faction]}
-                for faction in guild_data['faction_relations'],
-            }
+        "influence_change": 0.0,
+        "world_state_changes": {k: 0.0 for k in guild_data['world_state']},
+        "resource_changes": {k: 0.0 for k in guild_data['resources']},
+        "skill_changes": {k: 0.0 for k in user_data['skills']},
+        "personal_resource_changes": {k: 0.0 for k in user_data['personal_resources']},
+        "reputation_changes": {k: 0.0 for k in user_data['reputation']},
+        "faction_changes": {
+            faction: {"strength": 0.0, "reputation": 0.0, "resources": {}}
+            for faction in guild_data['factions']
         },
+        "faction_relation_changes": {
+            faction: {other: 0 for other in guild_data['faction_relations'][faction]}
+            for faction in guild_data['faction_relations']
+        }
+    }
     
         event_effects = {
         "A powerful pirate crew has been spotted near a major trade route.": {
