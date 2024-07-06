@@ -43,6 +43,8 @@ class OnePieceMod(commands.Cog):
         self.general_chat_id = 425068612542398476
         self.default_mute_time = timedelta(hours=24)  # Default mute time of 24 hours
         self.muted_users = {}  # Store muted users' roles
+        self.logger = logging.getLogger('red.onepiece_mod')
+        self.logger.setLevel(logging.DEBUG)
         self.ban_messages = [
             ("Looks like you're taking a trip to Impel Down!", "https://tenor.com/view/one-piece-magellan-magellan-one-piece-impel-down-gif-24849283"),
             ("You've been hit by Nami's Clima-Tact!", "https://tenor.com/view/nami-sanji-slap-one-piece-anime-gif-19985101"),
@@ -58,42 +60,57 @@ class OnePieceMod(commands.Cog):
 
     async def initialize(self):
         self.reminder_task = self.bot.loop.create_task(self.send_periodic_reminder())
+        self.logger.info("Reminder task initialized")
 
     def cog_unload(self):
         if self.reminder_task:
             self.reminder_task.cancel()
+        self.logger.info("Reminder task unloaded")
 
     async def send_periodic_reminder(self):
         await self.bot.wait_until_ready()
-        channel = self.bot.get_channel(self.general_channel_id)
-        if not channel:
-            print("Reminder channel not found!")
-            return
-
+        self.logger.info("Starting periodic reminder task")
+        
         while not self.bot.is_closed():
-            # Random delay between 30 minutes to 1 hour
-            delay = random.randint(30 * 60, 60 * 60)
-            await asyncio.sleep(delay)
+            try:
+                channel = self.bot.get_channel(self.general_channel_id)
+                if not channel:
+                    self.logger.error(f"Reminder channel not found! ID: {self.general_channel_id}")
+                    await asyncio.sleep(300)  # Wait 5 minutes before trying again
+                    continue
+
+                # Random delay between 30 minutes to 1 hour
+                delay = random.randint(30 * 60, 60 * 60)
+                self.logger.debug(f"Waiting for {delay} seconds before next reminder")
+                await asyncio.sleep(delay)
+                
+                reminder_messages = [
+                    "🏴‍☠️ Ahoy, me hearties! Remember, loose lips sink ships! Keep them spoilers out of the general chat, or ye'll be walkin' the plank!",
+                    "⚓ Avast ye! The Pirate Code (server rules) be posted in #rules. Any landlubber caught ignorin' 'em will be keelhauled!",
+                    "🗺️ Arrr! This here ship be a peaceful one. Leave yer controversial topics at the dock, or face the wrath of the Sea Kings!",
+                    "🍖 Oi! Just like Luffy respects his crew's privacy, respect yer fellow pirates' personal information. Don't be sharin' what ain't yours to share!",
+                    "🎭 Yo ho ho! Keep it family-friendly, ye scurvy dogs! We run a clean ship here, like the Thousand Sunny!",
+                    "🌊 Sea Kings ahead! Watch yer language in the general waters. This ain't the Grand Line, so keep it mild!",
+                    "🍊 Nami says: 'Don't spam the chat or I'll charge you 100,000 berries per message!'",
+                    "📚 Robin's daily reminder: Treat every crew member with respect, regardless of their background. That's the way of the Straw Hat Pirates!",
+                    "🔧 Franky's SUPER reminder: Keep the server topics as organized as his workshop! Use the right channels for the right discussions!",
+                    "🍳 Sanji's kitchen notice: All are welcome in our crew, just like in the Baratie! Discrimination of any kind will not be tolerated!",
+                    "⚔️ Zoro's warning: Don't go starting fights in the chat. If ye have a problem, talk to a moderator before ye get lost in a ban!",
+                    "🩺 Chopper's advice: If someone's breaking the rules, don't play doctor yourself. Report it to the ship's officers (moderators)!",
+                    "🎵 Brook's melody of wisdom: Yohohoho! Remember to give credit when sharing others' work, or you'll face a copyright strike! ...Ah, but I don't have eyes to see copyrights! Skull joke!",
+                    "👑 Words from the Pirate King: 'In this server, everyone's dreams are respected. Don't mock or belittle others for their passions!'"
+                ]
+                
+                reminder = random.choice(reminder_messages)
+                await channel.send(reminder)
+                self.logger.info(f"Reminder sent: {reminder[:30]}...")
             
-            reminder_messages = [
-                "🏴‍☠️ Ahoy, me hearties! Remember, loose lips sink ships! Keep them spoilers out of the general chat, or ye'll be walkin' the plank!",
-                "⚓ Avast ye! The Pirate Code (server rules) be posted in #rules. Any landlubber caught ignorin' 'em will be keelhauled!",
-                "🗺️ Arrr! This here ship be a peaceful one. Leave yer controversial topics at the dock, or face the wrath of the Sea Kings!",
-                "🍖 Oi! Just like Luffy respects his crew's privacy, respect yer fellow pirates' personal information. Don't be sharin' what ain't yours to share!",
-                "🎭 Yo ho ho! Keep it family-friendly, ye scurvy dogs! We run a clean ship here, like the Thousand Sunny!",
-                "🌊 Sea Kings ahead! Watch yer language in the general waters. This ain't the Grand Line, so keep it mild!",
-                "🍊 Nami says: 'Don't spam the chat or I'll charge you 100,000 berries per message!'",
-                "📚 Robin's daily reminder: Treat every crew member with respect, regardless of their background. That's the way of the Straw Hat Pirates!",
-                "🔧 Franky's SUPER reminder: Keep the server topics as organized as his workshop! Use the right channels for the right discussions!",
-                "🍳 Sanji's kitchen notice: All are welcome in our crew, just like in the Baratie! Discrimination of any kind will not be tolerated!",
-                "⚔️ Zoro's warning: Don't go starting fights in the chat. If ye have a problem, talk to a moderator before ye get lost in a ban!",
-                "🩺 Chopper's advice: If someone's breaking the rules, don't play doctor yourself. Report it to the ship's officers (moderators)!",
-                "🎵 Brook's melody of wisdom: Yohohoho! Remember to give credit when sharing others' work, or you'll face a copyright strike! ...Ah, but I don't have eyes to see copyrights! Skull joke!",
-                "👑 Words from the Pirate King: 'In this server, everyone's dreams are respected. Don't mock or belittle others for their passions!'"
-            ]
-            
-            reminder = random.choice(reminder_messages)
-            await channel.send(reminder)
+            except discord.errors.HTTPException as e:
+                self.logger.error(f"HTTP error when sending reminder: {e}")
+            except Exception as e:
+                self.logger.error(f"Unexpected error in reminder task: {e}")
+                await asyncio.sleep(300)  # Wait 5 minutes before trying again
+
 
     async def log_action(self, ctx, member: discord.Member, action: str, reason: str, moderator: discord.Member = None, jump_url: str = None, image_url: str = None):
         log_channel = self.bot.get_channel(self.log_channel_id)
@@ -710,6 +727,7 @@ async def setup(bot):
             bot.remove_command(cmd_name)
 
     await bot.add_cog(cog)
+    await cog.initialize()
 
 async def teardown(bot):
     global original_commands
