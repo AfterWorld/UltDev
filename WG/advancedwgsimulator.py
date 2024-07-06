@@ -732,38 +732,38 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             "required_state": {}
         }
         
-   def calculate_event_consequences(self, event, choice, user_data, guild_data):
-    consequences = {
-        "influence_change": 0.0,
-        "world_state_changes": {k: 0.0 for k in guild_data['world_state']},
-        "resource_changes": {k: 0.0 for k in guild_data['resources']},
-        "skill_changes": {k: 0.0 for k in user_data['skills']},
-        "personal_resource_changes": {k: 0.0 for k in user_data['personal_resources']},
-        "reputation_changes": {k: 0.0 for k in user_data['reputation']},
-        "faction_changes": {
-            faction: {"strength": 0.0, "reputation": 0.0, "resources": {}}
-            for faction in guild_data['factions']
+    def calculate_event_consequences(self, event, choice, user_data, guild_data):
+        consequences = {
+            "influence_change": 0.0,
+            "world_state_changes": {k: 0.0 for k in guild_data['world_state']},
+            "resource_changes": {k: 0.0 for k in guild_data['resources']},
+            "skill_changes": {k: 0.0 for k in user_data['skills']},
+            "personal_resource_changes": {k: 0.0 for k in user_data['personal_resources']},
+            "reputation_changes": {k: 0.0 for k in user_data['reputation']},
+            "faction_changes": {
+                faction: {"strength": 0.0, "reputation": 0.0, "resources": {}}
+                for faction in guild_data['factions']
+            }
         }
-    }
 
-    # Existing event effects logic would go here
-    # ...
+        # Existing event effects logic would go here
+        # ...
 
-    # Add faction-specific consequences
-    faction = user_data['faction']
-    if faction == "Marines":
-        consequences['faction_changes'][faction]['strength'] += 2.0 if choice == 'A' else -1.0
-        consequences['reputation_changes']['Civilians'] += 1.0 if choice == 'A' else -1.0
-    elif faction == "Cipher Pol":
-        consequences['faction_changes'][faction]['resources']['intel'] = 10 if choice == 'A' else -5
-        consequences['reputation_changes']['Pirates'] -= 2.0 if choice == 'A' else 1.0
-    elif faction == "Science Division":
-        consequences['faction_changes'][faction]['resources']['research_points'] = 5 if choice == 'A' else -2
-        consequences['world_state_changes']['scientific_advancement'] += 2.0 if choice == 'A' else -1.0
+        # Add faction-specific consequences
+        faction = user_data['faction']
+        if faction == "Marines":
+            consequences['faction_changes'][faction]['strength'] += 2.0 if choice == 'A' else -1.0
+            consequences['reputation_changes']['Civilians'] += 1.0 if choice == 'A' else -1.0
+        elif faction == "Cipher Pol":
+            consequences['faction_changes'][faction]['resources']['intel'] = 10 if choice == 'A' else -5
+            consequences['reputation_changes']['Pirates'] -= 2.0 if choice == 'A' else 1.0
+        elif faction == "Science Division":
+            consequences['faction_changes'][faction]['resources']['research_points'] = 5 if choice == 'A' else -2
+            consequences['world_state_changes']['scientific_advancement'] += 2.0 if choice == 'A' else -1.0
 
-    return consequences
-    
-        event_effects = {
+        return consequences
+        
+    event_effects = {
             "A powerful pirate crew has been spotted near a major trade route.": {
                 "A": {
                     "world_state_changes": {"piracy_level": -10.0, "marine_strength": 5.0, "civilian_approval": -2.0},
@@ -922,11 +922,11 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             }
         }
     
-        if event['description'] in event_effects:
-            effects = event_effects[event['description']][choice]
-            for category, changes in effects.items():
-                for key, value in changes.items():
-                    consequences[category][key] += value
+    if event['description'] in event_effects:
+        effects = event_effects[event['description']][choice]
+        for category, changes in effects.items():
+            for key, value in changes.items():
+                consequences[category][key] += value
     
         # Adjust based on skills
         for category in ['world_state_changes', 'resource_changes']:
