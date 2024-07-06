@@ -133,25 +133,25 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         """Make a political decision"""
         if not await self.check_wg_channel(ctx):
             return
-
+    
         guild_data = await self.config.guild(ctx.guild).all()
         user_data = guild_data['active_players'].get(str(ctx.author.id))
         if not user_data:
-            await ctx.send("You haven't joined the World Government yet! Use `.wg join` to start.")
+            await ctx.send("You haven't joined the World Government yet! Use `!wg join` to start.")
             return
-
+    
         decision = self.generate_decision(user_data['position'], guild_data['world_state'])
         embed = discord.Embed(title="Political Decision", description=f"As a {user_data['position']}, you must decide:", color=discord.Color.gold())
         embed.add_field(name="Decision", value=decision['description'], inline=False)
         embed.add_field(name="Options", value="React with 👍 to approve or 👎 to reject", inline=False)
-
+    
         message = await ctx.send(embed=embed)
         await message.add_reaction("👍")
         await message.add_reaction("👎")
-
+    
         def check(reaction, user):
             return user == ctx.author and str(reaction.emoji) in ["👍", "👎"] and reaction.message.id == message.id
-
+    
         try:
             reaction, user = await self.bot.wait_for('reaction_add', timeout=60.0, check=check)
             approve = str(reaction.emoji) == "👍"
@@ -159,41 +159,41 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             consequences = self.calculate_consequences(decision, approve, user_data, guild_data)
             user_data['decisions'].append({"decision": decision['description'], "approved": approve})
             user_data['influence'] += consequences['influence_change']
-
+    
             for key, value in consequences['world_state_changes'].items():
                 guild_data['world_state'][key] = max(0, min(100, guild_data['world_state'][key] + value))
-
+    
             for key, value in consequences['resource_changes'].items():
                 guild_data['resources'][key] += value
-
+    
             for key, value in consequences['skill_changes'].items():
                 user_data['skills'][key] = max(1, user_data['skills'][key] + value)
-
+    
             for key, value in consequences['personal_resource_changes'].items():
                 user_data['personal_resources'][key] += value
-
+    
             guild_data['active_players'][str(ctx.author.id)] = user_data
             await self.config.guild(ctx.guild).set(guild_data)
-
+    
             result_embed = discord.Embed(title="Decision Results", color=discord.Color.green() if approve else discord.Color.red())
             result_embed.add_field(name="Decision", value=f"{'Approved' if approve else 'Rejected'}: {decision['description']}", inline=False)
             result_embed.add_field(name="Influence Change", value=f"{consequences['influence_change']:+d}", inline=False)
             for key, value in consequences['world_state_changes'].items():
-                result_embed.add_field(name=key.replace("_", " ").title(), value=f"{value:+d}%", inline=True)
+                result_embed.add_field(name=key.replace("_", " ").title(), value=f"{value:+.1f}%", inline=True)
             for key, value in consequences['resource_changes'].items():
                 result_embed.add_field(name=f"Global {key.title()}", value=f"{value:+d}", inline=True)
             for key, value in consequences['skill_changes'].items():
                 result_embed.add_field(name=f"{key.title()} Skill", value=f"{value:+d}", inline=True)
             for key, value in consequences['personal_resource_changes'].items():
                 result_embed.add_field(name=f"Personal {key.title()}", value=f"{value:+d}", inline=True)
-
+    
             await ctx.send(embed=result_embed)
-
+    
             await self.check_for_promotion(ctx, user_data)
-
+    
         except asyncio.TimeoutError:
             await ctx.send("You took too long to decide. The opportunity has passed.")
-
+        
     @commands.command()
     async def yonko(self, ctx):
         """View the current Yonko"""
