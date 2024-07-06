@@ -486,87 +486,195 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             "required_state": {}
         }
         
-    def calculate_consequences(self, decision, approve, user_data, guild_data):
-        base_influence = 5.0 if approve else -2.0
+    def calculate_event_consequences(self, event, choice, user_data, guild_data):
         consequences = {
-            "influence_change": base_influence + random.uniform(-2.0, 2.0),
+            "influence_change": 0.0,
             "world_state_changes": {k: 0.0 for k in guild_data['world_state']},
             "resource_changes": {k: 0.0 for k in guild_data['resources']},
             "skill_changes": {k: 0.0 for k in user_data['skills']},
             "personal_resource_changes": {k: 0.0 for k in user_data['personal_resources']}
         }
-
-        decision_effects = {
+    
+        event_effects = {
+            "A powerful pirate crew has been spotted near a major trade route.": {
+                "A": {
+                    "world_state_changes": {"piracy_level": -10.0, "marine_strength": 5.0, "civilian_approval": -2.0},
+                    "resource_changes": {"budget": -30000.0, "manpower": -2000.0},
+                    "skill_changes": {"military": 1.0}
+                },
+                "B": {
+                    "world_state_changes": {"piracy_level": 5.0, "economy": 3.0, "civilian_approval": 2.0},
+                    "resource_changes": {"budget": 10000.0},
+                    "skill_changes": {"diplomacy": 1.0}
+                }
+            },
+            "A kingdom is showing signs of joining the Revolutionary Army.": {
+                "A": {
+                    "world_state_changes": {"revolutionary_threat": -5.0, "world_stability": 3.0, "civilian_approval": 2.0},
+                    "resource_changes": {"budget": -20000.0},
+                    "skill_changes": {"diplomacy": 1.5}
+                },
+                "B": {
+                    "world_state_changes": {"revolutionary_threat": 5.0, "world_stability": -3.0, "marine_strength": 2.0},
+                    "resource_changes": {"intelligence": 100.0, "manpower": 1000.0},
+                    "skill_changes": {"military": 1.0, "intelligence": 0.5}
+                }
+            },
+            "A new type of Devil Fruit has been discovered.": {
+                "A": {
+                    "world_state_changes": {"scientific_advancement": 10.0, "marine_strength": 3.0},
+                    "resource_changes": {"budget": -50000.0},
+                    "skill_changes": {"intelligence": 1.5}
+                },
+                "B": {
+                    "world_state_changes": {"world_stability": 5.0, "civilian_approval": 3.0},
+                    "resource_changes": {"intelligence": 50.0},
+                    "skill_changes": {"diplomacy": 1.0}
+                }
+            },
             "Increase Marine presence in the New World": {
-                "world_state_changes": {"piracy_level": -10, "marine_strength": 5, "civilian_approval": -5},
-                "resource_changes": {"budget": -50000, "manpower": -5000},
-                "skill_changes": {"military": 1}
+                "A": {
+                    "world_state_changes": {"piracy_level": -15.0, "marine_strength": 10.0, "civilian_approval": -5.0},
+                    "resource_changes": {"budget": -100000.0, "manpower": -10000.0},
+                    "skill_changes": {"military": 2.0}
+                },
+                "B": {
+                    "world_state_changes": {"piracy_level": 5.0, "marine_strength": -2.0},
+                    "resource_changes": {"budget": 20000.0},
+                    "skill_changes": {"economy": 1.0}
+                }
             },
             "Negotiate with the Revolutionary Army": {
-                "world_state_changes": {"revolutionary_threat": -15, "world_stability": 10, "civilian_approval": 5},
-                "resource_changes": {"intelligence": 50},
-                "skill_changes": {"diplomacy": 2}
+                "A": {
+                    "world_state_changes": {"revolutionary_threat": -20.0, "world_stability": 15.0, "civilian_approval": 10.0},
+                    "resource_changes": {"intelligence": 100.0, "budget": -50000.0},
+                    "skill_changes": {"diplomacy": 3.0}
+                },
+                "B": {
+                    "world_state_changes": {"revolutionary_threat": 15.0, "world_stability": -10.0, "marine_strength": 5.0},
+                    "resource_changes": {"manpower": 5000.0},
+                    "skill_changes": {"military": 2.0}
+                }
             },
             "Invest in scientific research for advanced weapons": {
-                "world_state_changes": {"scientific_advancement": 15, "marine_strength": 5},
-                "resource_changes": {"budget": -100000},
-                "skill_changes": {"intelligence": 1}
+                "A": {
+                    "world_state_changes": {"scientific_advancement": 20.0, "marine_strength": 10.0, "economy": -5.0},
+                    "resource_changes": {"budget": -200000.0},
+                    "skill_changes": {"intelligence": 2.0, "military": 1.0}
+                },
+                "B": {
+                    "world_state_changes": {"scientific_advancement": 5.0, "economy": 5.0},
+                    "resource_changes": {"budget": -50000.0},
+                    "skill_changes": {"economy": 1.5}
+                }
             },
             "Host a Reverie to address global issues": {
-                "world_state_changes": {"world_stability": 20, "civilian_approval": 10},
-                "resource_changes": {"budget": -200000},
-                "skill_changes": {"diplomacy": 2}
+                "A": {
+                    "world_state_changes": {"world_stability": 25.0, "civilian_approval": 15.0, "economy": 5.0},
+                    "resource_changes": {"budget": -300000.0},
+                    "skill_changes": {"diplomacy": 3.0}
+                },
+                "B": {
+                    "world_state_changes": {"world_stability": 10.0, "civilian_approval": 5.0},
+                    "resource_changes": {"budget": -100000.0},
+                    "skill_changes": {"diplomacy": 1.0}
+                }
             },
             "Implement stricter regulations on Devil Fruit users": {
-                "world_state_changes": {"world_stability": 5, "civilian_approval": -10},
-                "resource_changes": {"intelligence": 100},
-                "skill_changes": {"military": 1}
+                "A": {
+                    "world_state_changes": {"world_stability": 10.0, "civilian_approval": -15.0, "marine_strength": 5.0},
+                    "resource_changes": {"intelligence": 150.0, "budget": -50000.0},
+                    "skill_changes": {"military": 1.5, "intelligence": 1.0}
+                },
+                "B": {
+                    "world_state_changes": {"world_stability": -5.0, "civilian_approval": 5.0},
+                    "resource_changes": {"budget": 10000.0},
+                    "skill_changes": {"diplomacy": 0.5}
+                }
             },
             "Expand Cipher Pol operations in Paradise": {
-                "world_state_changes": {"revolutionary_threat": -5, "civilian_approval": -5},
-                "resource_changes": {"budget": -50000, "intelligence": 200},
-                "skill_changes": {"intelligence": 2}
+                "A": {
+                    "world_state_changes": {"revolutionary_threat": -10.0, "civilian_approval": -10.0, "world_stability": 5.0},
+                    "resource_changes": {"budget": -100000.0, "intelligence": 300.0},
+                    "skill_changes": {"intelligence": 2.5}
+                },
+                "B": {
+                    "world_state_changes": {"revolutionary_threat": 5.0, "civilian_approval": 5.0},
+                    "resource_changes": {"budget": 20000.0},
+                    "skill_changes": {"diplomacy": 1.0}
+                }
             },
             "Allocate more resources to combating slavery": {
-                "world_state_changes": {"civilian_approval": 15, "economy": -5},
-                "resource_changes": {"budget": -100000, "manpower": -2000},
-                "skill_changes": {"diplomacy": 1}
+                "A": {
+                    "world_state_changes": {"civilian_approval": 20.0, "economy": -10.0, "world_stability": 5.0},
+                    "resource_changes": {"budget": -150000.0, "manpower": -3000.0},
+                    "skill_changes": {"diplomacy": 2.0}
+                },
+                "B": {
+                    "world_state_changes": {"civilian_approval": -5.0, "economy": 5.0},
+                    "resource_changes": {"budget": 30000.0},
+                    "skill_changes": {"economy": 1.0}
+                }
             },
             "Increase funding for Marine training programs": {
-                "world_state_changes": {"marine_strength": 10},
-                "resource_changes": {"budget": -75000, "manpower": 1000},
-                "skill_changes": {"military": 1}
+                "A": {
+                    "world_state_changes": {"marine_strength": 15.0, "economy": -5.0},
+                    "resource_changes": {"budget": -100000.0, "manpower": 2000.0},
+                    "skill_changes": {"military": 2.0}
+                },
+                "B": {
+                    "world_state_changes": {"marine_strength": -5.0, "economy": 5.0},
+                    "resource_changes": {"budget": 50000.0},
+                    "skill_changes": {"economy": 1.0}
+                }
             },
             "Propose a global tax increase to fund the World Government": {
-                "world_state_changes": {"civilian_approval": -15, "economy": 10},
-                "resource_changes": {"budget": 300000},
-                "skill_changes": {"economy": 2}
+                "A": {
+                    "world_state_changes": {"civilian_approval": -20.0, "economy": 15.0, "world_stability": -5.0},
+                    "resource_changes": {"budget": 500000.0},
+                    "skill_changes": {"economy": 3.0}
+                },
+                "B": {
+                    "world_state_changes": {"civilian_approval": 5.0, "economy": -5.0},
+                    "resource_changes": {"budget": -50000.0},
+                    "skill_changes": {"diplomacy": 1.0}
+                }
             },
             "Launch a propaganda campaign to improve the World Government's image": {
-                "world_state_changes": {"civilian_approval": 10, "revolutionary_threat": -5},
-                "resource_changes": {"budget": -50000},
-                "skill_changes": {"diplomacy": 1}
+                "A": {
+                    "world_state_changes": {"civilian_approval": 15.0, "revolutionary_threat": -10.0},
+                    "resource_changes": {"budget": -100000.0},
+                    "skill_changes": {"diplomacy": 2.0}
+                },
+                "B": {
+                    "world_state_changes": {"civilian_approval": -5.0, "revolutionary_threat": 5.0},
+                    "resource_changes": {"budget": 20000.0},
+                    "skill_changes": {"intelligence": 1.0}
+                }
             }
         }
-
-        if decision['description'] in decision_effects:
-            effects = decision_effects[decision['description']]
+    
+        if event['description'] in event_effects:
+            effects = event_effects[event['description']][choice]
             for category, changes in effects.items():
                 for key, value in changes.items():
-                    consequences[category][key] += value if approve else -value
-
+                    consequences[category][key] += value
+    
         # Adjust based on skills
         for category in ['world_state_changes', 'resource_changes']:
             for key in consequences[category]:
                 skill_factor = user_data['skills'].get(key, 1) / 10
                 consequences[category][key] *= (1 + skill_factor)
-
+    
         # Personal resource changes
         consequences['personal_resource_changes']['wealth'] += random.randint(-100, 200)
         consequences['personal_resource_changes']['connections'] += random.randint(-2, 5)
-
+    
+        # Influence change
+        consequences['influence_change'] = random.uniform(1.0, 5.0) if choice == 'A' else random.uniform(-2.0, 2.0)
+    
         return consequences
-
+    
     def calculate_crisis_contribution(self, user_data):
         base_contribution = sum(user_data['skills'].values()) * 5
         position_factor = self.positions.index(user_data['position']) + 1
