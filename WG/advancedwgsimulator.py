@@ -50,10 +50,11 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                 }
             }
         }
-        "faction_relations": {
-                "Marines": {"Cipher Pol": 50, "Science Division": 50},
-                "Cipher Pol": {"Marines": 50, "Science Division": 50},
-                "Science Division": {"Marines": 50, "Cipher Pol": 50}
+            "faction_relations": {
+                    "Marines": {"Cipher Pol": 50, "Science Division": 50},
+                    "Cipher Pol": {"Marines": 50, "Science Division": 50},
+                    "Science Division": {"Marines": 50, "Cipher Pol": 50}
+                }
             }
         }
         
@@ -173,6 +174,14 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         if ctx.invoked_subcommand is None:
             await ctx.send("Use `.help wg` to see available World Government Simulator commands.")
             
+    
+    @wg.command(name="setup")
+    @commands.admin()
+    async def wg_setup(self, ctx, channel: discord.TextChannel):
+        """Set up the World Government Simulator channel"""
+        await self.config.guild(ctx.guild).wg_channel.set(channel.id)
+        await ctx.send(f"World Government Simulator channel set to {channel.mention}")
+            
     @wg.command(name="faction_relations")
     async def wg_faction_relations(self, ctx):
         """View the current relations between factions"""
@@ -236,7 +245,7 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         await ctx.send(embed=embed)
 
     @wg.command(name="wipe_data")
-    @checks.admin_or_permissions(manage_guild=True)
+    @commands.admin()
     async def wg_wipe_data(self, ctx, user: discord.Member = None):
         """Wipe a user's World Government Simulator data. Admin only."""
         if user is None:
@@ -828,7 +837,7 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             "reputation_changes": {k: 0.0 for k in user_data['reputation']},
             "faction_changes": {
                 faction: {"strength": 0.0, "reputation": 0.0, "resources": {}}
-                for faction in guild_data['factions']
+                for faction in guild_data['factions'],
             "faction_relation_changes": {
                 faction: {other: 0 for other in guild_data['faction_relations'][faction]}
                 for faction in guild_data['faction_relations']
