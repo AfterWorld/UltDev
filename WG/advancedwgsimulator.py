@@ -29,7 +29,7 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                 "intelligence": 500
             },
             "yonko": ["Kaido", "Big Mom", "Shanks", "Blackbeard"],
-            "shichibukai": ["Dracule Mihawk", "Bartholomew Kuma", "Boa Hancock"],
+            "shichibukai": ["Dracule Mihawk", "Bartholomew Kuma", "Boa Hancock", "Crocodile", "Gecko Moria", "Jinbe", "Donquixote Doflamingo"],
             "current_crisis": None,
             "promotion_candidates": {}
         }
