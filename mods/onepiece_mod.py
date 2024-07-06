@@ -131,8 +131,8 @@ class OnePieceMod(commands.Cog):
                 else:
                     self.logger.error(f"General channel not found in main server {guild.name}")
 
-                # Random delay between 30 minutes to 1 hour
-                delay = random.randint(30 * 60, 60 * 60)
+                # Fixed delay of 30 minutes
+                delay = 30 * 60  # 30 minutes in seconds
                 self.logger.debug(f"Waiting for {delay} seconds before next reminder")
                 await asyncio.sleep(delay)
             
