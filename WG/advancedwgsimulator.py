@@ -314,40 +314,42 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         """Compete in the current promotion cycle"""
         if not await self.check_wg_channel(ctx):
             return
-
+    
         guild_data = await self.config.guild(ctx.guild).all()
         user_data = guild_data['active_players'].get(str(ctx.author.id))
         
         if not user_data:
             await ctx.send("You must be an active player to compete for promotion.")
             return
-
+    
         if str(ctx.author.id) not in guild_data['promotion_candidates']:
             await ctx.send("You are not eligible for the current promotion cycle.")
             return
-
-        task = random.choice(['diplomatic', 'military', 'economic', 'intelligence'])
+    
+        # Change this line to match the skill names exactly
+        task = random.choice(['diplomacy', 'military', 'economy', 'intelligence'])
+        
         await ctx.send(f"You've been assigned a {task} task. React with 👍 when you're ready to attempt it.")
-
+    
         def check(reaction, user):
             return user == ctx.author and str(reaction.emoji) == '👍'
-
+    
         try:
             await self.bot.wait_for('reaction_add', timeout=60.0, check=check)
             success_chance = user_data['skills'][task] * 10
             success = random.randint(1, 100) <= success_chance
-
+    
             if success:
                 guild_data['promotion_candidates'][str(ctx.author.id)] += 1
                 await ctx.send(f"Task completed successfully! Your promotion score is now {guild_data['promotion_candidates'][str(ctx.author.id)]}.")
             else:
                 await ctx.send("You were unable to complete the task successfully. Better luck next time!")
-
+    
             await self.config.guild(ctx.guild).set(guild_data)
-
+    
         except asyncio.TimeoutError:
             await ctx.send("You took too long to respond. The task opportunity has passed.")
-
+        
     @commands.command()
     async def topboard(self, ctx):
         """View the leaderboard of World Government officials"""
