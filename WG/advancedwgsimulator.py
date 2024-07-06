@@ -50,6 +50,12 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                 }
             }
         }
+        "faction_relations": {
+                "Marines": {"Cipher Pol": 50, "Science Division": 50},
+                "Cipher Pol": {"Marines": 50, "Science Division": 50},
+                "Science Division": {"Marines": 50, "Cipher Pol": 50}
+            }
+        }
         
         default_user = {
             "position": None,
@@ -166,6 +172,22 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         """World Government Simulator commands"""
         if ctx.invoked_subcommand is None:
             await ctx.send("Use `.help wg` to see available World Government Simulator commands.")
+            
+    @wg.command(name="faction_relations")
+    async def wg_faction_relations(self, ctx):
+        """View the current relations between factions"""
+        if not await self.check_wg_channel(ctx):
+            return
+
+        guild_data = await self.config.guild(ctx.guild).all()
+        faction_relations = guild_data['faction_relations']
+
+        embed = discord.Embed(title="Faction Relations", color=discord.Color.blue())
+        for faction, relations in faction_relations.items():
+            relations_str = "\n".join([f"{other_faction}: {relation}" for other_faction, relation in relations.items()])
+            embed.add_field(name=faction, value=relations_str, inline=False)
+
+        await ctx.send(embed=embed)
 
     @wg.command(name="join")
     async def wg_join(self, ctx, faction: str):
@@ -212,6 +234,70 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         embed.add_field(name="Your Influence", value=user_data['influence'], inline=True)
     
         await ctx.send(embed=embed)
+
+    @wg.command(name="wipe_data")
+    @checks.admin_or_permissions(manage_guild=True)
+    async def wg_wipe_data(self, ctx, user: discord.Member = None):
+        """Wipe a user's World Government Simulator data. Admin only."""
+        if user is None:
+            user = ctx.author
+
+        if not await self.check_wg_channel(ctx):
+            return
+
+        # Confirm action
+        confirm_msg = await ctx.send(f"Are you sure you want to wipe {user.display_name}'s data? This action cannot be undone. React with ✅ to confirm or ❌ to cancel.")
+        await confirm_msg.add_reaction("✅")
+        await confirm_msg.add_reaction("❌")
+
+        def check(reaction, reactor):
+            return reactor == ctx.author and str(reaction.emoji) in ["✅", "❌"] and reaction.message.id == confirm_msg.id
+
+        try:
+            reaction, reactor = await self.bot.wait_for('reaction_add', timeout=60.0, check=check)
+            if str(reaction.emoji) == "✅":
+                # Wipe user data
+                await self.config.user(user).clear()
+                
+                # Remove user from active players in guild data
+                async with self.config.guild(ctx.guild).active_players() as active_players:
+                    active_players.pop(str(user.id), None)
+                
+                await ctx.send(f"{user.display_name}'s World Government Simulator data has been wiped.")
+            else:
+                await ctx.send("Data wipe cancelled.")
+        except asyncio.TimeoutError:
+            await ctx.send("No confirmation received. Data wipe cancelled.")
+
+    @wg.command(name="reset_my_data")
+    async def wg_reset_my_data(self, ctx):
+        """Reset your own World Government Simulator data."""
+        if not await self.check_wg_channel(ctx):
+            return
+
+        # Confirm action
+        confirm_msg = await ctx.send("Are you sure you want to reset your World Government Simulator data? This action cannot be undone. React with ✅ to confirm or ❌ to cancel.")
+        await confirm_msg.add_reaction("✅")
+        await confirm_msg.add_reaction("❌")
+
+        def check(reaction, reactor):
+            return reactor == ctx.author and str(reaction.emoji) in ["✅", "❌"] and reaction.message.id == confirm_msg.id
+
+        try:
+            reaction, reactor = await self.bot.wait_for('reaction_add', timeout=60.0, check=check)
+            if str(reaction.emoji) == "✅":
+                # Reset user data
+                await self.config.user(ctx.author).clear()
+                
+                # Remove user from active players in guild data
+                async with self.config.guild(ctx.guild).active_players() as active_players:
+                    active_players.pop(str(ctx.author.id), None)
+                
+                await ctx.send("Your World Government Simulator data has been reset.")
+            else:
+                await ctx.send("Data reset cancelled.")
+        except asyncio.TimeoutError:
+            await ctx.send("No confirmation received. Data reset cancelled.")
 
     @wg.command(name="reputation")
     async def wg_reputation(self, ctx):
@@ -743,6 +829,9 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             "faction_changes": {
                 faction: {"strength": 0.0, "reputation": 0.0, "resources": {}}
                 for faction in guild_data['factions']
+            "faction_relation_changes": {
+                faction: {other: 0 for other in guild_data['faction_relations'][faction]}
+                for faction in guild_data['faction_relations']
             }
         }
     
