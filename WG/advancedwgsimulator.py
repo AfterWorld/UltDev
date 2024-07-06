@@ -31,10 +31,29 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             "yonko": ["Kaido", "Big Mom", "Shanks", "Blackbeard"],
             "shichibukai": ["Dracule Mihawk", "Bartholomew Kuma", "Boa Hancock", "Crocodile", "Gecko Moria", "Jinbe", "Donquixote Doflamingo"],
             "current_crisis": None,
-            "promotion_candidates": {}
+            "promotion_candidates": {},
+            "factions": {
+                "Marines": {
+                    "strength": 100,
+                    "reputation": 50,
+                    "resources": {"ships": 100, "weapons": 1000}
+                },
+                "Cipher Pol": {
+                    "strength": 50,
+                    "reputation": 30,
+                    "resources": {"agents": 50, "intel": 500}
+                },
+                "Science Division": {
+                    "strength": 30,
+                    "reputation": 40,
+                    "resources": {"labs": 10, "research_points": 100}
+                }
+            }
         }
+        
         default_user = {
             "position": None,
+            "faction": None,
             "influence": 0,
             "allies": [],
             "enemies": [],
@@ -43,13 +62,22 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                 "diplomacy": 1,
                 "military": 1,
                 "economy": 1,
-                "intelligence": 1
+                "intelligence": 1,
+                "science": 1
             },
             "personal_resources": {
                 "wealth": 1000,
                 "connections": 10
             },
-            "crisis_contributions": 0
+            "crisis_contributions": 0,
+            "reputation": {
+                "Marines": 50,
+                "Cipher Pol": 50,
+                "Science Division": 50,
+                "Civilians": 50,
+                "Pirates": 50,
+                "Revolutionaries": 50
+            }
         }
         self.config.register_guild(**default_guild)
         self.config.register_user(**default_user)
@@ -58,17 +86,80 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             "Recruit", "Junior Official", "Senior Official", "Department Head", 
             "Commodore", "Vice Admiral", "Admiral", "Fleet Admiral", "Gorosei Member", "Im-sama"
         ]
+
+        self.faction_missions = {
+            "Marines": [
+                {
+                    "name": "Pirate Hunt",
+                    "description": "Track down and capture a notorious pirate crew.",
+                    "difficulty": 3,
+                    "rewards": {
+                        "influence": 10,
+                        "reputation": {"Civilians": 5, "Pirates": -5},
+                        "faction_strength": 2
+                    }
+                },
+                {
+                    "name": "Island Protection",
+                    "description": "Defend a vulnerable island from pirate attacks.",
+                    "difficulty": 2,
+                    "rewards": {
+                        "influence": 5,
+                        "reputation": {"Civilians": 10},
+                        "faction_strength": 1
+                    }
+                }
+            ],
+            "Cipher Pol": [
+                {
+                    "name": "Covert Intelligence",
+                    "description": "Infiltrate a suspicious organization and gather intel.",
+                    "difficulty": 4,
+                    "rewards": {
+                        "influence": 15,
+                        "reputation": {"Pirates": -10, "Revolutionaries": -10},
+                        "faction_resources": {"intel": 20}
+                    }
+                },
+                {
+                    "name": "Sabotage Operation",
+                    "description": "Disrupt the plans of an enemy faction.",
+                    "difficulty": 3,
+                    "rewards": {
+                        "influence": 10,
+                        "reputation": {"Revolutionaries": -15},
+                        "faction_strength": 2
+                    }
+                }
+            ],
+            "Science Division": [
+                {
+                    "name": "Weapon Development",
+                    "description": "Create a new weapon to combat Devil Fruit users.",
+                    "difficulty": 5,
+                    "rewards": {
+                        "influence": 20,
+                        "reputation": {"Marines": 10},
+                        "faction_resources": {"research_points": 30}
+                    }
+                },
+                {
+                    "name": "Medical Breakthrough",
+                    "description": "Develop a cure for a dangerous disease spreading in the New World.",
+                    "difficulty": 4,
+                    "rewards": {
+                        "influence": 15,
+                        "reputation": {"Civilians": 20},
+                        "world_state_changes": {"scientific_advancement": 5}
+                    }
+                }
+            ]
+        }
         
         self.world_events.start()
         self.resource_update.start()
         self.crisis_check.start()
         self.promotion_cycle.start()
-
-    def cog_unload(self):
-        self.world_events.cancel()
-        self.resource_update.cancel()
-        self.crisis_check.cancel()
-        self.promotion_cycle.cancel()
 
     @commands.group()
     async def wg(self, ctx):
@@ -76,30 +167,68 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         if ctx.invoked_subcommand is None:
             await ctx.send("Use `.help wg` to see available World Government Simulator commands.")
 
-    @wg.command(name="setup")
-    @commands.admin()
-    async def wg_setup(self, ctx, channel: discord.TextChannel):
-        """Set up the World Government Simulator channel"""
-        await self.config.guild(ctx.guild).wg_channel.set(channel.id)
-        await ctx.send(f"World Government Simulator channel set to {channel.mention}")
-
     @wg.command(name="join")
-    async def wg_join(self, ctx):
-        """Join the World Government as a recruit"""
+    async def wg_join(self, ctx, faction: str):
+        """Join the World Government as a recruit in a specific faction"""
         if not await self.check_wg_channel(ctx):
             return
     
         user_data = await self.config.user(ctx.author).all()
         if user_data['position']:
-            await ctx.send(f"You are already a {user_data['position']} in the World Government!")
+            await ctx.send(f"You are already a {user_data['position']} in the {user_data['faction']}!")
+            return
+    
+        guild_data = await self.config.guild(ctx.guild).all()
+        if faction not in guild_data['factions']:
+            await ctx.send(f"Invalid faction. Choose from: {', '.join(guild_data['factions'].keys())}")
             return
     
         user_data['position'] = "Recruit"
-        guild_data = await self.config.guild(ctx.guild).all()
+        user_data['faction'] = faction
         guild_data['active_players'][str(ctx.author.id)] = user_data
         await self.config.guild(ctx.guild).set(guild_data)
         await self.config.user(ctx.author).set(user_data)
-        await ctx.send("Welcome to the World Government! You start as a Recruit. Work hard to climb the ranks.")
+        await ctx.send(f"Welcome to the World Government! You start as a Recruit in the {faction}. Work hard to climb the ranks.")
+
+    @wg.command(name="faction")
+    async def wg_faction(self, ctx):
+        """View information about your faction"""
+        if not await self.check_wg_channel(ctx):
+            return
+    
+        user_data = await self.config.user(ctx.author).all()
+        if not user_data['faction']:
+            await ctx.send("You haven't joined a faction yet! Use `.wg join <faction>` to join one.")
+            return
+    
+        guild_data = await self.config.guild(ctx.guild).all()
+        faction_data = guild_data['factions'][user_data['faction']]
+    
+        embed = discord.Embed(title=f"{user_data['faction']} Information", color=discord.Color.blue())
+        embed.add_field(name="Strength", value=faction_data['strength'], inline=True)
+        embed.add_field(name="Reputation", value=faction_data['reputation'], inline=True)
+        embed.add_field(name="Resources", value="\n".join(f"{k}: {v}" for k, v in faction_data['resources'].items()), inline=False)
+        embed.add_field(name="Your Position", value=user_data['position'], inline=True)
+        embed.add_field(name="Your Influence", value=user_data['influence'], inline=True)
+    
+        await ctx.send(embed=embed)
+
+    @wg.command(name="reputation")
+    async def wg_reputation(self, ctx):
+        """View your reputation with different groups"""
+        if not await self.check_wg_channel(ctx):
+            return
+    
+        user_data = await self.config.user(ctx.author).all()
+        if not user_data['faction']:
+            await ctx.send("You haven't joined a faction yet! Use `.wg join <faction>` to join one.")
+            return
+    
+        embed = discord.Embed(title="Your Reputation", color=discord.Color.green())
+        for group, rep in user_data['reputation'].items():
+            embed.add_field(name=group, value=f"{rep}/100", inline=True)
+    
+        await ctx.send(embed=embed)
 
     @wg.command(name="status")
     async def wg_status(self, ctx):
@@ -196,6 +325,123 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
     
         except asyncio.TimeoutError:
             await ctx.send("You took too long to decide. The opportunity has passed.")
+
+    @wg.command(name="missions")
+    async def wg_missions(self, ctx):
+        """View available missions for your faction"""
+        if not await self.check_wg_channel(ctx):
+            return
+
+        user_data = await self.config.user(ctx.author).all()
+        if not user_data['faction']:
+            await ctx.send("You haven't joined a faction yet! Use `.wg join <faction>` to join one.")
+            return
+
+        faction = user_data['faction']
+        missions = self.faction_missions.get(faction, [])
+
+        if not missions:
+            await ctx.send(f"There are currently no missions available for the {faction}.")
+            return
+
+        embed = discord.Embed(title=f"{faction} Missions", color=discord.Color.blue())
+        for i, mission in enumerate(missions, 1):
+            embed.add_field(
+                name=f"{i}. {mission['name']} (Difficulty: {mission['difficulty']})",
+                value=mission['description'],
+                inline=False
+            )
+        embed.set_footer(text="Use '.wg start_mission <number>' to begin a mission.")
+
+        await ctx.send(embed=embed)
+
+    @wg.command(name="start_mission")
+    async def wg_start_mission(self, ctx, mission_number: int):
+        """Start a faction mission"""
+        if not await self.check_wg_channel(ctx):
+            return
+
+        user_data = await self.config.user(ctx.author).all()
+        if not user_data['faction']:
+            await ctx.send("You haven't joined a faction yet! Use `.wg join <faction>` to join one.")
+            return
+
+        faction = user_data['faction']
+        missions = self.faction_missions.get(faction, [])
+
+        if not missions:
+            await ctx.send(f"There are currently no missions available for the {faction}.")
+            return
+
+        if mission_number < 1 or mission_number > len(missions):
+            await ctx.send(f"Invalid mission number. Choose a number between 1 and {len(missions)}.")
+            return
+
+        mission = missions[mission_number - 1]
+        success_chance = min(90, max(10, (sum(user_data['skills'].values()) / mission['difficulty']) * 20))
+
+        embed = discord.Embed(title=f"Mission: {mission['name']}", color=discord.Color.gold())
+        embed.add_field(name="Description", value=mission['description'], inline=False)
+        embed.add_field(name="Difficulty", value=mission['difficulty'], inline=True)
+        embed.add_field(name="Success Chance", value=f"{success_chance}%", inline=True)
+        embed.add_field(name="Rewards", value="\n".join(f"{k}: {v}" for k, v in mission['rewards'].items() if k != 'reputation'), inline=False)
+        
+        message = await ctx.send(embed=embed)
+        await message.add_reaction("✅")
+        await message.add_reaction("❌")
+
+        def check(reaction, user):
+            return user == ctx.author and str(reaction.emoji) in ["✅", "❌"] and reaction.message.id == message.id
+
+        try:
+            reaction, user = await self.bot.wait_for('reaction_add', timeout=60.0, check=check)
+            if str(reaction.emoji) == "✅":
+                success = random.random() * 100 < success_chance
+                if success:
+                    await ctx.send(f"Congratulations! You successfully completed the mission: {mission['name']}!")
+                    await self.apply_mission_rewards(ctx, user_data, mission['rewards'])
+                else:
+                    await ctx.send(f"Unfortunately, you failed to complete the mission: {mission['name']}. Better luck next time!")
+            else:
+                await ctx.send("Mission aborted. You can try again later.")
+        except asyncio.TimeoutError:
+            await ctx.send("You took too long to respond. The mission opportunity has passed.")
+
+    async def apply_mission_rewards(self, ctx, user_data, rewards):
+        guild_data = await self.config.guild(ctx.guild).all()
+        
+        user_data['influence'] += rewards.get('influence', 0)
+        
+        for group, value in rewards.get('reputation', {}).items():
+            user_data['reputation'][group] = max(0, min(100, user_data['reputation'][group] + value))
+        
+        if 'faction_strength' in rewards:
+            guild_data['factions'][user_data['faction']]['strength'] += rewards['faction_strength']
+        
+        if 'faction_resources' in rewards:
+            for resource, value in rewards['faction_resources'].items():
+                guild_data['factions'][user_data['faction']]['resources'][resource] = guild_data['factions'][user_data['faction']]['resources'].get(resource, 0) + value
+        
+        if 'world_state_changes' in rewards:
+            for state, value in rewards['world_state_changes'].items():
+                guild_data['world_state'][state] = max(0, min(100, guild_data['world_state'][state] + value))
+        
+        await self.config.user(ctx.author).set(user_data)
+        await self.config.guild(ctx.guild).set(guild_data)
+        
+        embed = discord.Embed(title="Mission Rewards", color=discord.Color.green())
+        embed.add_field(name="Influence Gained", value=rewards.get('influence', 0), inline=False)
+        if 'reputation' in rewards:
+            embed.add_field(name="Reputation Changes", value="\n".join(f"{k}: {v:+d}" for k, v in rewards['reputation'].items()), inline=False)
+        if 'faction_strength' in rewards:
+            embed.add_field(name="Faction Strength Increase", value=rewards['faction_strength'], inline=False)
+        if 'faction_resources' in rewards:
+            embed.add_field(name="Faction Resources Gained", value="\n".join(f"{k}: {v}" for k, v in rewards['faction_resources'].items()), inline=False)
+        if 'world_state_changes' in rewards:
+            embed.add_field(name="World State Changes", value="\n".join(f"{k}: {v:+d}" for k, v in rewards['world_state_changes'].items()), inline=False)
+        
+        await ctx.send(embed=embed)
+
         
     @commands.command()
     async def yonko(self, ctx):
@@ -486,14 +732,36 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             "required_state": {}
         }
         
-    def calculate_event_consequences(self, event, choice, user_data, guild_data):
-        consequences = {
-            "influence_change": 0.0,
-            "world_state_changes": {k: 0.0 for k in guild_data['world_state']},
-            "resource_changes": {k: 0.0 for k in guild_data['resources']},
-            "skill_changes": {k: 0.0 for k in user_data['skills']},
-            "personal_resource_changes": {k: 0.0 for k in user_data['personal_resources']}
+   def calculate_event_consequences(self, event, choice, user_data, guild_data):
+    consequences = {
+        "influence_change": 0.0,
+        "world_state_changes": {k: 0.0 for k in guild_data['world_state']},
+        "resource_changes": {k: 0.0 for k in guild_data['resources']},
+        "skill_changes": {k: 0.0 for k in user_data['skills']},
+        "personal_resource_changes": {k: 0.0 for k in user_data['personal_resources']},
+        "reputation_changes": {k: 0.0 for k in user_data['reputation']},
+        "faction_changes": {
+            faction: {"strength": 0.0, "reputation": 0.0, "resources": {}}
+            for faction in guild_data['factions']
         }
+    }
+
+    # Existing event effects logic would go here
+    # ...
+
+    # Add faction-specific consequences
+    faction = user_data['faction']
+    if faction == "Marines":
+        consequences['faction_changes'][faction]['strength'] += 2.0 if choice == 'A' else -1.0
+        consequences['reputation_changes']['Civilians'] += 1.0 if choice == 'A' else -1.0
+    elif faction == "Cipher Pol":
+        consequences['faction_changes'][faction]['resources']['intel'] = 10 if choice == 'A' else -5
+        consequences['reputation_changes']['Pirates'] -= 2.0 if choice == 'A' else 1.0
+    elif faction == "Science Division":
+        consequences['faction_changes'][faction]['resources']['research_points'] = 5 if choice == 'A' else -2
+        consequences['world_state_changes']['scientific_advancement'] += 2.0 if choice == 'A' else -1.0
+
+    return consequences
     
         event_effects = {
             "A powerful pirate crew has been spotted near a major trade route.": {
