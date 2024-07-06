@@ -74,7 +74,7 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
     async def wg(self, ctx):
         """World Government Simulator commands"""
         if ctx.invoked_subcommand is None:
-            await ctx.send("Use `!help wg` to see available World Government Simulator commands.")
+            await ctx.send("Use `.help wg` to see available World Government Simulator commands.")
 
     @wg.command(name="setup")
     @commands.admin()
@@ -110,7 +110,7 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         guild_data = await self.config.guild(ctx.guild).all()
         user_data = guild_data['active_players'].get(str(ctx.author.id))
         if not user_data:
-            await ctx.send("You haven't joined the World Government yet! Use `!wg join` to start.")
+            await ctx.send("You haven't joined the World Government yet! Use `.wg join` to start.")
             return
     
         embed = discord.Embed(title="World Government Status", color=discord.Color.blue())
@@ -137,7 +137,7 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         guild_data = await self.config.guild(ctx.guild).all()
         user_data = guild_data['active_players'].get(str(ctx.author.id))
         if not user_data:
-            await ctx.send("You haven't joined the World Government yet! Use `!wg join` to start.")
+            await ctx.send("You haven't joined the World Government yet! Use `.wg join` to start.")
             return
 
         decision = self.generate_decision(user_data['position'], guild_data['world_state'])
@@ -682,7 +682,7 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
 
         embed = discord.Embed(title="Promotion Cycle", description=f"A position for {position} has opened up!", color=discord.Color.blue())
         embed.add_field(name="Eligible Candidates", value="\n".join([f"<@{user_id}>" for user_id, _ in eligible_candidates]), inline=False)
-        embed.add_field(name="How to Participate", value="Use `!compete` to participate in the promotion cycle. The cycle will last for 7 days.", inline=False)
+        embed.add_field(name="How to Participate", value="Use `.compete` to participate in the promotion cycle. The cycle will last for 7 days.", inline=False)
         
         await channel.send(embed=embed)
 
