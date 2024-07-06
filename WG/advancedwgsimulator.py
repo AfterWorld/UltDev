@@ -48,16 +48,13 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                     "reputation": 40,
                     "resources": {"labs": 10, "research_points": 100}
                 }
-            }
-        }
+            },
             "faction_relations": {
                 "Marines": {"Cipher Pol": 50, "Science Division": 50},
                 "Cipher Pol": {"Marines": 50, "Science Division": 50},
                 "Science Division": {"Marines": 50, "Cipher Pol": 50}
-                }
             }
         }
-        
         default_user = {
             "position": None,
             "faction": None,
