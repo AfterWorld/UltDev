@@ -88,12 +88,12 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         """Join the World Government as a recruit"""
         if not await self.check_wg_channel(ctx):
             return
-
+    
         user_data = await self.config.user(ctx.author).all()
         if user_data['position']:
             await ctx.send(f"You are already a {user_data['position']} in the World Government!")
             return
-
+    
         user_data['position'] = "Recruit"
         guild_data = await self.config.guild(ctx.guild).all()
         guild_data['active_players'][str(ctx.author.id)] = user_data
@@ -106,13 +106,13 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         """Check your status and the current world state"""
         if not await self.check_wg_channel(ctx):
             return
-
+    
         guild_data = await self.config.guild(ctx.guild).all()
         user_data = guild_data['active_players'].get(str(ctx.author.id))
         if not user_data:
             await ctx.send("You haven't joined the World Government yet! Use `!wg join` to start.")
             return
-
+    
         embed = discord.Embed(title="World Government Status", color=discord.Color.blue())
         embed.add_field(name="Your Position", value=user_data['position'], inline=False)
         embed.add_field(name="Influence", value=user_data['influence'], inline=False)
@@ -199,7 +199,7 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         """View the current Yonko"""
         if not await self.check_wg_channel(ctx):
             return
-
+    
         guild_data = await self.config.guild(ctx.guild).all()
         yonko = guild_data['yonko']
         
