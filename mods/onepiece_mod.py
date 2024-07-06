@@ -8,6 +8,7 @@ import asyncio
 import re
 import random
 import pytz
+import logging
 
 original_commands = {}
 
