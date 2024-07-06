@@ -51,9 +51,9 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             }
         }
             "faction_relations": {
-                    "Marines": {"Cipher Pol": 50, "Science Division": 50},
-                    "Cipher Pol": {"Marines": 50, "Science Division": 50},
-                    "Science Division": {"Marines": 50, "Cipher Pol": 50}
+                "Marines": {"Cipher Pol": 50, "Science Division": 50},
+                "Cipher Pol": {"Marines": 50, "Science Division": 50},
+                "Science Division": {"Marines": 50, "Cipher Pol": 50}
                 }
             }
         }
@@ -840,9 +840,9 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                 for faction in guild_data['factions'],
             "faction_relation_changes": {
                 faction: {other: 0 for other in guild_data['faction_relations'][faction]}
-                for faction in guild_data['faction_relations']
+                for faction in guild_data['faction_relations'],
             }
-        }
+        },
     
         event_effects = {
         "A powerful pirate crew has been spotted near a major trade route.": {
