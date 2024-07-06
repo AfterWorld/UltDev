@@ -34,6 +34,7 @@ class OnePieceMod(commands.Cog):
         self.config = Config.get_conf(self, identifier=1234567890)
         default_guild = {
             "general_channel_id": None,
+            "main_server_id": None,
             "muted_users": {},
             "restricted_channels": {},
             "minimum_image_role_id": None,
@@ -75,7 +76,28 @@ class OnePieceMod(commands.Cog):
     async def setgeneralchannel(self, ctx, channel: discord.TextChannel):
         """Set the general channel for reminders."""
         await self.config.guild(ctx.guild).general_channel_id.set(channel.id)
-        await ctx.send(f"General channel set to {channel.mention}")
+        await self.config.guild(ctx.guild).main_server_id.set(ctx.guild.id)
+        await ctx.send(f"General channel set to {channel.mention} and this server set as the main server for reminders.")
+
+    @commands.command()
+    @checks.admin_or_permissions(manage_guild=True)
+    async def testreminder(self, ctx):
+        """Test the reminder system by sending a random reminder."""
+        main_server_id = await self.config.guild(ctx.guild).main_server_id()
+        if ctx.guild.id != main_server_id:
+            return await ctx.send("This command can only be used in the main server.")
+
+        general_channel_id = await self.config.guild(ctx.guild).general_channel_id()
+        if not general_channel_id:
+            return await ctx.send("The general channel hasn't been set. Use `setgeneralchannel` first.")
+
+        channel = ctx.guild.get_channel(general_channel_id)
+        if not channel:
+            return await ctx.send("The set general channel could not be found. Please set it again.")
+
+        reminder = self.get_random_reminder()
+        await channel.send(reminder)
+        await ctx.send("Test reminder sent successfully!")
 
     async def send_periodic_reminder(self):
         await self.bot.wait_until_ready()
@@ -83,19 +105,31 @@ class OnePieceMod(commands.Cog):
         
         while not self.bot.is_closed():
             try:
-                all_guilds = self.bot.guilds
-                for guild in all_guilds:
-                    general_channel_id = await self.config.guild(guild).general_channel_id()
-                    if general_channel_id:
-                        channel = guild.get_channel(general_channel_id)
-                        if channel:
-                            reminder = self.get_random_reminder()
-                            await channel.send(reminder)
-                            self.logger.info(f"Reminder sent to {guild.name}: {reminder[:30]}...")
-                        else:
-                            self.logger.error(f"General channel not found in guild {guild.name}")
-                    else:
-                        self.logger.warning(f"No general channel set for guild {guild.name}")
+                main_server_id = await self.config.guild(self.bot.guilds[0]).main_server_id()
+                if not main_server_id:
+                    self.logger.warning("Main server ID not set. Skipping reminder.")
+                    await asyncio.sleep(300)  # Wait 5 minutes before trying again
+                    continue
+
+                guild = self.bot.get_guild(main_server_id)
+                if not guild:
+                    self.logger.error(f"Main server with ID {main_server_id} not found.")
+                    await asyncio.sleep(300)  # Wait 5 minutes before trying again
+                    continue
+
+                general_channel_id = await self.config.guild(guild).general_channel_id()
+                if not general_channel_id:
+                    self.logger.warning(f"No general channel set for main server {guild.name}")
+                    await asyncio.sleep(300)  # Wait 5 minutes before trying again
+                    continue
+
+                channel = guild.get_channel(general_channel_id)
+                if channel:
+                    reminder = self.get_random_reminder()
+                    await channel.send(reminder)
+                    self.logger.info(f"Reminder sent to {guild.name}: {reminder[:30]}...")
+                else:
+                    self.logger.error(f"General channel not found in main server {guild.name}")
 
                 # Random delay between 30 minutes to 1 hour
                 delay = random.randint(30 * 60, 60 * 60)
