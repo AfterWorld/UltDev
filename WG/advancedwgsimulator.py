@@ -375,68 +375,115 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
 
         await ctx.send(embed=embed)
 
-    def generate_decision(self, position, world_state):
-        decisions = [
+    def generate_event(self, position, world_state):
+        events = [
+            {
+                "description": "A powerful pirate crew has been spotted near a major trade route.",
+                "option_a": "Increase Marine presence in the area",
+                "option_b": "Negotiate with the pirates for safe passage",
+                "required_position": "Commodore",
+                "required_state": {}
+            },
+            {
+                "description": "A kingdom is showing signs of joining the Revolutionary Army.",
+                "option_a": "Send diplomats to strengthen ties",
+                "option_b": "Increase surveillance and prepare for potential conflict",
+                "required_position": "Vice Admiral",
+                "required_state": {}
+            },
+            {
+                "description": "A new type of Devil Fruit has been discovered.",
+                "option_a": "Secure it for the World Government",
+                "option_b": "Destroy it to prevent it from falling into the wrong hands",
+                "required_position": "Admiral",
+                "required_state": {}
+            },
             {
                 "description": "Increase Marine presence in the New World",
+                "option_a": "Deploy additional Marine forces",
+                "option_b": "Maintain current deployment levels",
                 "required_position": "Vice Admiral",
                 "required_state": {"piracy_level": 70}
             },
             {
                 "description": "Negotiate with the Revolutionary Army",
+                "option_a": "Open diplomatic channels",
+                "option_b": "Refuse negotiations and prepare for conflict",
                 "required_position": "Fleet Admiral",
                 "required_state": {"revolutionary_threat": 80}
             },
             {
                 "description": "Invest in scientific research for advanced weapons",
+                "option_a": "Allocate significant funding to weapons research",
+                "option_b": "Focus on other areas of scientific advancement",
                 "required_position": "Department Head",
                 "required_state": {"scientific_advancement": 40}
             },
             {
                 "description": "Host a Reverie to address global issues",
+                "option_a": "Organize a grand Reverie with all kingdom leaders",
+                "option_b": "Address issues through smaller, regional meetings",
                 "required_position": "Gorosei Member",
                 "required_state": {"world_stability": 30}
             },
             {
                 "description": "Implement stricter regulations on Devil Fruit users",
+                "option_a": "Enforce new, stringent rules on Devil Fruit users",
+                "option_b": "Maintain current regulations",
                 "required_position": "Admiral",
                 "required_state": {}
             },
             {
                 "description": "Expand Cipher Pol operations in Paradise",
+                "option_a": "Increase covert operations and intelligence gathering",
+                "option_b": "Maintain current level of Cipher Pol activities",
                 "required_position": "Fleet Admiral",
                 "required_state": {"civilian_approval": 60}
             },
             {
                 "description": "Allocate more resources to combating slavery",
+                "option_a": "Launch a major anti-slavery campaign",
+                "option_b": "Continue current efforts without additional resources",
                 "required_position": "Vice Admiral",
                 "required_state": {"civilian_approval": 40}
             },
             {
                 "description": "Increase funding for Marine training programs",
+                "option_a": "Expand and improve Marine training facilities",
+                "option_b": "Maintain current training programs",
                 "required_position": "Commodore",
                 "required_state": {"marine_strength": 50}
             },
             {
                 "description": "Propose a global tax increase to fund the World Government",
+                "option_a": "Implement a new global tax structure",
+                "option_b": "Find alternative funding methods",
                 "required_position": "Gorosei Member",
                 "required_state": {"economy": 70}
             },
             {
                 "description": "Launch a propaganda campaign to improve the World Government's image",
+                "option_a": "Initiate a widespread propaganda effort",
+                "option_b": "Focus on concrete actions to improve public perception",
                 "required_position": "Department Head",
                 "required_state": {"civilian_approval": 30}
             }
         ]
 
-        eligible_decisions = [
-            d for d in decisions
-            if self.positions.index(position) >= self.positions.index(d["required_position"])
-            and all(world_state[k] >= v for k, v in d["required_state"].items())
+        eligible_events = [
+            e for e in events
+            if self.positions.index(position) >= self.positions.index(e["required_position"])
+            and all(world_state[k] >= v for k, v in e["required_state"].items())
         ]
 
-        return random.choice(eligible_decisions) if eligible_decisions else {"description": "Handle routine administrative tasks", "required_position": "Recruit", "required_state": {}}
-
+        return random.choice(eligible_events) if eligible_events else {
+            "description": "Handle routine administrative tasks",
+            "option_a": "Focus on efficiency",
+            "option_b": "Focus on thoroughness",
+            "required_position": "Recruit",
+            "required_state": {}
+        }
+        
     def calculate_consequences(self, decision, approve, user_data, guild_data):
         base_influence = 5.0 if approve else -2.0
         consequences = {
