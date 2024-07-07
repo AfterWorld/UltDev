@@ -63,19 +63,6 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             "enemies": [],
             "decisions": [],
             "skills": {skill: 1 for skill in self.all_skills},
-            "skills": {
-                "diplomacy": 1,
-                "military": 1,
-                "economy": 1,
-                "intelligence": 1,
-                "science": 1,
-                "naval_tactics": 1,
-                "justice_enforcement": 1,
-                "espionage": 1,
-                "assassination": 1,
-                "devil_fruit_research": 1,
-                "weapon_development": 1
-            },
             "personal_resources": {
                 "wealth": 1000,
                 "connections": 10
