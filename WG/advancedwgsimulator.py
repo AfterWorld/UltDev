@@ -62,6 +62,7 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             "allies": [],
             "enemies": [],
             "decisions": [],
+            "skills": {skill: 1 for skill in self.all_skills},
             "skills": {
                 "diplomacy": 1,
                 "military": 1,
@@ -97,6 +98,12 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         self.positions = [
             "Recruit", "Junior Official", "Senior Official", "Department Head", 
             "Commodore", "Vice Admiral", "Admiral", "Fleet Admiral", "Gorosei Member", "Im-sama"
+        ]
+        
+        self.all_skills = [
+            "diplomacy", "military", "economy", "intelligence", "science",
+            "naval_tactics", "justice_enforcement", "espionage", "assassination",
+            "devil_fruit_research", "weapon_development"
         ]
 
         self.faction_missions = {
@@ -350,12 +357,12 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         """Join the World Government as a recruit in a specific faction"""
         if not await self.check_wg_channel(ctx):
             return
-    
+
         user_data = await self.config.user(ctx.author).all()
         if user_data['position']:
             await ctx.send(f"You are already a {user_data['position']} in the {user_data['faction']}!")
             return
-    
+
         guild_data = await self.config.guild(ctx.guild).all()
         
         # Normalize faction input
@@ -364,9 +371,15 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         if faction not in guild_data['factions']:
             await ctx.send(f"Invalid faction. Choose from: {', '.join(guild_data['factions'].keys())}")
             return
-    
+
         user_data['position'] = "Recruit"
         user_data['faction'] = faction
+
+        # Ensure all skills are initialized
+        for skill in self.all_skills:
+            if skill not in user_data['skills']:
+                user_data['skills'][skill] = 1
+
         guild_data['active_players'][str(ctx.author.id)] = user_data
         await self.config.guild(ctx.guild).set(guild_data)
         await self.config.user(ctx.author).set(user_data)
@@ -1040,11 +1053,22 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             faction: {"strength": 0.0, "reputation": 0.0, "resources": {}}
             for faction in guild_data['factions']
         },
+        
         "faction_relation_changes": {
             faction: {other: 0 for other in guild_data['faction_relations'][faction]}
             for faction in guild_data['faction_relations']
         }
     }
+        # Apply faction-specific skill bonuses
+        faction = user_data['faction']
+        if faction in self.faction_skills:
+            for skill in self.faction_skills[faction]:
+                skill_bonus = user_data['skills'].get(skill, 1) * 0.1
+                for category in ['world_state_changes', 'resource_changes']:
+                    for key in consequences[category]:
+                        consequences[category][key] *= (1 + skill_bonus)
+
+            return consequences
     
         event_effects = {
         "A powerful pirate crew has been spotted near a major trade route.": {
