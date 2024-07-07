@@ -100,67 +100,73 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         self.faction_missions = {
             "Marines": [
                 {
-                    "name": "Pirate Hunt",
-                    "description": "Track down and capture a notorious pirate crew.",
-                    "difficulty": 3,
+                    "name": "Buster Call Operation",
+                    "description": "Lead a Buster Call operation against a pirate-controlled island.",
+                    "required_skill": "naval_tactics",
+                    "difficulty": 8,
                     "rewards": {
-                        "influence": 10,
-                        "reputation": {"Civilians": 5, "Pirates": -5},
-                        "faction_strength": 2
+                        "influence": 20,
+                        "reputation": {"Pirates": -15, "Civilians": -10, "Marines": 15},
+                        "resource_changes": {"manpower": -5000, "budget": -100000}
                     }
                 },
                 {
-                    "name": "Island Protection",
-                    "description": "Defend a vulnerable island from pirate attacks.",
-                    "difficulty": 2,
+                    "name": "Justice Enforcement Campaign",
+                    "description": "Organize a large-scale campaign to enforce justice in a lawless region.",
+                    "required_skill": "justice_enforcement",
+                    "difficulty": 7,
                     "rewards": {
-                        "influence": 5,
-                        "reputation": {"Civilians": 10},
-                        "faction_strength": 1
+                        "influence": 15,
+                        "reputation": {"Civilians": 10, "Pirates": -10},
+                        "resource_changes": {"manpower": -3000, "budget": -50000}
                     }
                 }
             ],
             "Cipher Pol": [
                 {
-                    "name": "Covert Intelligence",
-                    "description": "Infiltrate a suspicious organization and gather intel.",
-                    "difficulty": 4,
+                    "name": "Infiltrate Revolutionary Army",
+                    "description": "Infiltrate a Revolutionary Army cell and gather critical intelligence.",
+                    "required_skill": "espionage",
+                    "difficulty": 9,
                     "rewards": {
-                        "influence": 15,
-                        "reputation": {"Pirates": -10, "Revolutionaries": -10},
-                        "faction_resources": {"intel": 20}
+                        "influence": 25,
+                        "reputation": {"Revolutionaries": -20, "Pirates": -5},
+                        "resource_changes": {"intelligence": 200, "budget": -80000}
                     }
                 },
                 {
-                    "name": "Sabotage Operation",
-                    "description": "Disrupt the plans of an enemy faction.",
-                    "difficulty": 3,
+                    "name": "Eliminate Threat",
+                    "description": "Assassinate a high-profile target threatening World Government stability.",
+                    "required_skill": "assassination",
+                    "difficulty": 10,
                     "rewards": {
-                        "influence": 10,
-                        "reputation": {"Revolutionaries": -15},
-                        "faction_strength": 2
+                        "influence": 30,
+                        "reputation": {"Civilians": -15, "Pirates": -10},
+                        "resource_changes": {"intelligence": 100, "budget": -120000}
                     }
                 }
             ],
             "Science Division": [
                 {
-                    "name": "Weapon Development",
-                    "description": "Create a new weapon to combat Devil Fruit users.",
-                    "difficulty": 5,
+                    "name": "Devil Fruit Experimentation",
+                    "description": "Conduct groundbreaking research on a newly discovered Devil Fruit.",
+                    "required_skill": "devil_fruit_research",
+                    "difficulty": 8,
                     "rewards": {
                         "influence": 20,
-                        "reputation": {"Marines": 10},
-                        "faction_resources": {"research_points": 30}
+                        "reputation": {"Marines": 10, "Cipher Pol": 5},
+                        "resource_changes": {"budget": -150000, "scientific_advancement": 15}
                     }
                 },
                 {
-                    "name": "Medical Breakthrough",
-                    "description": "Develop a cure for a dangerous disease spreading in the New World.",
-                    "difficulty": 4,
+                    "name": "Advanced Weapon Project",
+                    "description": "Develop a cutting-edge weapon to combat powerful pirates and revolutionaries.",
+                    "required_skill": "weapon_development",
+                    "difficulty": 9,
                     "rewards": {
-                        "influence": 15,
-                        "reputation": {"Civilians": 20},
-                        "world_state_changes": {"scientific_advancement": 5}
+                        "influence": 25,
+                        "reputation": {"Marines": 15, "Pirates": -10},
+                        "resource_changes": {"budget": -200000, "scientific_advancement": 20}
                     }
                 }
             ]
@@ -189,6 +195,118 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         """Set up the World Government Simulator channel"""
         await self.config.guild(ctx.guild).wg_channel.set(channel.id)
         await ctx.send(f"World Government Simulator channel set to {channel.mention}")
+        
+    @wg.command(name="faction_missions")
+    async def wg_faction_missions(self, ctx):
+        """View available faction-specific missions"""
+        if not await self.check_wg_channel(ctx):
+            return
+
+        user_data = await self.config.user(ctx.author).all()
+        if not user_data['faction']:
+            await ctx.send("You haven't joined a faction yet! Use `.wg join <faction>` to join one.")
+            return
+
+        faction = user_data['faction']
+        missions = self.faction_missions.get(faction, [])
+
+        if not missions:
+            await ctx.send(f"There are currently no missions available for {faction}.")
+            return
+
+        embed = discord.Embed(title=f"{faction} Missions", color=discord.Color.blue())
+        for i, mission in enumerate(missions, 1):
+            embed.add_field(
+                name=f"{i}. {mission['name']} (Difficulty: {mission['difficulty']})",
+                value=f"Description: {mission['description']}\nRequired Skill: {mission['required_skill']}",
+                inline=False
+            )
+        embed.set_footer(text="Use '.wg start_faction_mission <number>' to begin a mission.")
+
+        await ctx.send(embed=embed)
+
+    @wg.command(name="start_faction_mission")
+    async def wg_start_faction_mission(self, ctx, mission_number: int):
+        """Start a faction-specific mission"""
+        if not await self.check_wg_channel(ctx):
+            return
+
+        user_data = await self.config.user(ctx.author).all()
+        if not user_data['faction']:
+            await ctx.send("You haven't joined a faction yet! Use `.wg join <faction>` to join one.")
+            return
+
+        faction = user_data['faction']
+        missions = self.faction_missions.get(faction, [])
+
+        if not missions:
+            await ctx.send(f"There are currently no missions available for {faction}.")
+            return
+
+        if mission_number < 1 or mission_number > len(missions):
+            await ctx.send(f"Invalid mission number. Choose a number between 1 and {len(missions)}.")
+            return
+
+        mission = missions[mission_number - 1]
+        required_skill = mission['required_skill']
+        skill_level = user_data['skills'][required_skill]
+        success_chance = min(90, max(10, (skill_level / mission['difficulty']) * 100))
+
+        embed = discord.Embed(title=f"Mission: {mission['name']}", color=discord.Color.gold())
+        embed.add_field(name="Description", value=mission['description'], inline=False)
+        embed.add_field(name="Required Skill", value=f"{required_skill.replace('_', ' ').title()}: {skill_level}", inline=True)
+        embed.add_field(name="Difficulty", value=mission['difficulty'], inline=True)
+        embed.add_field(name="Success Chance", value=f"{success_chance:.1f}%", inline=True)
+        embed.add_field(name="Rewards", value="\n".join(f"{k}: {v}" for k, v in mission['rewards'].items() if k != 'reputation'), inline=False)
+        
+        message = await ctx.send(embed=embed)
+        await message.add_reaction("✅")
+        await message.add_reaction("❌")
+
+        def check(reaction, user):
+            return user == ctx.author and str(reaction.emoji) in ["✅", "❌"] and reaction.message.id == message.id
+
+        try:
+            reaction, user = await self.bot.wait_for('reaction_add', timeout=60.0, check=check)
+            if str(reaction.emoji) == "✅":
+                success = random.random() * 100 < success_chance
+                if success:
+                    await ctx.send(f"Congratulations! You successfully completed the mission: {mission['name']}!")
+                    await self.apply_mission_rewards(ctx, user_data, mission['rewards'])
+                    # Increase the relevant skill
+                    skill_increase = random.uniform(0.5, 1.5)
+                    user_data['skills'][required_skill] += skill_increase
+                    await self.config.user(ctx.author).set(user_data)
+                    await ctx.send(f"Your {required_skill.replace('_', ' ')} skill has increased by {skill_increase:.2f} points!")
+                else:
+                    await ctx.send(f"Unfortunately, you failed to complete the mission: {mission['name']}. Better luck next time!")
+            else:
+                await ctx.send("Mission aborted. You can try again later.")
+        except asyncio.TimeoutError:
+            await ctx.send("You took too long to respond. The mission opportunity has passed.")
+
+    async def apply_mission_rewards(self, ctx, user_data, rewards):
+        guild_data = await self.config.guild(ctx.guild).all()
+        
+        user_data['influence'] += rewards.get('influence', 0)
+        
+        for group, value in rewards.get('reputation', {}).items():
+            user_data['reputation'][group] = max(0, min(100, user_data['reputation'][group] + value))
+        
+        for resource, value in rewards.get('resource_changes', {}).items():
+            guild_data['resources'][resource] = max(0, guild_data['resources'][resource] + value)
+        
+        await self.config.user(ctx.author).set(user_data)
+        await self.config.guild(ctx.guild).set(guild_data)
+        
+        embed = discord.Embed(title="Mission Rewards", color=discord.Color.green())
+        embed.add_field(name="Influence Gained", value=rewards.get('influence', 0), inline=False)
+        if 'reputation' in rewards:
+            embed.add_field(name="Reputation Changes", value="\n".join(f"{k}: {v:+d}" for k, v in rewards['reputation'].items()), inline=False)
+        if 'resource_changes' in rewards:
+            embed.add_field(name="Resource Changes", value="\n".join(f"{k}: {v:+d}" for k, v in rewards['resource_changes'].items()), inline=False)
+        
+        await ctx.send(embed=embed)
             
     @wg.command(name="faction_relations")
     async def wg_faction_relations(self, ctx):
