@@ -2,8 +2,8 @@ import random
 import asyncio
 from redbot.core import commands, Config
 import discord
+from datetime import datetime, timedelta
 from discord.ext import tasks
-import datetime
 
 class AdvancedWorldGovernmentSimulator(commands.Cog):
     def __init__(self, bot):
@@ -91,6 +91,8 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         }
         self.config.register_guild(**default_guild)
         self.config.register_user(**default_user)
+        self.mission_cooldowns = {}
+        self.mission_cooldown_time = timedelta(hours=4)  # 4-hour cooldown
         
         self.positions = [
             "Recruit", "Junior Official", "Senior Official", "Department Head", 
@@ -105,9 +107,10 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                     "required_skill": "naval_tactics",
                     "difficulty": 8,
                     "rewards": {
-                        "influence": 20,
-                        "reputation": {"Pirates": -15, "Civilians": -10, "Marines": 15},
-                        "resource_changes": {"manpower": -5000, "budget": -100000}
+                        "influence": 15,
+                        "reputation": {"Pirates": -15, "Civilians": -10, "Marines": 10},
+                        "resource_changes": {"manpower": -4000, "budget": -80000},
+                        "skill_increase": {"naval_tactics": 0.8, "military": 0.4}
                     }
                 },
                 {
@@ -116,9 +119,10 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                     "required_skill": "justice_enforcement",
                     "difficulty": 7,
                     "rewards": {
-                        "influence": 15,
-                        "reputation": {"Civilians": 10, "Pirates": -10},
-                        "resource_changes": {"manpower": -3000, "budget": -50000}
+                        "influence": 12,
+                        "reputation": {"Civilians": 8, "Pirates": -8},
+                        "resource_changes": {"manpower": -2500, "budget": -40000},
+                        "skill_increase": {"justice_enforcement": 0.7, "diplomacy": 0.3}
                     }
                 }
             ],
@@ -129,9 +133,10 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                     "required_skill": "espionage",
                     "difficulty": 9,
                     "rewards": {
-                        "influence": 25,
-                        "reputation": {"Revolutionaries": -20, "Pirates": -5},
-                        "resource_changes": {"intelligence": 200, "budget": -80000}
+                        "influence": 18,
+                        "reputation": {"Revolutionaries": -18, "Pirates": -5},
+                        "resource_changes": {"intelligence": 150, "budget": -70000},
+                        "skill_increase": {"espionage": 0.9, "intelligence": 0.5}
                     }
                 },
                 {
@@ -140,9 +145,10 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                     "required_skill": "assassination",
                     "difficulty": 10,
                     "rewards": {
-                        "influence": 30,
-                        "reputation": {"Civilians": -15, "Pirates": -10},
-                        "resource_changes": {"intelligence": 100, "budget": -120000}
+                        "influence": 20,
+                        "reputation": {"Civilians": -12, "Pirates": -8},
+                        "resource_changes": {"intelligence": 80, "budget": -100000},
+                        "skill_increase": {"assassination": 1.0, "military": 0.4}
                     }
                 }
             ],
@@ -153,9 +159,10 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                     "required_skill": "devil_fruit_research",
                     "difficulty": 8,
                     "rewards": {
-                        "influence": 20,
-                        "reputation": {"Marines": 10, "Cipher Pol": 5},
-                        "resource_changes": {"budget": -150000, "scientific_advancement": 15}
+                        "influence": 16,
+                        "reputation": {"Marines": 8, "Cipher Pol": 5},
+                        "resource_changes": {"budget": -120000, "scientific_advancement": 12},
+                        "skill_increase": {"devil_fruit_research": 0.8, "science": 0.4}
                     }
                 },
                 {
@@ -164,9 +171,10 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                     "required_skill": "weapon_development",
                     "difficulty": 9,
                     "rewards": {
-                        "influence": 25,
-                        "reputation": {"Marines": 15, "Pirates": -10},
-                        "resource_changes": {"budget": -200000, "scientific_advancement": 20}
+                        "influence": 18,
+                        "reputation": {"Marines": 12, "Pirates": -8},
+                        "resource_changes": {"budget": -150000, "scientific_advancement": 15},
+                        "skill_increase": {"weapon_development": 0.9, "science": 0.5}
                     }
                 }
             ]
@@ -187,8 +195,8 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         """World Government Simulator commands"""
         if ctx.invoked_subcommand is None:
             await ctx.send("Use `.help wg` to see available World Government Simulator commands.")
-            
-    
+                
+        
     @wg.command(name="setup")
     @commands.admin()
     async def wg_setup(self, ctx, channel: discord.TextChannel):
@@ -216,15 +224,17 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
 
         embed = discord.Embed(title=f"{faction} Missions", color=discord.Color.blue())
         for i, mission in enumerate(missions, 1):
+            cooldown = self.mission_cooldowns.get(f"{ctx.author.id}_{i}", None)
+            status = "Available" if cooldown is None or cooldown < datetime.now() else f"On cooldown until {cooldown.strftime('%Y-%m-%d %H:%M:%S')}"
             embed.add_field(
                 name=f"{i}. {mission['name']} (Difficulty: {mission['difficulty']})",
-                value=f"Description: {mission['description']}\nRequired Skill: {mission['required_skill']}",
+                value=f"Description: {mission['description']}\nRequired Skill: {mission['required_skill']}\nStatus: {status}",
                 inline=False
             )
         embed.set_footer(text="Use '.wg start_faction_mission <number>' to begin a mission.")
 
         await ctx.send(embed=embed)
-
+    
     @wg.command(name="start_faction_mission")
     async def wg_start_faction_mission(self, ctx, mission_number: int):
         """Start a faction-specific mission"""
@@ -247,6 +257,12 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             await ctx.send(f"Invalid mission number. Choose a number between 1 and {len(missions)}.")
             return
 
+        cooldown_key = f"{ctx.author.id}_{mission_number}"
+        if cooldown_key in self.mission_cooldowns and self.mission_cooldowns[cooldown_key] > datetime.now():
+            time_left = self.mission_cooldowns[cooldown_key] - datetime.now()
+            await ctx.send(f"This mission is on cooldown. You can attempt it again in {time_left.total_seconds() / 60:.1f} minutes.")
+            return
+
         mission = missions[mission_number - 1]
         required_skill = mission['required_skill']
         skill_level = user_data['skills'][required_skill]
@@ -257,7 +273,7 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         embed.add_field(name="Required Skill", value=f"{required_skill.replace('_', ' ').title()}: {skill_level}", inline=True)
         embed.add_field(name="Difficulty", value=mission['difficulty'], inline=True)
         embed.add_field(name="Success Chance", value=f"{success_chance:.1f}%", inline=True)
-        embed.add_field(name="Rewards", value="\n".join(f"{k}: {v}" for k, v in mission['rewards'].items() if k != 'reputation'), inline=False)
+        embed.add_field(name="Rewards", value="\n".join(f"{k}: {v}" for k, v in mission['rewards'].items() if k not in ['reputation', 'skill_increase']), inline=False)
         
         message = await ctx.send(embed=embed)
         await message.add_reaction("✅")
@@ -273,13 +289,16 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                 if success:
                     await ctx.send(f"Congratulations! You successfully completed the mission: {mission['name']}!")
                     await self.apply_mission_rewards(ctx, user_data, mission['rewards'])
-                    # Increase the relevant skill
-                    skill_increase = random.uniform(0.5, 1.5)
-                    user_data['skills'][required_skill] += skill_increase
+                    # Increase skills
+                    for skill, increase in mission['rewards']['skill_increase'].items():
+                        user_data['skills'][skill] += increase
                     await self.config.user(ctx.author).set(user_data)
-                    await ctx.send(f"Your {required_skill.replace('_', ' ')} skill has increased by {skill_increase:.2f} points!")
+                    await ctx.send(f"Your skills have increased!")
                 else:
                     await ctx.send(f"Unfortunately, you failed to complete the mission: {mission['name']}. Better luck next time!")
+                
+                # Set cooldown
+                self.mission_cooldowns[cooldown_key] = datetime.now() + self.mission_cooldown_time
             else:
                 await ctx.send("Mission aborted. You can try again later.")
         except asyncio.TimeoutError:
@@ -305,6 +324,8 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             embed.add_field(name="Reputation Changes", value="\n".join(f"{k}: {v:+d}" for k, v in rewards['reputation'].items()), inline=False)
         if 'resource_changes' in rewards:
             embed.add_field(name="Resource Changes", value="\n".join(f"{k}: {v:+d}" for k, v in rewards['resource_changes'].items()), inline=False)
+        if 'skill_increase' in rewards:
+            embed.add_field(name="Skill Increases", value="\n".join(f"{k.replace('_', ' ').title()}: +{v:.1f}" for k, v in rewards['skill_increase'].items()), inline=False)
         
         await ctx.send(embed=embed)
             
