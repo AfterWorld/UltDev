@@ -92,6 +92,12 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             "naval_tactics", "justice_enforcement", "espionage", "assassination",
             "devil_fruit_research", "weapon_development"
         ]
+        
+        self.faction_skills = {
+            "Marines": ["naval_tactics", "justice_enforcement"],
+            "Cipher Pol": ["espionage", "assassination"],
+            "Science Division": ["devil_fruit_research", "weapon_development"]
+        } 
 
         self.faction_missions = {
             "Marines": [
@@ -174,11 +180,6 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             ]
         }
         
-        self.faction_skills = {
-            "Marines": ["naval_tactics", "justice_enforcement"],
-            "Cipher Pol": ["espionage", "assassination"],
-            "Science Division": ["devil_fruit_research", "weapon_development"]
-        }
         self.world_events.start()
         self.resource_update.start()
         self.crisis_check.start()
