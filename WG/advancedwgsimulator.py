@@ -67,7 +67,13 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                 "military": 1,
                 "economy": 1,
                 "intelligence": 1,
-                "science": 1
+                "science": 1,
+                "naval_tactics": 1,
+                "justice_enforcement": 1,
+                "espionage": 1,
+                "assassination": 1,
+                "devil_fruit_research": 1,
+                "weapon_development": 1
             },
             "personal_resources": {
                 "wealth": 1000,
@@ -160,6 +166,11 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             ]
         }
         
+        self.faction_skills = {
+            "Marines": ["naval_tactics", "justice_enforcement"],
+            "Cipher Pol": ["espionage", "assassination"],
+            "Science Division": ["devil_fruit_research", "weapon_development"]
+        }
         self.world_events.start()
         self.resource_update.start()
         self.crisis_check.start()
@@ -221,6 +232,56 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         await self.config.guild(ctx.guild).set(guild_data)
         await self.config.user(ctx.author).set(user_data)
         await ctx.send(f"Welcome to the World Government! You start as a Recruit in the {faction}. Work hard to climb the ranks.")
+
+    @wg.command(name="skills")
+    async def wg_skills(self, ctx):
+        """View your current skills"""
+        if not await self.check_wg_channel(ctx):
+            return
+
+        user_data = await self.config.user(ctx.author).all()
+        if not user_data['faction']:
+            await ctx.send("You haven't joined a faction yet! Use `.wg join <faction>` to join one.")
+            return
+
+        embed = discord.Embed(title=f"{ctx.author.display_name}'s Skills", color=discord.Color.blue())
+        
+        # General skills
+        general_skills = ["diplomacy", "military", "economy", "intelligence", "science"]
+        embed.add_field(name="General Skills", value="\n".join(f"{skill.capitalize()}: {user_data['skills'][skill]}" for skill in general_skills), inline=False)
+        
+        # Faction-specific skills
+        faction_skills = self.faction_skills[user_data['faction']]
+        embed.add_field(name=f"{user_data['faction']} Skills", value="\n".join(f"{skill.replace('_', ' ').capitalize()}: {user_data['skills'][skill]}" for skill in faction_skills), inline=False)
+
+        await ctx.send(embed=embed)
+
+    @wg.command(name="train")
+    async def wg_train(self, ctx, skill: str):
+        """Train a specific skill"""
+        if not await self.check_wg_channel(ctx):
+            return
+
+        user_data = await self.config.user(ctx.author).all()
+        if not user_data['faction']:
+            await ctx.send("You haven't joined a faction yet! Use `.wg join <faction>` to join one.")
+            return
+
+        skill = skill.lower().replace(' ', '_')
+        if skill not in user_data['skills']:
+            await ctx.send(f"Invalid skill. Choose from: {', '.join(user_data['skills'].keys())}")
+            return
+
+        # Check if it's a faction-specific skill
+        if skill in self.faction_skills[user_data['faction']]:
+            increase = random.uniform(0.5, 1.5)
+        else:
+            increase = random.uniform(0.1, 0.5)
+
+        user_data['skills'][skill] += increase
+        await self.config.user(ctx.author).set(user_data)
+
+        await ctx.send(f"You've trained your {skill.replace('_', ' ')} skill. It has increased by {increase:.2f} points.")
 
     @wg.command(name="faction")
     async def wg_faction(self, ctx):
@@ -988,6 +1049,12 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             consequences['faction_changes'][faction]['resources']['research_points'] = 5 if choice == 'A' else -2
             consequences['world_state_changes']['scientific_advancement'] += 2.0 if choice == 'A' else -1.0
     
+       for skill in self.faction_skills[faction]:
+            skill_bonus = user_data['skills'][skill] * 0.1
+            for category in ['world_state_changes', 'resource_changes']:
+                for key in consequences[category]:
+                    consequences[category][key] *= (1 + skill_bonus)
+
         return consequences
     
     def calculate_crisis_contribution(self, user_data):
