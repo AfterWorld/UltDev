@@ -84,6 +84,8 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             "allies": [],
             "enemies": [],
             "decisions": [],
+            "completed_missions": [],
+            "mission_history": [],
             "skills": {skill: 1 for skill in self.all_skills},
             "personal_resources": {
                 "wealth": 1000,
@@ -230,6 +232,32 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         await self.config.guild(ctx.guild).wg_channel.set(channel.id)
         await ctx.send(f"World Government Simulator channel set to {channel.mention}")
         
+    @wg.command(name="mission_history")
+    async def wg_mission_history(self, ctx):
+        """View your mission history"""
+        if not await self.check_wg_channel(ctx):
+            return
+
+        user_data = await self.config.user(ctx.author).all()
+        if not user_data['faction']:
+            await ctx.send("You haven't joined a faction yet! Use `.wg join <faction>` to join one.")
+            return
+
+        if not user_data['mission_history']:
+            await ctx.send("You haven't completed any missions yet.")
+            return
+
+        embed = discord.Embed(title=f"{ctx.author.display_name}'s Mission History", color=discord.Color.blue())
+        for mission in user_data['mission_history'][-10:]:  # Show last 10 missions
+            embed.add_field(
+                name=f"{mission['name']} ({mission['date']})",
+                value=f"Result: {'Success' if mission['success'] else 'Failure'}",
+                inline=False
+            )
+        embed.set_footer(text=f"Total completed missions: {len(user_data['completed_missions'])}")
+
+        await ctx.send(embed=embed)
+        
     @wg.command(name="faction_missions")
     async def wg_faction_missions(self, ctx):
         """View available faction-specific missions"""
@@ -331,19 +359,31 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                 if success:
                     await ctx.send(f"Congratulations! You successfully completed the mission: {mission['name']}!")
                     await self.apply_mission_rewards(ctx, user_data, mission['rewards'])
+                    
+                    # Update mission history and completed missions
+                    user_data['mission_history'].append({
+                        "name": mission['name'],
+                        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "success": True
+                    })
+                    if mission['name'] not in user_data['completed_missions']:
+                        user_data['completed_missions'].append(mission['name'])
+                    
                     # Increase skills
                     for skill, increase in mission['rewards']['skill_increase'].items():
                         user_data['skills'][skill] += increase
                     
-                    # Add mission to completed missions
-                    if 'completed_missions' not in user_data:
-                        user_data['completed_missions'] = []
-                    user_data['completed_missions'].append(mission['name'])
-                    
                     await self.config.user(ctx.author).set(user_data)
-                    await ctx.send(f"Your skills have increased and the mission has been added to your completed missions!")
+                    await ctx.send(f"Your skills have increased and the mission has been added to your history!")
                 else:
                     await ctx.send(f"Unfortunately, you failed to complete the mission: {mission['name']}. Better luck next time!")
+                    # Update mission history for failed missions too
+                    user_data['mission_history'].append({
+                        "name": mission['name'],
+                        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "success": False
+                    })
+                    await self.config.user(ctx.author).set(user_data)
                 
                 # Set cooldown
                 self.mission_cooldowns[cooldown_key] = datetime.now() + self.mission_cooldown_time
@@ -376,6 +416,28 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             embed.add_field(name="Skill Increases", value="\n".join(f"{k.replace('_', ' ').title()}: +{v:.1f}" for k, v in rewards['skill_increase'].items()), inline=False)
         
         await ctx.send(embed=embed)
+        
+    async def check_mission_prerequisites(self, user, mission):
+        user_data = await self.config.user(user).all()
+        prerequisites = mission['prerequisites']
+
+        # Check rank
+        if 'rank' in prerequisites:
+            if self.positions.index(user_data['position']) < self.positions.index(prerequisites['rank']):
+                return False
+
+        # Check skill levels
+        if 'skill_level' in prerequisites:
+            for skill, level in prerequisites['skill_level'].items():
+                if user_data['skills'][skill] < level:
+                    return False
+
+        # Check completed missions
+        if 'completed_missions' in prerequisites:
+            if not all(mission in user_data['completed_missions'] for mission in prerequisites['completed_missions']):
+                return False
+
+        return True
             
     @wg.command(name="faction_relations")
     async def wg_faction_relations(self, ctx):
