@@ -1049,7 +1049,7 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             consequences['faction_changes'][faction]['resources']['research_points'] = 5 if choice == 'A' else -2
             consequences['world_state_changes']['scientific_advancement'] += 2.0 if choice == 'A' else -1.0
     
-       for skill in self.faction_skills[faction]:
+        for skill in self.faction_skills[faction]:
             skill_bonus = user_data['skills'][skill] * 0.1
             for category in ['world_state_changes', 'resource_changes']:
                 for key in consequences[category]:
