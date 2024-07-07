@@ -526,9 +526,6 @@ class OnePieceMod(commands.Cog):
             message = f"🕰️ {user.name} has returned from the Void Century and can speak again! Their roles have been restored."
             await ctx.send(message)
             
-            # Log the unmute action
-            await self.log_action(ctx, user, "Returned from Void Century", reason, moderator=ctx.author)
-            
         except discord.Forbidden:
             await ctx.send(f"I don't have the authority to return {user.name} from the Void Century!")
         except discord.HTTPException:
@@ -541,7 +538,7 @@ class OnePieceMod(commands.Cog):
             if roles_to_add:
                 await user.add_roles(*roles_to_add, reason=f"Restoring roles after unmute: {reason}")
             self.muted_users.pop(user.id, None)
-
+            
     @commands.command()
     @checks.admin_or_permissions(manage_channels=True)
     async def restrict(self, ctx, channel: discord.TextChannel, role: discord.Role):
