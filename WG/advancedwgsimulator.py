@@ -7,187 +7,187 @@ from discord.ext import tasks
 
 class AdvancedWorldGovernmentSimulator(commands.Cog):
     def __init__(self, bot):
-    self.bot = bot
-    self.config = Config.get_conf(self, identifier=1234567890)
-    
-    self.all_skills = [
-        "diplomacy", "military", "economy", "intelligence", "science",
-        "naval_tactics", "justice_enforcement", "espionage", "assassination",
-        "devil_fruit_research", "weapon_development"
-    ]
-
-    self.positions = [
-        "Recruit", "Junior Official", "Senior Official", "Department Head", 
-        "Commodore", "Vice Admiral", "Admiral", "Fleet Admiral", "Gorosei Member", "Im-sama"
-    ]
-
-    self.faction_skills = {
-        "Marines": ["naval_tactics", "justice_enforcement"],
-        "Cipher Pol": ["espionage", "assassination"],
-        "Science Division": ["devil_fruit_research", "weapon_development"]
-    }
-
-    self.mission_cooldowns = {}
-    self.mission_cooldown_time = timedelta(hours=4)  # 4-hour cooldown
-
-    default_guild = {
-        "wg_channel": None,
-        "active_players": {},
-        "world_state": {
-            "piracy_level": 50,
-            "revolutionary_threat": 50,
-            "civilian_approval": 50,
-            "marine_strength": 50,
-            "world_stability": 50,
-            "economy": 50,
-            "scientific_advancement": 50
-        },
-        "ongoing_events": [],
-        "current_year": 1500,
-        "resources": {
-            "budget": 1000000,
-            "manpower": 100000,
-            "intelligence": 500
-        },
-        "yonko": ["Kaido", "Big Mom", "Shanks", "Blackbeard"],
-        "shichibukai": ["Dracule Mihawk", "Bartholomew Kuma", "Boa Hancock", "Crocodile", "Gecko Moria", "Jinbe", "Donquixote Doflamingo"],
-        "current_crisis": None,
-        "promotion_candidates": {},
-        "factions": {
-            "Marines": {
-                "strength": 100,
-                "reputation": 50,
-                "resources": {"ships": 100, "weapons": 1000}
-            },
-            "Cipher Pol": {
-                "strength": 50,
-                "reputation": 30,
-                "resources": {"agents": 50, "intel": 500}
-            },
-            "Science Division": {
-                "strength": 30,
-                "reputation": 40,
-                "resources": {"labs": 10, "research_points": 100}
-            }
-        },
-        "faction_relations": {
-            "Marines": {"Cipher Pol": 50, "Science Division": 50},
-            "Cipher Pol": {"Marines": 50, "Science Division": 50},
-            "Science Division": {"Marines": 50, "Cipher Pol": 50}
-        }
-    }
-
-    default_user = {
-        "position": None,
-        "faction": None,
-        "influence": 0,
-        "allies": [],
-        "enemies": [],
-        "decisions": [],
-        "skills": {skill: 1 for skill in self.all_skills},
-        "personal_resources": {
-            "wealth": 1000,
-            "connections": 10
-        },
-        "crisis_contributions": 0,
-        "reputation": {
-            "Marines": 50,
-            "Cipher Pol": 50,
-            "Science Division": 50,
-            "Civilians": 50,
-            "Pirates": 50,
-            "Revolutionaries": 50
-        }
-    }
-
-    self.config.register_guild(**default_guild)
-    self.config.register_user(**default_user)
-
-    self.faction_missions = {
-        "Marines": [
-            {
-                "name": "Buster Call Operation",
-                "description": "Lead a Buster Call operation against a pirate-controlled island.",
-                "required_skill": "naval_tactics",
-                "difficulty": 8,
-                "rewards": {
-                    "influence": 15,
-                    "reputation": {"Pirates": -15, "Civilians": -10, "Marines": 10},
-                    "resource_changes": {"manpower": -4000, "budget": -80000},
-                    "skill_increase": {"naval_tactics": 0.8, "military": 0.4}
-                }
-            },
-            {
-                "name": "Justice Enforcement Campaign",
-                "description": "Organize a large-scale campaign to enforce justice in a lawless region.",
-                "required_skill": "justice_enforcement",
-                "difficulty": 7,
-                "rewards": {
-                    "influence": 12,
-                    "reputation": {"Civilians": 8, "Pirates": -8},
-                    "resource_changes": {"manpower": -2500, "budget": -40000},
-                    "skill_increase": {"justice_enforcement": 0.7, "diplomacy": 0.3}
-                }
-            }
-        ],
-        "Cipher Pol": [
-            {
-                "name": "Infiltrate Revolutionary Army",
-                "description": "Infiltrate a Revolutionary Army cell and gather critical intelligence.",
-                "required_skill": "espionage",
-                "difficulty": 9,
-                "rewards": {
-                    "influence": 18,
-                    "reputation": {"Revolutionaries": -18, "Pirates": -5},
-                    "resource_changes": {"intelligence": 150, "budget": -70000},
-                    "skill_increase": {"espionage": 0.9, "intelligence": 0.5}
-                }
-            },
-            {
-                "name": "Eliminate Threat",
-                "description": "Assassinate a high-profile target threatening World Government stability.",
-                "required_skill": "assassination",
-                "difficulty": 10,
-                "rewards": {
-                    "influence": 20,
-                    "reputation": {"Civilians": -12, "Pirates": -8},
-                    "resource_changes": {"intelligence": 80, "budget": -100000},
-                    "skill_increase": {"assassination": 1.0, "military": 0.4}
-                }
-            }
-        ],
-        "Science Division": [
-            {
-                "name": "Devil Fruit Experimentation",
-                "description": "Conduct groundbreaking research on a newly discovered Devil Fruit.",
-                "required_skill": "devil_fruit_research",
-                "difficulty": 8,
-                "rewards": {
-                    "influence": 16,
-                    "reputation": {"Marines": 8, "Cipher Pol": 5},
-                    "resource_changes": {"budget": -120000, "scientific_advancement": 12},
-                    "skill_increase": {"devil_fruit_research": 0.8, "science": 0.4}
-                }
-            },
-            {
-                "name": "Advanced Weapon Project",
-                "description": "Develop a cutting-edge weapon to combat powerful pirates and revolutionaries.",
-                "required_skill": "weapon_development",
-                "difficulty": 9,
-                "rewards": {
-                    "influence": 18,
-                    "reputation": {"Marines": 12, "Pirates": -8},
-                    "resource_changes": {"budget": -150000, "scientific_advancement": 15},
-                    "skill_increase": {"weapon_development": 0.9, "science": 0.5}
-                }
-            }
+        self.bot = bot
+        self.config = Config.get_conf(self, identifier=1234567890)
+        
+        self.all_skills = [
+            "diplomacy", "military", "economy", "intelligence", "science",
+            "naval_tactics", "justice_enforcement", "espionage", "assassination",
+            "devil_fruit_research", "weapon_development"
         ]
-    }
-
-    self.world_events.start()
-    self.resource_update.start()
-    self.crisis_check.start()
-    self.promotion_cycle.start()
+    
+        self.positions = [
+            "Recruit", "Junior Official", "Senior Official", "Department Head", 
+            "Commodore", "Vice Admiral", "Admiral", "Fleet Admiral", "Gorosei Member", "Im-sama"
+        ]
+    
+        self.faction_skills = {
+            "Marines": ["naval_tactics", "justice_enforcement"],
+            "Cipher Pol": ["espionage", "assassination"],
+            "Science Division": ["devil_fruit_research", "weapon_development"]
+        }
+    
+        self.mission_cooldowns = {}
+        self.mission_cooldown_time = timedelta(hours=4)  # 4-hour cooldown
+    
+        default_guild = {
+            "wg_channel": None,
+            "active_players": {},
+            "world_state": {
+                "piracy_level": 50,
+                "revolutionary_threat": 50,
+                "civilian_approval": 50,
+                "marine_strength": 50,
+                "world_stability": 50,
+                "economy": 50,
+                "scientific_advancement": 50
+            },
+            "ongoing_events": [],
+            "current_year": 1500,
+            "resources": {
+                "budget": 1000000,
+                "manpower": 100000,
+                "intelligence": 500
+            },
+            "yonko": ["Kaido", "Big Mom", "Shanks", "Blackbeard"],
+            "shichibukai": ["Dracule Mihawk", "Bartholomew Kuma", "Boa Hancock", "Crocodile", "Gecko Moria", "Jinbe", "Donquixote Doflamingo"],
+            "current_crisis": None,
+            "promotion_candidates": {},
+            "factions": {
+                "Marines": {
+                    "strength": 100,
+                    "reputation": 50,
+                    "resources": {"ships": 100, "weapons": 1000}
+                },
+                "Cipher Pol": {
+                    "strength": 50,
+                    "reputation": 30,
+                    "resources": {"agents": 50, "intel": 500}
+                },
+                "Science Division": {
+                    "strength": 30,
+                    "reputation": 40,
+                    "resources": {"labs": 10, "research_points": 100}
+                }
+            },
+            "faction_relations": {
+                "Marines": {"Cipher Pol": 50, "Science Division": 50},
+                "Cipher Pol": {"Marines": 50, "Science Division": 50},
+                "Science Division": {"Marines": 50, "Cipher Pol": 50}
+            }
+        }
+    
+        default_user = {
+            "position": None,
+            "faction": None,
+            "influence": 0,
+            "allies": [],
+            "enemies": [],
+            "decisions": [],
+            "skills": {skill: 1 for skill in self.all_skills},
+            "personal_resources": {
+                "wealth": 1000,
+                "connections": 10
+            },
+            "crisis_contributions": 0,
+            "reputation": {
+                "Marines": 50,
+                "Cipher Pol": 50,
+                "Science Division": 50,
+                "Civilians": 50,
+                "Pirates": 50,
+                "Revolutionaries": 50
+            }
+        }
+    
+        self.config.register_guild(**default_guild)
+        self.config.register_user(**default_user)
+    
+        self.faction_missions = {
+            "Marines": [
+                {
+                    "name": "Buster Call Operation",
+                    "description": "Lead a Buster Call operation against a pirate-controlled island.",
+                    "required_skill": "naval_tactics",
+                    "difficulty": 8,
+                    "rewards": {
+                        "influence": 15,
+                        "reputation": {"Pirates": -15, "Civilians": -10, "Marines": 10},
+                        "resource_changes": {"manpower": -4000, "budget": -80000},
+                        "skill_increase": {"naval_tactics": 0.8, "military": 0.4}
+                    }
+                },
+                {
+                    "name": "Justice Enforcement Campaign",
+                    "description": "Organize a large-scale campaign to enforce justice in a lawless region.",
+                    "required_skill": "justice_enforcement",
+                    "difficulty": 7,
+                    "rewards": {
+                        "influence": 12,
+                        "reputation": {"Civilians": 8, "Pirates": -8},
+                        "resource_changes": {"manpower": -2500, "budget": -40000},
+                        "skill_increase": {"justice_enforcement": 0.7, "diplomacy": 0.3}
+                    }
+                }
+            ],
+            "Cipher Pol": [
+                {
+                    "name": "Infiltrate Revolutionary Army",
+                    "description": "Infiltrate a Revolutionary Army cell and gather critical intelligence.",
+                    "required_skill": "espionage",
+                    "difficulty": 9,
+                    "rewards": {
+                        "influence": 18,
+                        "reputation": {"Revolutionaries": -18, "Pirates": -5},
+                        "resource_changes": {"intelligence": 150, "budget": -70000},
+                        "skill_increase": {"espionage": 0.9, "intelligence": 0.5}
+                    }
+                },
+                {
+                    "name": "Eliminate Threat",
+                    "description": "Assassinate a high-profile target threatening World Government stability.",
+                    "required_skill": "assassination",
+                    "difficulty": 10,
+                    "rewards": {
+                        "influence": 20,
+                        "reputation": {"Civilians": -12, "Pirates": -8},
+                        "resource_changes": {"intelligence": 80, "budget": -100000},
+                        "skill_increase": {"assassination": 1.0, "military": 0.4}
+                    }
+                }
+            ],
+            "Science Division": [
+                {
+                    "name": "Devil Fruit Experimentation",
+                    "description": "Conduct groundbreaking research on a newly discovered Devil Fruit.",
+                    "required_skill": "devil_fruit_research",
+                    "difficulty": 8,
+                    "rewards": {
+                        "influence": 16,
+                        "reputation": {"Marines": 8, "Cipher Pol": 5},
+                        "resource_changes": {"budget": -120000, "scientific_advancement": 12},
+                        "skill_increase": {"devil_fruit_research": 0.8, "science": 0.4}
+                    }
+                },
+                {
+                    "name": "Advanced Weapon Project",
+                    "description": "Develop a cutting-edge weapon to combat powerful pirates and revolutionaries.",
+                    "required_skill": "weapon_development",
+                    "difficulty": 9,
+                    "rewards": {
+                        "influence": 18,
+                        "reputation": {"Marines": 12, "Pirates": -8},
+                        "resource_changes": {"budget": -150000, "scientific_advancement": 15},
+                        "skill_increase": {"weapon_development": 0.9, "science": 0.5}
+                    }
+                }
+            ]
+        }
+    
+        self.world_events.start()
+        self.resource_update.start()
+        self.crisis_check.start()
+        self.promotion_cycle.start()
 
     @commands.group()
     async def wg(self, ctx):
