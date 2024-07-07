@@ -110,6 +110,11 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                     "description": "Lead a Buster Call operation against a pirate-controlled island.",
                     "required_skill": "naval_tactics",
                     "difficulty": 8,
+                    "prerequisites": {
+                        "rank": "Vice Admiral",
+                        "skill_level": {"naval_tactics": 5},
+                        "completed_missions": ["Justice Enforcement Campaign"]
+                    },
                     "rewards": {
                         "influence": 15,
                         "reputation": {"Pirates": -15, "Civilians": -10, "Marines": 10},
@@ -122,6 +127,10 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                     "description": "Organize a large-scale campaign to enforce justice in a lawless region.",
                     "required_skill": "justice_enforcement",
                     "difficulty": 7,
+                    "prerequisites": {
+                        "rank": "Commodore",
+                        "skill_level": {"justice_enforcement": 3}
+                    },
                     "rewards": {
                         "influence": 12,
                         "reputation": {"Civilians": 8, "Pirates": -8},
@@ -136,6 +145,10 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                     "description": "Infiltrate a Revolutionary Army cell and gather critical intelligence.",
                     "required_skill": "espionage",
                     "difficulty": 9,
+                    "prerequisites": {
+                        "rank": "Senior Official",
+                        "skill_level": {"espionage": 6}
+                    },
                     "rewards": {
                         "influence": 18,
                         "reputation": {"Revolutionaries": -18, "Pirates": -5},
@@ -148,6 +161,11 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                     "description": "Assassinate a high-profile target threatening World Government stability.",
                     "required_skill": "assassination",
                     "difficulty": 10,
+                    "prerequisites": {
+                        "rank": "Department Head",
+                        "skill_level": {"assassination": 7},
+                        "completed_missions": ["Infiltrate Revolutionary Army"]
+                    },
                     "rewards": {
                         "influence": 20,
                         "reputation": {"Civilians": -12, "Pirates": -8},
@@ -162,6 +180,10 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                     "description": "Conduct groundbreaking research on a newly discovered Devil Fruit.",
                     "required_skill": "devil_fruit_research",
                     "difficulty": 8,
+                    "prerequisites": {
+                        "rank": "Senior Official",
+                        "skill_level": {"devil_fruit_research": 5}
+                    },
                     "rewards": {
                         "influence": 16,
                         "reputation": {"Marines": 8, "Cipher Pol": 5},
@@ -174,6 +196,11 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                     "description": "Develop a cutting-edge weapon to combat powerful pirates and revolutionaries.",
                     "required_skill": "weapon_development",
                     "difficulty": 9,
+                    "prerequisites": {
+                        "rank": "Department Head",
+                        "skill_level": {"weapon_development": 6},
+                        "completed_missions": ["Devil Fruit Experimentation"]
+                    },
                     "rewards": {
                         "influence": 18,
                         "reputation": {"Marines": 12, "Pirates": -8},
@@ -183,7 +210,7 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                 }
             ]
         }
-    
+        
         self.world_events.start()
         self.resource_update.start()
         self.crisis_check.start()
@@ -223,13 +250,23 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
 
         embed = discord.Embed(title=f"{faction} Missions", color=discord.Color.blue())
         for i, mission in enumerate(missions, 1):
+            prerequisites_met = await self.check_mission_prerequisites(ctx.author, mission)
+            status = "Available" if prerequisites_met else "Locked"
             cooldown = self.mission_cooldowns.get(f"{ctx.author.id}_{i}", None)
-            status = "Available" if cooldown is None or cooldown < datetime.now() else f"On cooldown until {cooldown.strftime('%Y-%m-%d %H:%M:%S')}"
+            if cooldown and cooldown > datetime.now():
+                status = f"On cooldown until {cooldown.strftime('%Y-%m-%d %H:%M:%S')}"
+            
             embed.add_field(
                 name=f"{i}. {mission['name']} (Difficulty: {mission['difficulty']})",
                 value=f"Description: {mission['description']}\nRequired Skill: {mission['required_skill']}\nStatus: {status}",
                 inline=False
             )
+            if not prerequisites_met:
+                embed.add_field(
+                    name="Prerequisites",
+                    value=self.format_prerequisites(mission['prerequisites']),
+                    inline=False
+                )
         embed.set_footer(text="Use '.wg start_faction_mission <number>' to begin a mission.")
 
         await ctx.send(embed=embed)
@@ -263,6 +300,12 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             return
 
         mission = missions[mission_number - 1]
+
+        # Check prerequisites
+        if not await self.check_mission_prerequisites(ctx.author, mission):
+            await ctx.send("You don't meet the prerequisites for this mission. Check `.wg faction_missions` for details.")
+            return
+
         required_skill = mission['required_skill']
         skill_level = user_data['skills'][required_skill]
         success_chance = min(90, max(10, (skill_level / mission['difficulty']) * 100))
@@ -291,8 +334,14 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                     # Increase skills
                     for skill, increase in mission['rewards']['skill_increase'].items():
                         user_data['skills'][skill] += increase
+                    
+                    # Add mission to completed missions
+                    if 'completed_missions' not in user_data:
+                        user_data['completed_missions'] = []
+                    user_data['completed_missions'].append(mission['name'])
+                    
                     await self.config.user(ctx.author).set(user_data)
-                    await ctx.send(f"Your skills have increased!")
+                    await ctx.send(f"Your skills have increased and the mission has been added to your completed missions!")
                 else:
                     await ctx.send(f"Unfortunately, you failed to complete the mission: {mission['name']}. Better luck next time!")
                 
@@ -302,7 +351,7 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                 await ctx.send("Mission aborted. You can try again later.")
         except asyncio.TimeoutError:
             await ctx.send("You took too long to respond. The mission opportunity has passed.")
-
+            
     async def apply_mission_rewards(self, ctx, user_data, rewards):
         guild_data = await self.config.guild(ctx.guild).all()
         
