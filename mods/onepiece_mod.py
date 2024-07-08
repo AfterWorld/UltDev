@@ -354,14 +354,19 @@ class OnePieceMod(commands.Cog):
             )
             embed.add_field(name="Crimes", value=reason, inline=False)
             embed.add_field(name="Warden's Note", value=ban_message, inline=False)
-            embed.set_image(url=ban_gif)
+            
+            # Instead of setting the image in the embed, we'll send it as a separate message
+            ban_text = f"{embed.title}\n\n{embed.description}\n\n**Crimes**\n{reason}\n\n**Warden's Note**\n{ban_message}"
     
             # Send the ban message to the general chat or the current channel
             general_chat = self.bot.get_channel(self.general_chat_id)
             if general_chat:
-                await general_chat.send(embed=embed)
+                await general_chat.send(ban_text)
+                await general_chat.send(ban_gif)
             else:
-                await ctx.send("Couldn't find the general chat channel. Posting here instead:", embed=embed)
+                await ctx.send("Couldn't find the general chat channel. Posting here instead:")
+                await ctx.send(ban_text)
+                await ctx.send(ban_gif)
     
             # Log the action
             await self.log_action(ctx, member, "Banished to Impel Down", reason, moderator=ctx.author)
