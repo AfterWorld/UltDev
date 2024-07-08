@@ -333,41 +333,54 @@ class OnePieceMod(commands.Cog):
     async def ban(self, ctx, member: discord.Member, *, reason: str = "Mutiny against the crew!"):
         """Banish a pirate to Impel Down and erase their messages."""
         try:
-            # Delete all messages from the user across all channels
-            for channel in ctx.guild.text_channels:
-                def check(message):
-                    return message.author == member
+            # Ensure the bot has permission to ban
+            if not ctx.guild.me.guild_permissions.ban_members:
+                return await ctx.send("I don't have the authority to banish pirates to Impel Down!")
     
-                await channel.purge(limit=None, check=check)
+            # Check role hierarchy
+            if ctx.author.top_role <= member.top_role or ctx.guild.me.top_role <= member.top_role:
+                return await ctx.send("Ye can't banish a pirate of equal or higher rank!")
     
             # Ban the user
             await ctx.guild.ban(member, reason=reason, delete_message_days=7)
     
+            # Select a random ban message
             ban_message, ban_gif = random.choice(self.ban_messages)
-            
-            embed = discord.Embed(title="⛓️ Pirate Banished to Impel Down! ⛓️", description=f"{member.name} has been locked away!", color=0xff0000)
+    
+            embed = discord.Embed(
+                title="⛓️ Pirate Banished to Impel Down! ⛓️",
+                description=f"{member.name} has been locked away!",
+                color=0xff0000
+            )
             embed.add_field(name="Crimes", value=reason, inline=False)
             embed.add_field(name="Warden's Note", value=ban_message, inline=False)
             embed.set_image(url=ban_gif)
-            
+    
+            # Send the ban message to the general chat or the current channel
             general_chat = self.bot.get_channel(self.general_chat_id)
             if general_chat:
                 await general_chat.send(embed=embed)
             else:
                 await ctx.send("Couldn't find the general chat channel. Posting here instead:", embed=embed)
-            
-            await self.log_action(ctx, member, "Banished to Impel Down (all messages deleted)", reason, moderator=ctx.author)
-            
+    
+            # Log the action
+            await self.log_action(ctx, member, "Banished to Impel Down", reason, moderator=ctx.author)
+    
+            # Create a case in the modlog
             case = await modlog.create_case(
                 self.bot, ctx.guild, ctx.message.created_at, action_type="ban",
                 user=member, moderator=ctx.author, reason=reason
             )
             if case:
                 await ctx.send(f"The traitor's crimes have been recorded in the ship's log. Case number: {case.case_number}")
+    
         except discord.Forbidden:
             await ctx.send("I don't have the authority to banish that pirate to Impel Down!")
-        except discord.HTTPException:
-            await ctx.send("There was an error while trying to banish that pirate. The Marines must be jamming our signals!")
+        except discord.HTTPException as e:
+            await ctx.send(f"There was an error while trying to banish that pirate. The Marines must be jamming our signals! Error: {e}")
+        except Exception as e:
+            await ctx.send(f"An unexpected error occurred: {e}")
+            self.logger.error(f"Error in ban command: {e}", exc_info=True)
             
     @commands.command()
     @checks.mod_or_permissions(manage_roles=True)
