@@ -1873,7 +1873,7 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
 
             # After a decision is made, potentially generate a news item
             if random.random() < 0.5:  # 50% chance to generate news from a decision
-                decision_news = self.create_decision_news(event, choice, consequences)
+                decision_news = self.create_decision_news(event, choice, consequences, guild_data['current_year'])
                 self.news_feed.insert(0, decision_news)
                 if len(self.news_feed) > self.max_news_items:
                     self.news_feed.pop()
@@ -1885,14 +1885,15 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         except asyncio.TimeoutError:
             await ctx.send("You took too long to decide. The opportunity has passed.")
 
-    def create_decision_news(self, event, choice, consequences):
+    def create_decision_news(self, event, choice, consequences, current_year):
         headline = f"World Government {'approves' if choice == 'A' else 'rejects'} {event['description'].lower()}"
         return {
             "date": datetime.now(),
-            "year": self.config.guild(ctx.guild).current_year(),
+            "year": current_year,
             "headline": headline,
             "importance": "high" if abs(consequences['influence_change']) > 3 else "normal"
         }
+
 
     @wg.command(name="missions")
     async def wg_missions(self, ctx):
