@@ -388,9 +388,13 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         self.promotion_cycle.start()
         self.current_world_event = None
         self.world_event_loop.start()  # Renamed from world_event_task to world_event_loop
-
+        
     def cog_unload(self):
-        self.world_event_loop.cancel()  # Make sure to cancel the task when the cog is unloaded
+        # Cancel all background tasks
+        self.resource_update.cancel()
+        self.crisis_check.cancel()
+        self.promotion_cycle.cancel()
+        self.world_event_loop.cancel()
         
     @tasks.loop(hours=24)
     async def world_event_loop(self):
