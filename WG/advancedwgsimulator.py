@@ -1229,7 +1229,7 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             return
     
         embed = discord.Embed(title=f"{member.display_name}'s World Government Profile", color=discord.Color.blue())
-        embed.set_thumbnail(url=member.avatar_url)
+        embed.set_thumbnail(url=user.display_avatar.url)
     
         # Basic Info
         embed.add_field(name="Faction", value=user_data['faction'], inline=True)
