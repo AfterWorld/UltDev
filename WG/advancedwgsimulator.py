@@ -91,6 +91,45 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             }
         }
         
+        self.undercover_missions = {
+            "Gather Intel": {
+                "description": "Collect information on pirate activities.",
+                "risk": 10,
+                "reward": {"intelligence": 50},
+                "exposure_increase": 5
+            },
+            "Sabotage Ship": {
+                "description": "Damage a pirate ship to delay their operations.",
+                "risk": 20,
+                "reward": {"piracy_level": -3},
+                "exposure_increase": 10
+            },
+            "Steal Treasure": {
+                "description": "Steal valuable treasure for the World Government.",
+                "risk": 30,
+                "reward": {"budget": 10000},
+                "exposure_increase": 15
+            }
+        }
+
+        self.cp_training_modules = {
+            "Stealth": {
+                "description": "Train in the art of moving unseen.",
+                "duration": timedelta(days=3),
+                "skill_increase": {"espionage": 2}
+            },
+            "Interrogation": {
+                "description": "Learn advanced interrogation techniques.",
+                "duration": timedelta(days=4),
+                "skill_increase": {"intelligence": 2}
+            },
+            "Combat": {
+                "description": "Master close-quarters combat skills.",
+                "duration": timedelta(days=5),
+                "skill_increase": {"military": 2}
+            }
+        }
+        
         self.mission_cooldowns = {}
         self.mission_cooldown_time = timedelta(hours=4)  # 4-hour cooldown
     
@@ -154,6 +193,10 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             "mission_history": [],
             "unlocked_missions": [],
             "unlocked_abilities": [],
+            "is_undercover": False,
+            "exposure_level": 0,
+            "undercover_cooldown": None,
+            "cp_trainees": [],
             "devil_fruit": None,
             "df_mastery": 0,
             "skills": {skill: 1 for skill in self.all_skills},
@@ -531,6 +574,203 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             "headline": headline,
             "importance": "high" if chosen_topic['condition'] != True else "normal"
         }
+        
+    @commands.group(name="undercover")
+    async def undercover(self, ctx):
+        """Undercover Pirate Infiltration commands"""
+        if ctx.invoked_subcommand is None:
+            await ctx.send("Use `.help undercover` to see available Undercover Pirate Infiltration commands.")
+
+    @undercover.command(name="join")
+    async def undercover_join(self, ctx):
+        """Become an undercover agent within a pirate crew"""
+        if not await self.check_wg_channel(ctx):
+            return
+
+        user_data = await self.config.user(ctx.author).all()
+        if user_data['is_undercover']:
+            await ctx.send("You are already undercover!")
+            return
+
+        if user_data['undercover_cooldown'] and user_data['undercover_cooldown'] > datetime.now():
+            time_left = user_data['undercover_cooldown'] - datetime.now()
+            await ctx.send(f"You must wait {time_left.days} days and {time_left.seconds // 3600} hours before going undercover again.")
+            return
+
+        user_data['is_undercover'] = True
+        user_data['exposure_level'] = 0
+        await self.config.user(ctx.author).set(user_data)
+        await ctx.send("You have successfully gone undercover within a pirate crew. Be careful not to blow your cover!")
+
+    @undercover.command(name="mission")
+    async def undercover_mission(self, ctx, *, mission_name: str):
+        """Perform an undercover mission"""
+        if not await self.check_wg_channel(ctx):
+            return
+
+        user_data = await self.config.user(ctx.author).all()
+        if not user_data['is_undercover']:
+            await ctx.send("You are not currently undercover. Use `.undercover join` to go undercover first.")
+            return
+
+        if mission_name not in self.undercover_missions:
+            await ctx.send(f"Invalid mission. Choose from: {', '.join(self.undercover_missions.keys())}")
+            return
+
+        mission = self.undercover_missions[mission_name]
+        exposure_chance = mission['risk'] + user_data['exposure_level']
+
+        embed = discord.Embed(title=f"Undercover Mission: {mission_name}", color=discord.Color.red())
+        embed.add_field(name="Description", value=mission['description'], inline=False)
+        embed.add_field(name="Risk", value=f"{mission['risk']}%", inline=True)
+        embed.add_field(name="Current Exposure", value=f"{user_data['exposure_level']}%", inline=True)
+        embed.add_field(name="Chance of Being Exposed", value=f"{exposure_chance}%", inline=True)
+        embed.add_field(name="Confirm", value="React with ✅ to start the mission or ❌ to cancel.", inline=False)
+
+        message = await ctx.send(embed=embed)
+        await message.add_reaction("✅")
+        await message.add_reaction("❌")
+
+        def check(reaction, user):
+            return user == ctx.author and str(reaction.emoji) in ["✅", "❌"] and reaction.message.id == message.id
+
+        try:
+            reaction, user = await self.bot.wait_for('reaction_add', timeout=60.0, check=check)
+            if str(reaction.emoji) == "✅":
+                if random.random() * 100 < exposure_chance:
+                    # Mission failed, cover blown
+                    user_data['is_undercover'] = False
+                    user_data['undercover_cooldown'] = datetime.now() + timedelta(days=30)
+                    await self.config.user(ctx.author).set(user_data)
+                    await ctx.send("Your cover has been blown! You've been extracted and cannot go undercover again for 30 days.")
+                else:
+                    # Mission successful
+                    guild_data = await self.config.guild(ctx.guild).all()
+                    for key, value in mission['reward'].items():
+                        if key in guild_data['world_state']:
+                            guild_data['world_state'][key] = max(0, min(100, guild_data['world_state'][key] + value))
+                        elif key in guild_data['resources']:
+                            guild_data['resources'][key] += value
+                    await self.config.guild(ctx.guild).set(guild_data)
+
+                    user_data['exposure_level'] += mission['exposure_increase']
+                    await self.config.user(ctx.author).set(user_data)
+
+                    await ctx.send(f"Mission successful! Reward: {', '.join([f'{k}: {v}' for k, v in mission['reward'].items()])}. Your exposure level has increased to {user_data['exposure_level']}%.")
+            else:
+                await ctx.send("Mission aborted.")
+        except asyncio.TimeoutError:
+            await ctx.send("You took too long to respond. The mission was cancelled.")
+
+    @undercover.command(name="extract")
+    async def undercover_extract(self, ctx):
+        """Extract yourself from undercover operation"""
+        if not await self.check_wg_channel(ctx):
+            return
+
+        user_data = await self.config.user(ctx.author).all()
+        if not user_data['is_undercover']:
+            await ctx.send("You are not currently undercover.")
+            return
+
+        user_data['is_undercover'] = False
+        user_data['exposure_level'] = 0
+        user_data['undercover_cooldown'] = datetime.now() + timedelta(days=7)
+        await self.config.user(ctx.author).set(user_data)
+        await ctx.send("You have been successfully extracted from your undercover operation. You cannot go undercover again for 7 days.")
+
+    @commands.group(name="cipherpoltraining")
+    @commands.has_role("Cipher Pol")  # Ensure only Cipher Pol members can use these commands
+    async def cipherpoltraining(self, ctx):
+        """Cipher Pol Recruitment and Training commands"""
+        if ctx.invoked_subcommand is None:
+            await ctx.send("Use `.help cipherpoltraining` to see available Cipher Pol Training commands.")
+
+    @cipherpoltraining.command(name="recruit")
+    async def cp_recruit(self, ctx, trainee: discord.Member):
+        """Recruit a new Cipher Pol trainee"""
+        if not await self.check_wg_channel(ctx):
+            return
+
+        trainer_data = await self.config.user(ctx.author).all()
+        trainee_data = await self.config.user(trainee).all()
+
+        if trainee.id in trainer_data['cp_trainees']:
+            await ctx.send("This person is already your trainee.")
+            return
+
+        if len(trainer_data['cp_trainees']) >= 3:
+            await ctx.send("You cannot train more than 3 recruits at a time.")
+            return
+
+        if trainee_data['faction'] != "Cipher Pol":
+            await ctx.send("You can only recruit members of Cipher Pol.")
+            return
+
+        trainer_data['cp_trainees'].append(trainee.id)
+        await self.config.user(ctx.author).set(trainer_data)
+        await ctx.send(f"{trainee.display_name} has been recruited as your Cipher Pol trainee.")
+
+    @cipherpoltraining.command(name="train")
+    async def cp_train(self, ctx, trainee: discord.Member, *, module: str):
+        """Start a training module for a Cipher Pol trainee"""
+        if not await self.check_wg_channel(ctx):
+            return
+
+        trainer_data = await self.config.user(ctx.author).all()
+        trainee_data = await self.config.user(trainee).all()
+
+        if trainee.id not in trainer_data['cp_trainees']:
+            await ctx.send("This person is not your trainee.")
+            return
+
+        if module not in self.cp_training_modules:
+            await ctx.send(f"Invalid training module. Choose from: {', '.join(self.cp_training_modules.keys())}")
+            return
+
+        training = self.cp_training_modules[module]
+
+        embed = discord.Embed(title=f"Cipher Pol Training: {module}", color=discord.Color.blue())
+        embed.add_field(name="Description", value=training['description'], inline=False)
+        embed.add_field(name="Duration", value=f"{training['duration'].days} days", inline=True)
+        embed.add_field(name="Skill Increase", value=f"{next(iter(training['skill_increase'].keys()))}: +{next(iter(training['skill_increase'].values()))}", inline=True)
+        embed.add_field(name="Confirm", value="React with ✅ to start the training or ❌ to cancel.", inline=False)
+
+        message = await ctx.send(embed=embed)
+        await message.add_reaction("✅")
+        await message.add_reaction("❌")
+
+        def check(reaction, user):
+            return user == ctx.author and str(reaction.emoji) in ["✅", "❌"] and reaction.message.id == message.id
+
+        try:
+            reaction, user = await self.bot.wait_for('reaction_add', timeout=60.0, check=check)
+            if str(reaction.emoji) == "✅":
+                # Start the training
+                await ctx.send(f"Training '{module}' has started for {trainee.display_name}. It will be completed in {training['duration'].days} days.")
+                
+                # Schedule training completion
+                await asyncio.sleep(training['duration'].total_seconds())
+                await self.complete_cp_training(ctx.guild, trainee, module)
+            else:
+                await ctx.send("Training cancelled.")
+        except asyncio.TimeoutError:
+            await ctx.send("You took too long to respond. The training was cancelled.")
+
+    async def complete_cp_training(self, guild, trainee, module):
+        trainee_data = await self.config.user(trainee).all()
+        training = self.cp_training_modules[module]
+
+        # Apply skill increase
+        for skill, increase in training['skill_increase'].items():
+            trainee_data['skills'][skill] += increase
+
+        await self.config.user(trainee).set(trainee_data)
+
+        # Notify in the WG channel
+        channel = self.bot.get_channel(await self.config.guild(guild).wg_channel())
+        if channel:
+            await channel.send(f"{trainee.mention} has completed the {module} training module. Their {next(iter(training['skill_increase'].keys()))} skill has increased by {next(iter(training['skill_increase'].values()))}.")
     
     @commands.group(name="news")
     async def news(self, ctx):
