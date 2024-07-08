@@ -1213,6 +1213,57 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         """World Government Simulator commands"""
         if ctx.invoked_subcommand is None:
             await ctx.send("Use `.help wg` to see available World Government Simulator commands.")
+
+    @commands.command(name="profile")
+    async def wg_profile(self, ctx, member: discord.Member = None):
+        """Display the World Government Simulator profile of a user"""
+        if not await self.check_wg_channel(ctx):
+            return
+    
+        if member is None:
+            member = ctx.author
+    
+        user_data = await self.config.user(member).all()
+        if not user_data['faction']:
+            await ctx.send(f"{member.display_name} has not joined the World Government Simulator.")
+            return
+    
+        embed = discord.Embed(title=f"{member.display_name}'s World Government Profile", color=discord.Color.blue())
+        embed.set_thumbnail(url=member.avatar_url)
+    
+        # Basic Info
+        embed.add_field(name="Faction", value=user_data['faction'], inline=True)
+        embed.add_field(name="Position", value=user_data['position'], inline=True)
+        embed.add_field(name="Influence", value=user_data['influence'], inline=True)
+    
+        # Skills
+        skills_str = "\n".join([f"{k.capitalize()}: {v}" for k, v in user_data['skills'].items()])
+        embed.add_field(name="Skills", value=skills_str, inline=False)
+    
+        # Resources
+        resources_str = "\n".join([f"{k.capitalize()}: {v}" for k, v in user_data['personal_resources'].items()])
+        embed.add_field(name="Personal Resources", value=resources_str, inline=False)
+    
+        # Reputation
+        reputation_str = "\n".join([f"{k}: {v}" for k, v in user_data['reputation'].items()])
+        embed.add_field(name="Reputation", value=reputation_str, inline=False)
+    
+        # Devil Fruit
+        if user_data['devil_fruit']:
+            embed.add_field(name="Devil Fruit", value=f"{user_data['devil_fruit']} (Mastery: {user_data['df_mastery']}%)", inline=False)
+        
+        # Undercover Status
+        if user_data['is_undercover']:
+            embed.add_field(name="Undercover Status", value=f"Active (Exposure: {user_data['exposure_level']}%)", inline=False)
+    
+        # Completed Missions
+        completed_missions = len(user_data.get('completed_missions', []))
+        embed.add_field(name="Completed Missions", value=str(completed_missions), inline=True)
+    
+        # Crisis Contributions
+        embed.add_field(name="Crisis Contributions", value=str(user_data['crisis_contributions']), inline=True)
+    
+        await ctx.send(embed=embed)
                 
         
     @wg.command(name="setup")
