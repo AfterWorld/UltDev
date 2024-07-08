@@ -129,6 +129,78 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
     
         self.config.register_guild(**default_guild)
         self.config.register_user(**default_user)
+        
+        self.world_events = [
+            {
+                "name": "Pirate Alliance Formation",
+                "description": "A powerful alliance of pirate crews has formed in the New World.",
+                "effects": {
+                    "piracy_level": 15,
+                    "marine_strength": -5,
+                    "world_stability": -10
+                },
+                "duration": 7,  # days
+                "special_missions": [
+                    {
+                        "name": "Disrupt Pirate Alliance",
+                        "description": "Infiltrate and sabotage the newly formed pirate alliance.",
+                        "required_skill": "espionage",
+                        "difficulty": 9,
+                        "rewards": {
+                            "influence": 20,
+                            "reputation": {"Pirates": -15, "Marines": 10},
+                            "skill_increase": {"espionage": 1.0, "intelligence": 0.5}
+                        }
+                    }
+                ]
+            },
+            {
+                "name": "Revolutionary Army Uprising",
+                "description": "The Revolutionary Army has incited major uprisings across multiple kingdoms.",
+                "effects": {
+                    "revolutionary_threat": 20,
+                    "world_stability": -15,
+                    "civilian_approval": -5
+                },
+                "duration": 10,  # days
+                "special_missions": [
+                    {
+                        "name": "Quell Uprisings",
+                        "description": "Lead a task force to suppress the uprisings and restore order.",
+                        "required_skill": "military",
+                        "difficulty": 10,
+                        "rewards": {
+                            "influence": 25,
+                            "reputation": {"Revolutionaries": -20, "Civilians": -10, "Marines": 15},
+                            "skill_increase": {"military": 1.2, "diplomacy": 0.6}
+                        }
+                    }
+                ]
+            },
+            {
+                "name": "Ancient Weapon Discovery",
+                "description": "Rumors spread about the discovery of an Ancient Weapon's location.",
+                "effects": {
+                    "scientific_advancement": 10,
+                    "world_stability": -5,
+                    "piracy_level": 10
+                },
+                "duration": 14,  # days
+                "special_missions": [
+                    {
+                        "name": "Secure Ancient Weapon",
+                        "description": "Lead a covert operation to secure the Ancient Weapon before others can claim it.",
+                        "required_skill": "intelligence",
+                        "difficulty": 11,
+                        "rewards": {
+                            "influence": 30,
+                            "reputation": {"Science Division": 20, "Pirates": -10},
+                            "skill_increase": {"intelligence": 1.5, "science": 1.0}
+                        }
+                    }
+                ]
+            }
+        ]
     
         self.faction_missions = {
             "Marines": [
@@ -314,6 +386,137 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         self.resource_update.start()
         self.crisis_check.start()
         self.promotion_cycle.start()
+        self.current_world_event = None
+        self.world_event_task.start()
+
+    def cog_unload(self):
+        self.world_event_task.cancel()
+        
+    @tasks.loop(hours=24)
+    async def world_event_task(self):
+        if self.current_world_event:
+            self.current_world_event['duration'] -= 1
+            if self.current_world_event['duration'] <= 0:
+                await self.end_world_event()
+        elif random.random() < 0.3:  # 30% chance of a new event each day
+            await self.start_new_world_event()
+
+    async def start_new_world_event(self):
+        self.current_world_event = random.choice(self.world_events)
+        for guild in self.bot.guilds:
+            channel_id = await self.config.guild(guild).get_attr('wg_channel')()
+            if channel_id:
+                channel = self.bot.get_channel(channel_id)
+                if channel:
+                    await channel.send(f"**World Event: {self.current_world_event['name']}**\n{self.current_world_event['description']}")
+        
+        # Apply event effects
+        for guild in self.bot.guilds:
+            async with self.config.guild(guild).world_state() as world_state:
+                for key, value in self.current_world_event['effects'].items():
+                    if key in world_state:
+                        world_state[key] = max(0, min(100, world_state[key] + value))
+
+    async def end_world_event(self):
+        for guild in self.bot.guilds:
+            channel_id = await self.config.guild(guild).get_attr('wg_channel')()
+            if channel_id:
+                channel = self.bot.get_channel(channel_id)
+                if channel:
+                    await channel.send(f"The world event '{self.current_world_event['name']}' has ended.")
+        
+        # Revert event effects
+        for guild in self.bot.guilds:
+            async with self.config.guild(guild).world_state() as world_state:
+                for key, value in self.current_world_event['effects'].items():
+                    if key in world_state:
+                        world_state[key] = max(0, min(100, world_state[key] - value))
+        
+        self.current_world_event = None
+        
+    @commands.command()
+    async def world_status(self, ctx):
+        """Check the current world status and ongoing events"""
+        if not await self.check_wg_channel(ctx):
+            return
+
+        world_state = await self.config.guild(ctx.guild).world_state()
+        embed = discord.Embed(title="World Government Simulator - World Status", color=discord.Color.blue())
+        
+        for key, value in world_state.items():
+            embed.add_field(name=key.replace("_", " ").title(), value=f"{value}/100", inline=True)
+        
+        if self.current_world_event:
+            embed.add_field(name="Current World Event", value=f"{self.current_world_event['name']}\n{self.current_world_event['description']}", inline=False)
+            embed.add_field(name="Event Duration", value=f"{self.current_world_event['duration']} days remaining", inline=False)
+        else:
+            embed.add_field(name="Current World Event", value="No active world event", inline=False)
+
+        await ctx.send(embed=embed)
+
+    @commands.command()
+    async def special_mission(self, ctx):
+        """Attempt a special mission related to the current world event"""
+        if not await self.check_wg_channel(ctx):
+            return
+
+        if not self.current_world_event or not self.current_world_event['special_missions']:
+            await ctx.send("There are no special missions available at this time.")
+            return
+
+        user_data = await self.config.user(ctx.author).all()
+        mission = self.current_world_event['special_missions'][0]  # Assume one special mission per event for simplicity
+
+        required_skill = mission['required_skill']
+        skill_level = user_data['skills'].get(required_skill, 0)
+        success_chance = min(90, max(10, (skill_level / mission['difficulty']) * 100))
+
+        # Apply Devil Fruit bonus if applicable
+        if user_data['devil_fruit']:
+            df_bonus = user_data['df_mastery'] / 200  # Up to 50% bonus at max mastery
+            success_chance = min(95, success_chance * (1 + df_bonus))
+
+        embed = discord.Embed(title=f"Special Mission: {mission['name']}", color=discord.Color.gold())
+        embed.add_field(name="Description", value=mission['description'], inline=False)
+        embed.add_field(name="Required Skill", value=f"{required_skill.replace('_', ' ').title()}: {skill_level}", inline=True)
+        embed.add_field(name="Difficulty", value=mission['difficulty'], inline=True)
+        embed.add_field(name="Success Chance", value=f"{success_chance:.1f}%", inline=True)
+        embed.add_field(name="Rewards", value="\n".join(f"{k}: {v}" for k, v in mission['rewards'].items() if k != 'skill_increase'), inline=False)
+        
+        message = await ctx.send(embed=embed)
+        await message.add_reaction("✅")
+        await message.add_reaction("❌")
+
+        def check(reaction, user):
+            return user == ctx.author and str(reaction.emoji) in ["✅", "❌"] and reaction.message.id == message.id
+
+        try:
+            reaction, user = await self.bot.wait_for('reaction_add', timeout=60.0, check=check)
+            if str(reaction.emoji) == "✅":
+                success = random.random() * 100 < success_chance
+                if success:
+                    await ctx.send(f"Congratulations! You successfully completed the special mission: {mission['name']}!")
+                    await self.apply_mission_rewards(ctx, user_data, mission['rewards'])
+                    
+                    # Additional effects for completing a special mission
+                    self.current_world_event['duration'] = max(0, self.current_world_event['duration'] - 2)  # Reduce event duration
+                    
+                    # Modify world state based on mission success
+                    async with self.config.guild(ctx.guild).world_state() as world_state:
+                        world_state['world_stability'] = min(100, world_state['world_stability'] + 5)
+                        if 'piracy_level' in self.current_world_event['effects']:
+                            world_state['piracy_level'] = max(0, world_state['piracy_level'] - 5)
+                        if 'revolutionary_threat' in self.current_world_event['effects']:
+                            world_state['revolutionary_threat'] = max(0, world_state['revolutionary_threat'] - 5)
+                    
+                    await ctx.send("Your success has had a positive impact on the world state!")
+                else:
+                    await ctx.send(f"Unfortunately, you failed to complete the special mission: {mission['name']}. The world event continues unabated.")
+            else:
+                await ctx.send("Mission aborted. The world event continues.")
+        except asyncio.TimeoutError:
+            await ctx.send("You took too long to respond. The special mission opportunity has passed.")
+
 
     @commands.group()
     async def wg(self, ctx):
@@ -497,15 +700,14 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             return
 
         mission = missions[mission_number - 1]
-
-        # Check prerequisites
-        if not await self.check_mission_prerequisites(ctx.author, mission):
-            await ctx.send("You don't meet the prerequisites for this mission. Check `.wg faction_missions` for details.")
-            return
-
         required_skill = mission['required_skill']
         skill_level = user_data['skills'][required_skill]
         success_chance = min(90, max(10, (skill_level / mission['difficulty']) * 100))
+
+        # Modify success chance based on Devil Fruit
+        if user_data['devil_fruit']:
+            df_bonus = user_data['df_mastery'] / 200  # Up to 50% bonus at max mastery
+            success_chance = min(95, success_chance * (1 + df_bonus))
 
         embed = discord.Embed(title=f"Mission: {mission['name']}", color=discord.Color.gold())
         embed.add_field(name="Description", value=mission['description'], inline=False)
