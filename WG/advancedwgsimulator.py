@@ -399,7 +399,7 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             if self.current_world_event['duration'] <= 0:
                 await self.end_world_event()
         elif random.random() < 0.3:  # 30% chance of a new event each day
-            await self.start_new_world_event())
+            await self.start_new_world_event()
 
     async def start_new_world_event(self):
         self.current_world_event = random.choice(self.world_events)
