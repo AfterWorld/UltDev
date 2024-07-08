@@ -383,15 +383,19 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         }
         
         self.resource_update.start()
+        self.generate_news.start()
         self.crisis_check.start()
         self.promotion_cycle.start()
         self.current_world_event = None
         self.world_event_loop.start()  # Renamed from world_event_task to world_event_loop
+        self.news_feed = []
+        self.max_news_items = 50  # Maximum number of news items to store
         
     def cog_unload(self):
         # Cancel all background tasks
         self.resource_update.cancel()
         self.crisis_check.cancel()
+        self.generate_news.cancel()
         self.promotion_cycle.cancel()
         self.world_event_loop.cancel()
         
@@ -436,6 +440,99 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                         world_state[key] = max(0, min(100, world_state[key] - value))
         
         self.current_world_event = None
+        
+    @tasks.loop(hours=6)  # Generate news every 6 hours
+    async def generate_news(self):
+        for guild in self.bot.guilds:
+            guild_data = await self.config.guild(guild).all()
+            if guild_data['wg_channel']:
+                news_item = self.create_news_item(guild_data)
+                self.news_feed.insert(0, news_item)
+                if len(self.news_feed) > self.max_news_items:
+                    self.news_feed.pop()
+                
+                # Notify players of breaking news
+                if news_item['importance'] == 'high':
+                    channel = self.bot.get_channel(guild_data['wg_channel'])
+                    if channel:
+                        await channel.send(f"🚨 Breaking News: {news_item['headline']}")
+
+    def create_news_item(self, guild_data):
+        world_state = guild_data['world_state']
+        current_year = guild_data['current_year']
+        
+        news_topics = [
+            {"condition": world_state['piracy_level'] > 70, "template": "Pirate activity reaches alarming levels in {region}!"},
+            {"condition": world_state['revolutionary_threat'] > 60, "template": "Revolutionary Army gains support in {kingdom}"},
+            {"condition": world_state['marine_strength'] < 40, "template": "Marine forces struggle to maintain order in {sea}"},
+            {"condition": world_state['economy'] > 80, "template": "Economic boom in {kingdom} leads to increased World Government influence"},
+            {"condition": world_state['scientific_advancement'] > 75, "template": "Breakthrough in {field} research announced by World Government scientists"},
+            {"condition": True, "template": "Routine patrols in {sea} yield no significant findings"}
+        ]
+        
+        applicable_topics = [topic for topic in news_topics if topic['condition']]
+        chosen_topic = random.choice(applicable_topics)
+        
+        headline = chosen_topic['template'].format(
+            region=random.choice(["North Blue", "East Blue", "West Blue", "South Blue", "Grand Line", "New World"]),
+            kingdom=random.choice(["Alabasta", "Dressrosa", "Wano", "Germa Kingdom", "Fishman Island"]),
+            sea=random.choice(["Calm Belt", "Paradise", "New World"]),
+            field=random.choice(["Devil Fruit", "Weapons", "Medicine", "Navigation"])
+        )
+        
+        return {
+            "date": datetime.now(),
+            "year": current_year,
+            "headline": headline,
+            "importance": "high" if chosen_topic['condition'] != True else "normal"
+        }
+    
+    @commands.group(name="news")
+    async def news(self, ctx):
+        """News commands"""
+        if ctx.invoked_subcommand is None:
+            await ctx.send("Use `.help news` to see available news commands.")
+
+    @news.command(name="latest")
+    async def news_latest(self, ctx, count: int = 5):
+        """View the latest news items"""
+        if not await self.check_wg_channel(ctx):
+            return
+        
+        count = min(count, len(self.news_feed))
+        embed = discord.Embed(title="Latest World Government News", color=discord.Color.blue())
+        
+        for item in self.news_feed[:count]:
+            embed.add_field(
+                name=f"{item['year']} - {'🚨' if item['importance'] == 'high' else '📰'} {item['headline']}",
+                value=f"Date: {item['date'].strftime('%Y-%m-%d %H:%M')}",
+                inline=False
+            )
+        
+        await ctx.send(embed=embed)
+
+    @news.command(name="search")
+    async def news_search(self, ctx, *, keyword: str):
+        """Search news items containing a specific keyword"""
+        if not await self.check_wg_channel(ctx):
+            return
+        
+        matching_news = [item for item in self.news_feed if keyword.lower() in item['headline'].lower()]
+        
+        if not matching_news:
+            await ctx.send(f"No news items found containing '{keyword}'.")
+            return
+        
+        embed = discord.Embed(title=f"News Search Results for '{keyword}'", color=discord.Color.green())
+        
+        for item in matching_news[:5]:  # Show up to 5 matching items
+            embed.add_field(
+                name=f"{item['year']} - {'🚨' if item['importance'] == 'high' else '📰'} {item['headline']}",
+                value=f"Date: {item['date'].strftime('%Y-%m-%d %H:%M')}",
+                inline=False
+            )
+        
+        await ctx.send(embed=embed)
         
     @commands.command()
     async def world_status(self, ctx):
@@ -1074,27 +1171,27 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         """Make a political decision on current events"""
         if not await self.check_wg_channel(ctx):
             return
-    
+
         guild_data = await self.config.guild(ctx.guild).all()
         user_data = guild_data['active_players'].get(str(ctx.author.id))
         if not user_data:
             await ctx.send("You haven't joined the World Government yet! Use `!wg join` to start.")
             return
-    
+
         event = self.generate_event(user_data['position'], guild_data['world_state'])
         embed = discord.Embed(title="Political Decision", description=f"As a {user_data['position']}, you must decide:", color=discord.Color.gold())
         embed.add_field(name="Event", value=event['description'], inline=False)
         embed.add_field(name="Option A", value=event['option_a'], inline=True)
         embed.add_field(name="Option B", value=event['option_b'], inline=True)
         embed.add_field(name="How to Decide", value="React with 🅰️ for Option A or 🅱️ for Option B", inline=False)
-    
+
         message = await ctx.send(embed=embed)
         await message.add_reaction("🅰️")
         await message.add_reaction("🅱️")
-    
+
         def check(reaction, user):
             return user == ctx.author and str(reaction.emoji) in ["🅰️", "🅱️"] and reaction.message.id == message.id
-    
+
         try:
             reaction, user = await self.bot.wait_for('reaction_add', timeout=60.0, check=check)
             choice = 'A' if str(reaction.emoji) == "🅰️" else 'B'
@@ -1102,22 +1199,22 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             consequences = self.calculate_event_consequences(event, choice, user_data, guild_data)
             user_data['decisions'].append({"event": event['description'], "choice": choice})
             user_data['influence'] += consequences['influence_change']
-    
+
             for key, value in consequences['world_state_changes'].items():
                 guild_data['world_state'][key] = max(0, min(100, guild_data['world_state'][key] + value))
-    
+
             for key, value in consequences['resource_changes'].items():
                 guild_data['resources'][key] += value
-    
+
             for key, value in consequences['skill_changes'].items():
                 user_data['skills'][key] = max(1, user_data['skills'][key] + value)
-    
+
             for key, value in consequences['personal_resource_changes'].items():
                 user_data['personal_resources'][key] += value
-    
+
             guild_data['active_players'][str(ctx.author.id)] = user_data
             await self.config.guild(ctx.guild).set(guild_data)
-    
+
             result_embed = discord.Embed(title="Decision Results", color=discord.Color.blue())
             result_embed.add_field(name="Event", value=event['description'], inline=False)
             result_embed.add_field(name="Your Choice", value=f"Option {choice}: {event[f'option_{choice.lower()}']}", inline=False)
@@ -1130,13 +1227,31 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                 result_embed.add_field(name=f"{key.title()} Skill", value=f"{value:+.1f}", inline=True)
             for key, value in consequences['personal_resource_changes'].items():
                 result_embed.add_field(name=f"Personal {key.title()}", value=f"{value:+.1f}", inline=True)
-    
+
             await ctx.send(embed=result_embed)
-    
+
+            # After a decision is made, potentially generate a news item
+            if random.random() < 0.5:  # 50% chance to generate news from a decision
+                decision_news = self.create_decision_news(event, choice, consequences)
+                self.news_feed.insert(0, decision_news)
+                if len(self.news_feed) > self.max_news_items:
+                    self.news_feed.pop()
+                
+                await ctx.send(f"Your decision has made the news: {decision_news['headline']}")
+
             await self.check_for_promotion(ctx, user_data)
-    
+
         except asyncio.TimeoutError:
             await ctx.send("You took too long to decide. The opportunity has passed.")
+
+    def create_decision_news(self, event, choice, consequences):
+        headline = f"World Government {'approves' if choice == 'A' else 'rejects'} {event['description'].lower()}"
+        return {
+            "date": datetime.now(),
+            "year": self.config.guild(ctx.guild).current_year(),
+            "headline": headline,
+            "importance": "high" if abs(consequences['influence_change']) > 3 else "normal"
+        }
 
     @wg.command(name="missions")
     async def wg_missions(self, ctx):
