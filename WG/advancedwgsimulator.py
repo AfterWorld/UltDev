@@ -382,7 +382,6 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             ]
         }
         
-        self.world_events.start()
         self.resource_update.start()
         self.crisis_check.start()
         self.promotion_cycle.start()
