@@ -86,6 +86,8 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             "decisions": [],
             "completed_missions": [],
             "mission_history": [],
+            "unlocked_missions": [],
+            "unlocked_abilities": [],
             "skills": {skill: 1 for skill in self.all_skills},
             "personal_resources": {
                 "wealth": 1000,
@@ -108,6 +110,43 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         self.faction_missions = {
             "Marines": [
                 {
+                    "name": "Basic Training",
+                    "description": "Complete your basic Marine training.",
+                    "required_skill": "military",
+                    "difficulty": 3,
+                    "prerequisites": {},
+                    "rewards": {
+                        "influence": 5,
+                        "reputation": {"Marines": 5},
+                        "skill_increase": {"military": 0.5},
+                        "unlocks": {
+                            "missions": ["Justice Enforcement Campaign"],
+                            "abilities": ["Basic Combat Training"]
+                        }
+                    }
+                },
+                {
+                    "name": "Justice Enforcement Campaign",
+                    "description": "Organize a large-scale campaign to enforce justice in a lawless region.",
+                    "required_skill": "justice_enforcement",
+                    "difficulty": 7,
+                    "prerequisites": {
+                        "rank": "Commodore",
+                        "skill_level": {"justice_enforcement": 3},
+                        "completed_missions": ["Basic Training"]
+                    },
+                    "rewards": {
+                        "influence": 12,
+                        "reputation": {"Civilians": 8, "Pirates": -8},
+                        "resource_changes": {"manpower": -2500, "budget": -40000},
+                        "skill_increase": {"justice_enforcement": 0.7, "diplomacy": 0.3},
+                        "unlocks": {
+                            "missions": ["Buster Call Operation"],
+                            "abilities": ["Advanced Justice Enforcement"]
+                        }
+                    }
+                },
+                {
                     "name": "Buster Call Operation",
                     "description": "Lead a Buster Call operation against a pirate-controlled island.",
                     "required_skill": "naval_tactics",
@@ -121,27 +160,30 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                         "influence": 15,
                         "reputation": {"Pirates": -15, "Civilians": -10, "Marines": 10},
                         "resource_changes": {"manpower": -4000, "budget": -80000},
-                        "skill_increase": {"naval_tactics": 0.8, "military": 0.4}
-                    }
-                },
-                {
-                    "name": "Justice Enforcement Campaign",
-                    "description": "Organize a large-scale campaign to enforce justice in a lawless region.",
-                    "required_skill": "justice_enforcement",
-                    "difficulty": 7,
-                    "prerequisites": {
-                        "rank": "Commodore",
-                        "skill_level": {"justice_enforcement": 3}
-                    },
-                    "rewards": {
-                        "influence": 12,
-                        "reputation": {"Civilians": 8, "Pirates": -8},
-                        "resource_changes": {"manpower": -2500, "budget": -40000},
-                        "skill_increase": {"justice_enforcement": 0.7, "diplomacy": 0.3}
+                        "skill_increase": {"naval_tactics": 0.8, "military": 0.4},
+                        "unlocks": {
+                            "abilities": ["Buster Call Authority"]
+                        }
                     }
                 }
             ],
             "Cipher Pol": [
+                {
+                    "name": "Basic Espionage",
+                    "description": "Complete your basic Cipher Pol training.",
+                    "required_skill": "espionage",
+                    "difficulty": 3,
+                    "prerequisites": {},
+                    "rewards": {
+                        "influence": 5,
+                        "reputation": {"Cipher Pol": 5},
+                        "skill_increase": {"espionage": 0.5},
+                        "unlocks": {
+                            "missions": ["Infiltrate Revolutionary Army"],
+                            "abilities": ["Basic Stealth"]
+                        }
+                    }
+                },
                 {
                     "name": "Infiltrate Revolutionary Army",
                     "description": "Infiltrate a Revolutionary Army cell and gather critical intelligence.",
@@ -149,13 +191,18 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                     "difficulty": 9,
                     "prerequisites": {
                         "rank": "Senior Official",
-                        "skill_level": {"espionage": 6}
+                        "skill_level": {"espionage": 6},
+                        "completed_missions": ["Basic Espionage"]
                     },
                     "rewards": {
                         "influence": 18,
                         "reputation": {"Revolutionaries": -18, "Pirates": -5},
                         "resource_changes": {"intelligence": 150, "budget": -70000},
-                        "skill_increase": {"espionage": 0.9, "intelligence": 0.5}
+                        "skill_increase": {"espionage": 0.9, "intelligence": 0.5},
+                        "unlocks": {
+                            "missions": ["Eliminate Threat"],
+                            "abilities": ["Advanced Infiltration"]
+                        }
                     }
                 },
                 {
@@ -172,11 +219,30 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                         "influence": 20,
                         "reputation": {"Civilians": -12, "Pirates": -8},
                         "resource_changes": {"intelligence": 80, "budget": -100000},
-                        "skill_increase": {"assassination": 1.0, "military": 0.4}
+                        "skill_increase": {"assassination": 1.0, "military": 0.4},
+                        "unlocks": {
+                            "abilities": ["Master Assassin"]
+                        }
                     }
                 }
             ],
             "Science Division": [
+                {
+                    "name": "Basic Research",
+                    "description": "Conduct basic research for the World Government.",
+                    "required_skill": "science",
+                    "difficulty": 3,
+                    "prerequisites": {},
+                    "rewards": {
+                        "influence": 5,
+                        "reputation": {"Science Division": 5},
+                        "skill_increase": {"science": 0.5},
+                        "unlocks": {
+                            "missions": ["Devil Fruit Experimentation"],
+                            "abilities": ["Scientific Method"]
+                        }
+                    }
+                },
                 {
                     "name": "Devil Fruit Experimentation",
                     "description": "Conduct groundbreaking research on a newly discovered Devil Fruit.",
@@ -184,13 +250,18 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                     "difficulty": 8,
                     "prerequisites": {
                         "rank": "Senior Official",
-                        "skill_level": {"devil_fruit_research": 5}
+                        "skill_level": {"devil_fruit_research": 5},
+                        "completed_missions": ["Basic Research"]
                     },
                     "rewards": {
                         "influence": 16,
                         "reputation": {"Marines": 8, "Cipher Pol": 5},
                         "resource_changes": {"budget": -120000, "scientific_advancement": 12},
-                        "skill_increase": {"devil_fruit_research": 0.8, "science": 0.4}
+                        "skill_increase": {"devil_fruit_research": 0.8, "science": 0.4},
+                        "unlocks": {
+                            "missions": ["Advanced Weapon Project"],
+                            "abilities": ["Devil Fruit Analysis"]
+                        }
                     }
                 },
                 {
@@ -207,7 +278,10 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                         "influence": 18,
                         "reputation": {"Marines": 12, "Pirates": -8},
                         "resource_changes": {"budget": -150000, "scientific_advancement": 15},
-                        "skill_increase": {"weapon_development": 0.9, "science": 0.5}
+                        "skill_increase": {"weapon_development": 0.9, "science": 0.5},
+                        "unlocks": {
+                            "abilities": ["Weapon Mastery"]
+                        }
                     }
                 }
             ]
@@ -231,6 +305,27 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         """Set up the World Government Simulator channel"""
         await self.config.guild(ctx.guild).wg_channel.set(channel.id)
         await ctx.send(f"World Government Simulator channel set to {channel.mention}")
+        
+    @wg.command(name="unlocks")
+    async def wg_unlocks(self, ctx):
+        """View your unlocked missions and abilities"""
+        if not await self.check_wg_channel(ctx):
+            return
+
+        user_data = await self.config.user(ctx.author).all()
+        if not user_data['faction']:
+            await ctx.send("You haven't joined a faction yet! Use `.wg join <faction>` to join one.")
+            return
+
+        embed = discord.Embed(title=f"{ctx.author.display_name}'s Unlocks", color=discord.Color.green())
+        
+        unlocked_missions = user_data['unlocked_missions']
+        embed.add_field(name="Unlocked Missions", value="\n".join(unlocked_missions) if unlocked_missions else "None", inline=False)
+        
+        unlocked_abilities = user_data['unlocked_abilities']
+        embed.add_field(name="Unlocked Abilities", value="\n".join(unlocked_abilities) if unlocked_abilities else "None", inline=False)
+
+        await ctx.send(embed=embed)
         
     @wg.command(name="mission_history")
     async def wg_mission_history(self, ctx):
@@ -369,6 +464,22 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                     if mission['name'] not in user_data['completed_missions']:
                         user_data['completed_missions'].append(mission['name'])
                     
+                    # Handle unlocks
+                    unlocks = mission['rewards'].get('unlocks', {})
+                    new_missions = unlocks.get('missions', [])
+                    new_abilities = unlocks.get('abilities', [])
+                    
+                    user_data['unlocked_missions'].extend([m for m in new_missions if m not in user_data['unlocked_missions']])
+                    user_data['unlocked_abilities'].extend([a for a in new_abilities if a not in user_data['unlocked_abilities']])
+                    
+                    if new_missions or new_abilities:
+                        unlock_msg = "You've unlocked new content:\n"
+                        if new_missions:
+                            unlock_msg += f"Missions: {', '.join(new_missions)}\n"
+                        if new_abilities:
+                            unlock_msg += f"Abilities: {', '.join(new_abilities)}"
+                        await ctx.send(unlock_msg)
+                    
                     # Increase skills
                     for skill, increase in mission['rewards']['skill_increase'].items():
                         user_data['skills'][skill] += increase
@@ -436,6 +547,10 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         if 'completed_missions' in prerequisites:
             if not all(mission in user_data['completed_missions'] for mission in prerequisites['completed_missions']):
                 return False
+            
+        # Check if mission is unlocked
+        if mission['name'] not in user_data['unlocked_missions'] and mission['name'] != "Basic Training":
+            return False
 
         return True
             
