@@ -27,6 +27,27 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             "Science Division": ["devil_fruit_research", "weapon_development"]
         }
     
+        self.devil_fruits = {
+            "Logia": ["Mera Mera no Mi", "Goro Goro no Mi", "Hie Hie no Mi", "Magu Magu no Mi"],
+            "Zoan": ["Ushi Ushi no Mi, Model: Giraffe", "Neko Neko no Mi, Model: Leopard", "Tori Tori no Mi, Model: Falcon"],
+            "Paramecia": ["Gura Gura no Mi", "Ope Ope no Mi", "Bara Bara no Mi", "Gomu Gomu no Mi"]
+        }
+
+        self.faction_df_rules = {
+            "Marines": {
+                "Admiral": {"types": ["Logia"], "chance": 0.5},
+                "Vice Admiral": {"types": ["Paramecia", "Zoan"], "chance": 0.3}
+            },
+            "Cipher Pol": {
+                "Department Head": {"types": ["Zoan"], "chance": 0.4},
+                "Senior Official": {"types": ["Paramecia"], "chance": 0.2}
+            },
+            "Science Division": {
+                "Department Head": {"types": ["Paramecia"], "chance": 0.3},
+                "Senior Official": {"types": ["Zoan"], "chance": 0.2}
+            }
+        }
+        
         self.mission_cooldowns = {}
         self.mission_cooldown_time = timedelta(hours=4)  # 4-hour cooldown
     
@@ -88,6 +109,8 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             "mission_history": [],
             "unlocked_missions": [],
             "unlocked_abilities": [],
+            "devil_fruit": None,
+            "df_mastery": 0,
             "skills": {skill: 1 for skill in self.all_skills},
             "personal_resources": {
                 "wealth": 1000,
@@ -305,6 +328,57 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         """Set up the World Government Simulator channel"""
         await self.config.guild(ctx.guild).wg_channel.set(channel.id)
         await ctx.send(f"World Government Simulator channel set to {channel.mention}")
+        
+    @wg.command(name="check_df")
+    async def wg_check_df(self, ctx):
+        """Check your Devil Fruit status"""
+        if not await self.check_wg_channel(ctx):
+            return
+
+        user_data = await self.config.user(ctx.author).all()
+        if not user_data['faction']:
+            await ctx.send("You haven't joined a faction yet! Use `.wg join <faction>` to join one.")
+            return
+
+        if user_data['devil_fruit']:
+            embed = discord.Embed(title="Your Devil Fruit", color=discord.Color.purple())
+            embed.add_field(name="Fruit", value=user_data['devil_fruit'], inline=False)
+            embed.add_field(name="Mastery", value=f"{user_data['df_mastery']}%", inline=False)
+            await ctx.send(embed=embed)
+        else:
+            await ctx.send("You don't have a Devil Fruit power yet.")
+
+    async def check_for_devil_fruit(self, ctx, user_data):
+        faction = user_data['faction']
+        rank = user_data['position']
+        
+        if faction in self.faction_df_rules and rank in self.faction_df_rules[faction]:
+            rule = self.faction_df_rules[faction][rank]
+            if random.random() < rule['chance']:
+                df_type = random.choice(rule['types'])
+                devil_fruit = random.choice(self.devil_fruits[df_type])
+                user_data['devil_fruit'] = devil_fruit
+                user_data['df_mastery'] = 1
+                await self.config.user(ctx.author).set(user_data)
+                await ctx.send(f"Congratulations! You've obtained the {devil_fruit} Devil Fruit!")
+                return True
+        return False
+    
+    @wg.command(name="train_df")
+    async def wg_train_df(self, ctx):
+        """Train your Devil Fruit ability"""
+        if not await self.check_wg_channel(ctx):
+            return
+
+        user_data = await self.config.user(ctx.author).all()
+        if not user_data['devil_fruit']:
+            await ctx.send("You don't have a Devil Fruit power to train!")
+            return
+
+        mastery_increase = random.randint(1, 5)
+        user_data['df_mastery'] = min(100, user_data['df_mastery'] + mastery_increase)
+        await self.config.user(ctx.author).set(user_data)
+        await ctx.send(f"You've trained your {user_data['devil_fruit']} ability. Mastery increased by {mastery_increase}% to {user_data['df_mastery']}%")
         
     @wg.command(name="unlocks")
     async def wg_unlocks(self, ctx):
@@ -551,6 +625,12 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         # Check if mission is unlocked
         if mission['name'] not in user_data['unlocked_missions'] and mission['name'] != "Basic Training":
             return False
+        
+        # Modify success chance based on Devil Fruit
+        user_data = await self.config.user(ctx.author).all()
+        if user_data['devil_fruit']:
+            df_bonus = user_data['df_mastery'] / 200  # Up to 50% bonus at max mastery
+            success_chance = min(95, success_chance * (1 + df_bonus))
 
         return True
             
@@ -1087,39 +1167,57 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         """Compete in the current promotion cycle"""
         if not await self.check_wg_channel(ctx):
             return
-    
+
+        user_data = await self.config.user(ctx.author).all()
         guild_data = await self.config.guild(ctx.guild).all()
-        user_data = guild_data['active_players'].get(str(ctx.author.id))
         
-        if not user_data:
+        if not user_data['faction']:
             await ctx.send("You must be an active player to compete for promotion.")
             return
-    
+
         if str(ctx.author.id) not in guild_data['promotion_candidates']:
             await ctx.send("You are not eligible for the current promotion cycle.")
             return
-    
-        # Change this line to match the skill names exactly
-        task = random.choice(['diplomacy', 'military', 'economy', 'intelligence'])
+
+        # Include faction-specific skills in the task selection
+        all_skills = ['diplomacy', 'military', 'economy', 'intelligence', 'science']
+        faction_skills = self.faction_skills.get(user_data['faction'], [])
+        task = random.choice(all_skills + faction_skills)
         
-        await ctx.send(f"You've been assigned a {task} task. React with 👍 when you're ready to attempt it.")
-    
+        await ctx.send(f"You've been assigned a {task.replace('_', ' ')} task. React with 👍 when you're ready to attempt it.")
+
         def check(reaction, user):
             return user == ctx.author and str(reaction.emoji) == '👍'
-    
+
         try:
             await self.bot.wait_for('reaction_add', timeout=60.0, check=check)
             success_chance = user_data['skills'][task] * 10
+
+            # Apply Devil Fruit bonus if applicable
+            if user_data['devil_fruit']:
+                df_bonus = user_data['df_mastery'] / 200  # Up to 50% bonus at max mastery
+                success_chance = min(95, success_chance * (1 + df_bonus))
+
             success = random.randint(1, 100) <= success_chance
-    
+
             if success:
                 guild_data['promotion_candidates'][str(ctx.author.id)] += 1
                 await ctx.send(f"Task completed successfully! Your promotion score is now {guild_data['promotion_candidates'][str(ctx.author.id)]}.")
+                
+                # Check for Devil Fruit acquisition
+                if await self.check_for_devil_fruit(ctx, user_data):
+                    await ctx.send("Your successful performance has caught the attention of higher-ups!")
+                
+                # Increase the skill used
+                skill_increase = random.uniform(0.1, 0.3)
+                user_data['skills'][task] += skill_increase
+                await ctx.send(f"Your {task.replace('_', ' ')} skill has increased by {skill_increase:.2f}!")
             else:
                 await ctx.send("You were unable to complete the task successfully. Better luck next time!")
-    
+
             await self.config.guild(ctx.guild).set(guild_data)
-    
+            await self.config.user(ctx.author).set(user_data)
+
         except asyncio.TimeoutError:
             await ctx.send("You took too long to respond. The task opportunity has passed.")
         
