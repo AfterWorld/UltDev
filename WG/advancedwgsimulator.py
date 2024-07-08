@@ -387,19 +387,19 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         self.crisis_check.start()
         self.promotion_cycle.start()
         self.current_world_event = None
-        self.world_event_task.start()
+        self.world_event_loop.start()  # Renamed from world_event_task to world_event_loop
 
     def cog_unload(self):
-        self.world_event_task.cancel()
+        self.world_event_loop.cancel()  # Make sure to cancel the task when the cog is unloaded
         
     @tasks.loop(hours=24)
-    async def world_event_task(self):
+    async def world_event_loop(self):
         if self.current_world_event:
             self.current_world_event['duration'] -= 1
             if self.current_world_event['duration'] <= 0:
                 await self.end_world_event()
         elif random.random() < 0.3:  # 30% chance of a new event each day
-            await self.start_new_world_event()
+            await self.start_new_world_event())
 
     async def start_new_world_event(self):
         self.current_world_event = random.choice(self.world_events)
