@@ -32,6 +32,14 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             "Zoan": ["Ushi Ushi no Mi, Model: Giraffe", "Neko Neko no Mi, Model: Leopard", "Tori Tori no Mi, Model: Falcon"],
             "Paramecia": ["Gura Gura no Mi", "Ope Ope no Mi", "Bara Bara no Mi", "Gomu Gomu no Mi"]
         }
+        
+        self.devil_fruit = {
+            "Mera Mera no Mi": {"type": "Logia", "description": "Allows the user to create, control, and transform into fire at will."},
+            "Goro Goro no Mi": {"type": "Logia", "description": "Allows the user to create, control, and transform into electricity at will."},
+            "Ope Ope no Mi": {"type": "Paramecia", "description": "Allows the user to create a sphere-like space or 'room', in which they can manipulate anything within it."},
+            "Gura Gura no Mi": {"type": "Paramecia", "description": "Allows the user to create vibrations, or 'quakes'."},
+            "Hito Hito no Mi, Model: Daibutsu": {"type": "Mythical Zoan", "description": "Allows the user to transform into a giant Buddha."}
+        }
 
         self.faction_df_rules = {
             "Marines": {
@@ -471,21 +479,59 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         }
         
         self.resource_update.start()
+        self.check_ongoing_activities.start()
         self.generate_news.start()
         self.crisis_check.start()
         self.promotion_cycle.start()
         self.current_world_event = None
         self.world_event_loop.start()  # Renamed from world_event_task to world_event_loop
         self.news_feed = []
+        self.current_auction = None
+        self.auction_schedule.start()
         self.max_news_items = 50  # Maximum number of news items to store
         
     def cog_unload(self):
         # Cancel all background tasks
         self.resource_update.cancel()
+        self.auction_schedule.cancel()
         self.crisis_check.cancel()
+        self.check_ongoing_activities.cancel()
         self.generate_news.cancel()
         self.promotion_cycle.cancel()
         self.world_event_loop.cancel()
+        
+    @tasks.loop(minutes=30)  # Run every 30 minutes
+    async def check_ongoing_activities(self):
+        for guild in self.bot.guilds:
+            guild_data = await self.config.guild(guild).all()
+            wg_channel = self.bot.get_channel(guild_data['wg_channel'])
+            if not wg_channel:
+                continue
+
+            # Check Cipher Pol training
+            for member in guild.members:
+                user_data = await self.config.user(member).all()
+                if 'ongoing_training' in user_data:
+                    for module, end_time in user_data['ongoing_training'].items():
+                        if datetime.now() >= end_time:
+                            await self.complete_cp_training(guild, member, module)
+                            user_data['ongoing_training'].pop(module)
+                            await self.config.user(member).set(user_data)
+
+            # Check undercover missions
+            for member in guild.members:
+                user_data = await self.config.user(member).all()
+                if user_data.get('is_undercover', False):
+                    if user_data['exposure_level'] >= 100:
+                        user_data['is_undercover'] = False
+                        user_data['exposure_level'] = 0
+                        user_data['undercover_cooldown'] = datetime.now() + timedelta(days=30)
+                        await self.config.user(member).set(user_data)
+                        await wg_channel.send(f"{member.mention}'s cover has been blown! They've been extracted and cannot go undercover again for 30 days.")
+
+    @check_ongoing_activities.before_loop
+    async def before_check_ongoing_activities(self):
+        await self.bot.wait_until_ready()
         
     @tasks.loop(hours=24)
     async def world_event_loop(self):
@@ -574,6 +620,112 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             "headline": headline,
             "importance": "high" if chosen_topic['condition'] != True else "normal"
         }
+        
+    @tasks.loop(hours=168)  # Run weekly
+    async def auction_schedule(self):
+        await self.start_new_auction()
+
+    @auction_schedule.before_loop
+    async def before_auction_schedule(self):
+        await self.bot.wait_until_ready()
+
+    async def start_new_auction(self):
+        if self.current_auction:
+            await self.end_auction()
+
+        devil_fruit = random.choice(list(self.devil_fruit.keys()))
+        self.current_auction = {
+            "devil_fruit": devil_fruit,
+            "start_time": datetime.now(),
+            "end_time": datetime.now() + timedelta(days=3),
+            "current_bid": 50000,
+            "current_bidder": None,
+            "bids": []
+        }
+
+        for guild in self.bot.guilds:
+            guild_data = await self.config.guild(guild).all()
+            channel = self.bot.get_channel(guild_data['wg_channel'])
+            if channel:
+                embed = discord.Embed(title="New Devil Fruit Auction!", color=discord.Color.gold())
+                embed.add_field(name="Devil Fruit", value=devil_fruit, inline=False)
+                embed.add_field(name="Type", value=self.devil_fruit[devil_fruit]["type"], inline=True)
+                embed.add_field(name="Description", value=self.devil_fruit[devil_fruit]["description"], inline=False)
+                embed.add_field(name="Starting Bid", value="50,000 Beri", inline=True)
+                embed.add_field(name="Auction Ends", value=self.current_auction['end_time'].strftime("%Y-%m-%d %H:%M:%S"), inline=True)
+                await channel.send(embed=embed)
+
+    async def end_auction(self):
+        if not self.current_auction:
+            return
+
+        winner = self.current_auction['current_bidder']
+        if winner:
+            user_data = await self.config.user(winner).all()
+            user_data['devil_fruit'] = self.current_auction['devil_fruit']
+            await self.config.user(winner).set(user_data)
+
+            for guild in self.bot.guilds:
+                guild_data = await self.config.guild(guild).all()
+                channel = self.bot.get_channel(guild_data['wg_channel'])
+                if channel:
+                    await channel.send(f"The auction for {self.current_auction['devil_fruit']} has ended! {winner.mention} won with a bid of {self.current_auction['current_bid']} Beri.")
+        else:
+            for guild in self.bot.guilds:
+                guild_data = await self.config.guild(guild).all()
+                channel = self.bot.get_channel(guild_data['wg_channel'])
+                if channel:
+                    await channel.send(f"The auction for {self.current_auction['devil_fruit']} has ended with no bids.")
+
+        self.current_auction = None
+
+    @commands.group(name="auction")
+    async def auction(self, ctx):
+        """Devil Fruit Auction commands"""
+        if ctx.invoked_subcommand is None:
+            await ctx.send("Use `.help auction` to see available Devil Fruit Auction commands.")
+
+    @auction.command(name="info")
+    async def auction_info(self, ctx):
+        """Get information about the current Devil Fruit auction"""
+        if not self.current_auction:
+            await ctx.send("There is no active Devil Fruit auction at the moment.")
+            return
+
+        embed = discord.Embed(title="Current Devil Fruit Auction", color=discord.Color.gold())
+        embed.add_field(name="Devil Fruit", value=self.current_auction['devil_fruit'], inline=False)
+        embed.add_field(name="Type", value=self.devil_fruit[self.current_auction['devil_fruit']]["type"], inline=True)
+        embed.add_field(name="Description", value=self.devil_fruit[self.current_auction['devil_fruit']]["description"], inline=False)
+        embed.add_field(name="Current Bid", value=f"{self.current_auction['current_bid']} Beri", inline=True)
+        embed.add_field(name="Current Bidder", value=self.current_auction['current_bidder'].mention if self.current_auction['current_bidder'] else "No bids yet", inline=True)
+        embed.add_field(name="Auction Ends", value=self.current_auction['end_time'].strftime("%Y-%m-%d %H:%M:%S"), inline=True)
+        await ctx.send(embed=embed)
+
+    @auction.command(name="bid")
+    async def auction_bid(self, ctx, amount: int):
+        """Place a bid on the current Devil Fruit auction"""
+        if not self.current_auction:
+            await ctx.send("There is no active Devil Fruit auction at the moment.")
+            return
+
+        if amount <= self.current_auction['current_bid']:
+            await ctx.send(f"Your bid must be higher than the current bid of {self.current_auction['current_bid']} Beri.")
+            return
+
+        user_data = await self.config.user(ctx.author).all()
+        if user_data['personal_resources']['wealth'] < amount:
+            await ctx.send("You don't have enough Beri to place this bid.")
+            return
+
+        self.current_auction['current_bid'] = amount
+        self.current_auction['current_bidder'] = ctx.author
+        self.current_auction['bids'].append((ctx.author.id, amount))
+
+        user_data['personal_resources']['wealth'] -= amount
+        await self.config.user(ctx.author).set(user_data)
+
+        await ctx.send(f"You have successfully bid {amount} Beri on the {self.current_auction['devil_fruit']}!")
+
         
     @commands.group(name="undercover")
     async def undercover(self, ctx):
@@ -747,15 +899,19 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             reaction, user = await self.bot.wait_for('reaction_add', timeout=60.0, check=check)
             if str(reaction.emoji) == "✅":
                 # Start the training
-                await ctx.send(f"Training '{module}' has started for {trainee.display_name}. It will be completed in {training['duration'].days} days.")
+                end_time = datetime.now() + training['duration']
+                trainee_data = await self.config.user(trainee).all()
+                if 'ongoing_training' not in trainee_data:
+                    trainee_data['ongoing_training'] = {}
+                trainee_data['ongoing_training'][module] = end_time
+                await self.config.user(trainee).set(trainee_data)
                 
-                # Schedule training completion
-                await asyncio.sleep(training['duration'].total_seconds())
-                await self.complete_cp_training(ctx.guild, trainee, module)
+                await ctx.send(f"Training '{module}' has started for {trainee.display_name}. It will be completed in {training['duration'].days} days.")
             else:
                 await ctx.send("Training cancelled.")
         except asyncio.TimeoutError:
             await ctx.send("You took too long to respond. The training was cancelled.")
+
 
     async def complete_cp_training(self, guild, trainee, module):
         trainee_data = await self.config.user(trainee).all()
