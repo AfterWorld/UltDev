@@ -48,6 +48,49 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             }
         }
         
+        self.special_ops = {
+            "Infiltration": {
+                "description": "Infiltrate a target organization to gather intelligence.",
+                "skills": ["espionage", "intelligence"],
+                "difficulty": 7,
+                "cooldown": timedelta(hours=12),
+                "effects": {
+                    "intelligence": lambda: random.randint(50, 200),
+                    "revolutionary_threat": lambda: -random.randint(1, 5)
+                }
+            },
+            "Sabotage": {
+                "description": "Disrupt enemy operations through covert sabotage.",
+                "skills": ["military", "intelligence"],
+                "difficulty": 8,
+                "cooldown": timedelta(hours=18),
+                "effects": {
+                    "piracy_level": lambda: -random.randint(3, 8),
+                    "marine_strength": lambda: random.randint(1, 3)
+                }
+            },
+            "Propaganda Campaign": {
+                "description": "Launch a secret propaganda campaign to influence public opinion.",
+                "skills": ["diplomacy", "intelligence"],
+                "difficulty": 6,
+                "cooldown": timedelta(hours=8),
+                "effects": {
+                    "civilian_approval": lambda: random.randint(2, 7),
+                    "world_stability": lambda: random.randint(1, 3)
+                }
+            },
+            "Asset Extraction": {
+                "description": "Extract a valuable asset from enemy territory.",
+                "skills": ["military", "espionage"],
+                "difficulty": 9,
+                "cooldown": timedelta(hours=24),
+                "effects": {
+                    "intelligence": lambda: random.randint(100, 300),
+                    "marine_strength": lambda: random.randint(2, 5)
+                }
+            }
+        }
+        
         self.mission_cooldowns = {}
         self.mission_cooldown_time = timedelta(hours=4)  # 4-hour cooldown
     
@@ -64,6 +107,7 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                 "scientific_advancement": 50
             },
             "ongoing_events": [],
+            "ongoing_special_ops": {},
             "current_year": 1500,
             "resources": {
                 "budget": 1000000,
@@ -106,6 +150,7 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             "enemies": [],
             "decisions": [],
             "completed_missions": [],
+            "special_ops_cooldowns": {},
             "mission_history": [],
             "unlocked_missions": [],
             "unlocked_abilities": [],
@@ -616,6 +661,155 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                 await ctx.send("Mission aborted. The world event continues.")
         except asyncio.TimeoutError:
             await ctx.send("You took too long to respond. The special mission opportunity has passed.")
+            
+    @commands.group(name="specialops")
+    async def specialops(self, ctx):
+        """Special Operations commands"""
+        if ctx.invoked_subcommand is None:
+            await ctx.send("Use `.help specialops` to see available Special Operations commands.")
+
+    @specialops.command(name="list")
+    async def specialops_list(self, ctx):
+        """List available special operations"""
+        if not await self.check_wg_channel(ctx):
+            return
+
+        embed = discord.Embed(title="Available Special Operations", color=discord.Color.dark_gold())
+        for op_name, op_info in self.special_ops.items():
+            embed.add_field(name=op_name, value=f"Description: {op_info['description']}\nDifficulty: {op_info['difficulty']}/10\nRequired Skills: {', '.join(op_info['skills'])}", inline=False)
+
+        await ctx.send(embed=embed)
+
+    @specialops.command(name="start")
+    async def specialops_start(self, ctx, *, operation_name: str):
+        """Start a special operation"""
+        if not await self.check_wg_channel(ctx):
+            return
+
+        user_data = await self.config.user(ctx.author).all()
+        guild_data = await self.config.guild(ctx.guild).all()
+
+        if operation_name not in self.special_ops:
+            await ctx.send(f"Invalid operation. Use `.specialops list` to see available operations.")
+            return
+
+        operation = self.special_ops[operation_name]
+
+        # Check cooldown
+        if operation_name in user_data['special_ops_cooldowns']:
+            cooldown_end = user_data['special_ops_cooldowns'][operation_name]
+            if datetime.now() < cooldown_end:
+                time_left = cooldown_end - datetime.now()
+                await ctx.send(f"This operation is on cooldown. You can attempt it again in {time_left.total_seconds() / 3600:.1f} hours.")
+                return
+
+        # Calculate success chance
+        skills_average = sum(user_data['skills'][skill] for skill in operation['skills']) / len(operation['skills'])
+        success_chance = min(90, max(10, (skills_average / operation['difficulty']) * 100))
+
+        embed = discord.Embed(title=f"Special Operation: {operation_name}", color=discord.Color.red())
+        embed.add_field(name="Description", value=operation['description'], inline=False)
+        embed.add_field(name="Difficulty", value=f"{operation['difficulty']}/10", inline=True)
+        embed.add_field(name="Success Chance", value=f"{success_chance:.1f}%", inline=True)
+        embed.add_field(name="Confirm", value="React with ✅ to start the operation or ❌ to cancel.", inline=False)
+
+        message = await ctx.send(embed=embed)
+        await message.add_reaction("✅")
+        await message.add_reaction("❌")
+
+        def check(reaction, user):
+            return user == ctx.author and str(reaction.emoji) in ["✅", "❌"] and reaction.message.id == message.id
+
+        try:
+            reaction, user = await self.bot.wait_for('reaction_add', timeout=60.0, check=check)
+            if str(reaction.emoji) == "✅":
+                success = random.random() * 100 < success_chance
+                if success:
+                    await ctx.send(f"Operation {operation_name} successfully initiated. Results will be available in {operation['cooldown'].total_seconds() / 3600:.1f} hours.")
+                    guild_data['ongoing_special_ops'][str(ctx.author.id)] = {
+                        "operation": operation_name,
+                        "start_time": datetime.now(),
+                        "end_time": datetime.now() + operation['cooldown']
+                    }
+                    await self.config.guild(ctx.guild).set(guild_data)
+
+                    # Set cooldown
+                    user_data['special_ops_cooldowns'][operation_name] = datetime.now() + operation['cooldown']
+                    await self.config.user(ctx.author).set(user_data)
+
+                    # Schedule operation completion
+                    await asyncio.sleep(operation['cooldown'].total_seconds())
+                    await self.complete_special_operation(ctx.guild, ctx.author)
+                else:
+                    await ctx.send(f"The operation {operation_name} failed to initiate. Your cover was blown before the operation could begin.")
+            else:
+                await ctx.send("Operation cancelled.")
+        except asyncio.TimeoutError:
+            await ctx.send("You took too long to respond. The operation was cancelled.")
+
+    async def complete_special_operation(self, guild, user):
+        guild_data = await self.config.guild(guild).all()
+        user_data = await self.config.user(user).all()
+
+        if str(user.id) not in guild_data['ongoing_special_ops']:
+            return
+
+        op_data = guild_data['ongoing_special_ops'].pop(str(user.id))
+        operation = self.special_ops[op_data['operation']]
+
+        # Apply effects
+        effects = {}
+        for key, effect_func in operation['effects'].items():
+            effect_value = effect_func()
+            if key in guild_data['world_state']:
+                guild_data['world_state'][key] = max(0, min(100, guild_data['world_state'][key] + effect_value))
+            elif key in guild_data['resources']:
+                guild_data['resources'][key] += effect_value
+            effects[key] = effect_value
+
+        await self.config.guild(guild).set(guild_data)
+
+        # Increase relevant skills
+        for skill in operation['skills']:
+            user_data['skills'][skill] += random.uniform(0.1, 0.3)
+        await self.config.user(user).set(user_data)
+
+        # Generate news item
+        news_item = {
+            "date": datetime.now(),
+            "year": guild_data['current_year'],
+            "headline": f"Covert operation affects {', '.join(effects.keys())}",
+            "importance": "high"
+        }
+        self.news_feed.insert(0, news_item)
+        if len(self.news_feed) > self.max_news_items:
+            self.news_feed.pop()
+
+        # Notify user
+        channel = self.bot.get_channel(guild_data['wg_channel'])
+        if channel:
+            embed = discord.Embed(title=f"Special Operation Completed: {op_data['operation']}", color=discord.Color.green())
+            for key, value in effects.items():
+                embed.add_field(name=key.replace("_", " ").title(), value=f"{value:+d}", inline=True)
+            await channel.send(content=f"{user.mention}, your operation is complete!", embed=embed)
+
+    @specialops.command(name="status")
+    async def specialops_status(self, ctx):
+        """Check the status of your ongoing special operation"""
+        if not await self.check_wg_channel(ctx):
+            return
+
+        guild_data = await self.config.guild(ctx.guild).all()
+        user_op = guild_data['ongoing_special_ops'].get(str(ctx.author.id))
+
+        if user_op:
+            time_left = user_op['end_time'] - datetime.now()
+            embed = discord.Embed(title="Ongoing Special Operation", color=discord.Color.blue())
+            embed.add_field(name="Operation", value=user_op['operation'], inline=False)
+            embed.add_field(name="Time Remaining", value=f"{time_left.total_seconds() / 3600:.1f} hours", inline=False)
+            await ctx.send(embed=embed)
+        else:
+            await ctx.send("You don't have any ongoing special operations.")
 
 
     @commands.group()
