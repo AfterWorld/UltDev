@@ -15,6 +15,14 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             "naval_tactics", "justice_enforcement", "espionage", "assassination",
             "devil_fruit_research", "weapon_development"
         ]
+        
+        self.mission_types = {
+            "patrol": {"description": "Patrol a designated area", "duration": 4, "skill": "military"},
+            "intel": {"description": "Gather intelligence on a target", "duration": 3, "skill": "intelligence"},
+            "diplomacy": {"description": "Attend a diplomatic meeting", "duration": 2, "skill": "diplomacy"},
+            "training": {"description": "Conduct a training exercise", "duration": 5, "skill": "military"},
+            "resource": {"description": "Manage resource allocation", "duration": 1, "skill": "economy"}
+        }
     
         self.positions = [
             "Recruit", "Junior Official", "Senior Official", "Department Head", 
@@ -481,6 +489,7 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         self.resource_update.start()
         self.check_ongoing_activities.start()
         self.generate_news.start()
+        self.check_daily_missions.start()
         self.crisis_check.start()
         self.promotion_cycle.start()
         self.current_world_event = None
@@ -493,6 +502,7 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
     def cog_unload(self):
         # Cancel all background tasks
         self.resource_update.cancel()
+        self.check_daily_missions.cancel()
         self.auction_schedule.cancel()
         self.crisis_check.cancel()
         self.check_ongoing_activities.cancel()
@@ -678,6 +688,159 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
                     await channel.send(f"The auction for {self.current_auction['devil_fruit']} has ended with no bids.")
 
         self.current_auction = None
+        
+    @tasks.loop(hours=24)
+    async def check_daily_missions(self):
+        for guild in self.bot.guilds:
+            guild_data = await self.config.guild(guild).all()
+            if guild_data['wg_channel']:
+                for user_id in guild_data['active_players']:
+                    user_data = await self.config.user_from_id(user_id).all()
+                    if 'daily_missions' in user_data:
+                        user_data['daily_missions'] = {}
+                        await self.config.user_from_id(user_id).set(user_data)
+
+    @commands.command()
+    async def daily_missions(self, ctx):
+        """Get your daily missions"""
+        if not await self.check_wg_channel(ctx):
+            return
+
+        user_data = await self.config.user(ctx.author).all()
+        if not user_data['faction']:
+            await ctx.send("You haven't joined a faction yet! Use `.wg join <faction>` to join one.")
+            return
+
+        if 'daily_missions' not in user_data or not user_data['daily_missions']:
+            user_data['daily_missions'] = self.generate_daily_missions()
+            await self.config.user(ctx.author).set(user_data)
+
+        embed = discord.Embed(title="Your Daily Missions", color=discord.Color.blue())
+        for mission_type, mission in user_data['daily_missions'].items():
+            status = "Completed" if mission['completed'] else "Not Started"
+            if mission['start_time']:
+                time_left = mission['end_time'] - datetime.now()
+                if time_left > timedelta(0):
+                    status = f"In Progress - {time_left.total_seconds() / 3600:.1f} hours left"
+            embed.add_field(name=f"{mission_type.capitalize()} Mission", 
+                            value=f"Description: {mission['description']}\nStatus: {status}", 
+                            inline=False)
+
+        await ctx.send(embed=embed)
+
+    def generate_daily_missions(self):
+        daily_missions = {}
+        for _ in range(3):
+            mission_type, mission_info = random.choice(list(self.mission_types.items()))
+            daily_missions[mission_type] = {
+                "description": mission_info["description"],
+                "duration": mission_info["duration"],
+                "skill": mission_info["skill"],
+                "start_time": None,
+                "end_time": None,
+                "completed": False
+            }
+        return daily_missions
+
+    @commands.command()
+    async def start_mission(self, ctx, mission_type: str):
+        """Start a daily mission"""
+        if not await self.check_wg_channel(ctx):
+            return
+
+        user_data = await self.config.user(ctx.author).all()
+        if not user_data['faction']:
+            await ctx.send("You haven't joined a faction yet! Use `.wg join <faction>` to join one.")
+            return
+
+        if 'daily_missions' not in user_data or not user_data['daily_missions']:
+            await ctx.send("You don't have any daily missions. Use `.daily_missions` to get your missions.")
+            return
+
+        if mission_type not in user_data['daily_missions']:
+            await ctx.send(f"Invalid mission type. Choose from: {', '.join(user_data['daily_missions'].keys())}")
+            return
+
+        mission = user_data['daily_missions'][mission_type]
+        if mission['completed']:
+            await ctx.send("This mission is already completed.")
+            return
+
+        if mission['start_time']:
+            time_left = mission['end_time'] - datetime.now()
+            if time_left > timedelta(0):
+                await ctx.send(f"This mission is already in progress. It will end in {time_left.total_seconds() / 3600:.1f} hours.")
+            else:
+                await ctx.send("This mission has ended. Use `.complete_mission` to claim your rewards.")
+            return
+
+        mission['start_time'] = datetime.now()
+        mission['end_time'] = mission['start_time'] + timedelta(hours=mission['duration'])
+        await self.config.user(ctx.author).set(user_data)
+
+        await ctx.send(f"Mission '{mission_type}' started. It will end at {mission['end_time'].strftime('%Y-%m-%d %H:%M:%S')}.")
+
+    @commands.command()
+    async def complete_mission(self, ctx, mission_type: str):
+        """Complete a daily mission and claim rewards"""
+        if not await self.check_wg_channel(ctx):
+            return
+
+        user_data = await self.config.user(ctx.author).all()
+        if not user_data['faction']:
+            await ctx.send("You haven't joined a faction yet! Use `.wg join <faction>` to join one.")
+            return
+
+        if 'daily_missions' not in user_data or not user_data['daily_missions']:
+            await ctx.send("You don't have any daily missions. Use `.daily_missions` to get your missions.")
+            return
+
+        if mission_type not in user_data['daily_missions']:
+            await ctx.send(f"Invalid mission type. Choose from: {', '.join(user_data['daily_missions'].keys())}")
+            return
+
+        mission = user_data['daily_missions'][mission_type]
+        if mission['completed']:
+            await ctx.send("This mission is already completed.")
+            return
+
+        if not mission['start_time']:
+            await ctx.send("You haven't started this mission yet. Use `.start_mission` to begin.")
+            return
+
+        time_left = mission['end_time'] - datetime.now()
+        if time_left > timedelta(0):
+            await ctx.send(f"This mission is still in progress. It will end in {time_left.total_seconds() / 3600:.1f} hours.")
+            return
+
+        # Mission completed successfully
+        mission['completed'] = True
+        rewards = self.calculate_mission_rewards(mission)
+        self.apply_mission_rewards(user_data, rewards)
+        await self.config.user(ctx.author).set(user_data)
+
+        embed = discord.Embed(title="Mission Completed", color=discord.Color.green())
+        embed.add_field(name="Mission", value=mission['description'], inline=False)
+        for reward_type, value in rewards.items():
+            embed.add_field(name=reward_type.capitalize(), value=value, inline=True)
+
+        await ctx.send(embed=embed)
+
+    def calculate_mission_rewards(self, mission):
+        base_reward = 50
+        skill_increase = random.uniform(0.1, 0.5)
+        influence_gain = random.randint(1, 5)
+
+        return {
+            "experience": base_reward * mission['duration'],
+            f"{mission['skill']}_skill_increase": skill_increase,
+            "influence": influence_gain
+        }
+
+    def apply_mission_rewards(self, user_data, rewards):
+        user_data['experience'] = user_data.get('experience', 0) + rewards['experience']
+        user_data['skills'][list(rewards.keys())[1].split('_')[0]] += rewards[list(rewards.keys())[1]]
+        user_data['influence'] += rewards['influence']
 
     @commands.group(name="auction")
     async def auction(self, ctx):
@@ -1213,57 +1376,6 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         """World Government Simulator commands"""
         if ctx.invoked_subcommand is None:
             await ctx.send("Use `.help wg` to see available World Government Simulator commands.")
-
-    @commands.command(name="profile")
-    async def wg_profile(self, ctx, member: discord.Member = None):
-        """Display the World Government Simulator profile of a user"""
-        if not await self.check_wg_channel(ctx):
-            return
-    
-        if member is None:
-            member = ctx.author
-    
-        user_data = await self.config.user(member).all()
-        if not user_data['faction']:
-            await ctx.send(f"{member.display_name} has not joined the World Government Simulator.")
-            return
-    
-        embed = discord.Embed(title=f"{member.display_name}'s World Government Profile", color=discord.Color.blue())
-        embed.set_thumbnail(url=member.display_avatar.url)
-    
-        # Basic Info
-        embed.add_field(name="Faction", value=user_data['faction'], inline=True)
-        embed.add_field(name="Position", value=user_data['position'], inline=True)
-        embed.add_field(name="Influence", value=user_data['influence'], inline=True)
-    
-        # Skills
-        skills_str = "\n".join([f"{k.capitalize()}: {v}" for k, v in user_data['skills'].items()])
-        embed.add_field(name="Skills", value=skills_str, inline=False)
-    
-        # Resources
-        resources_str = "\n".join([f"{k.capitalize()}: {v}" for k, v in user_data['personal_resources'].items()])
-        embed.add_field(name="Personal Resources", value=resources_str, inline=False)
-    
-        # Reputation
-        reputation_str = "\n".join([f"{k}: {v}" for k, v in user_data['reputation'].items()])
-        embed.add_field(name="Reputation", value=reputation_str, inline=False)
-    
-        # Devil Fruit
-        if user_data['devil_fruit']:
-            embed.add_field(name="Devil Fruit", value=f"{user_data['devil_fruit']} (Mastery: {user_data['df_mastery']}%)", inline=False)
-        
-        # Undercover Status
-        if user_data['is_undercover']:
-            embed.add_field(name="Undercover Status", value=f"Active (Exposure: {user_data['exposure_level']}%)", inline=False)
-    
-        # Completed Missions
-        completed_missions = len(user_data.get('completed_missions', []))
-        embed.add_field(name="Completed Missions", value=str(completed_missions), inline=True)
-    
-        # Crisis Contributions
-        embed.add_field(name="Crisis Contributions", value=str(user_data['crisis_contributions']), inline=True)
-    
-        await ctx.send(embed=embed)
                 
         
     @wg.command(name="setup")
@@ -1873,7 +1985,7 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
 
             # After a decision is made, potentially generate a news item
             if random.random() < 0.5:  # 50% chance to generate news from a decision
-                decision_news = self.create_decision_news(event, choice, consequences, guild_data['current_year'])
+                decision_news = self.create_decision_news(event, choice, consequences)
                 self.news_feed.insert(0, decision_news)
                 if len(self.news_feed) > self.max_news_items:
                     self.news_feed.pop()
@@ -1885,15 +1997,14 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         except asyncio.TimeoutError:
             await ctx.send("You took too long to decide. The opportunity has passed.")
 
-    def create_decision_news(self, event, choice, consequences, current_year):
+    def create_decision_news(self, event, choice, consequences):
         headline = f"World Government {'approves' if choice == 'A' else 'rejects'} {event['description'].lower()}"
         return {
             "date": datetime.now(),
-            "year": current_year,
+            "year": self.config.guild(ctx.guild).current_year(),
             "headline": headline,
             "importance": "high" if abs(consequences['influence_change']) > 3 else "normal"
         }
-
 
     @wg.command(name="missions")
     async def wg_missions(self, ctx):
