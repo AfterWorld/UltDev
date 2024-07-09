@@ -749,42 +749,42 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         """Start a daily mission"""
         if not await self.check_wg_channel(ctx):
             return
-
+    
         user_data = await self.config.user(ctx.author).all()
         if not user_data['faction']:
             await ctx.send("You haven't joined a faction yet! Use `.wg join <faction>` to join one.")
             return
-
+    
         if 'daily_missions' not in user_data or not user_data['daily_missions']:
             await ctx.send("You don't have any daily missions. Use `.daily_missions` to get your missions.")
             return
-
+    
         if mission_type not in user_data['daily_missions']:
             await ctx.send(f"Invalid mission type. Choose from: {', '.join(user_data['daily_missions'].keys())}")
             return
-
+    
         mission = user_data['daily_missions'][mission_type]
         if mission['completed']:
             await ctx.send("This mission is already completed.")
             return
-
+    
         if mission['start_time']:
-            start_time = datetime.datetime.fromisoformat(mission['start_time'])
-            end_time = datetime.datetime.fromisoformat(mission['end_time'])
-            time_left = end_time - datetime.datetime.now()
-            if time_left > datetime.timedelta(0):
+            start_time = datetime.fromisoformat(mission['start_time'])
+            end_time = datetime.fromisoformat(mission['end_time'])
+            time_left = end_time - datetime.now()
+            if time_left > timedelta(0):
                 await ctx.send(f"This mission is already in progress. It will end in {time_left.total_seconds() / 3600:.1f} hours.")
             else:
                 await ctx.send("This mission has ended. Use `.complete_mission` to claim your rewards.")
             return
-
-        mission['start_time'] = datetime.datetime.now().isoformat()
-        mission['end_time'] = (datetime.datetime.now() + datetime.timedelta(hours=mission['duration'])).isoformat()
+    
+        mission['start_time'] = datetime.now().isoformat()
+        mission['end_time'] = (datetime.now() + timedelta(hours=mission['duration'])).isoformat()
         await self.config.user(ctx.author).set(user_data)
-
-        end_time = datetime.datetime.fromisoformat(mission['end_time'])
+    
+        end_time = datetime.fromisoformat(mission['end_time'])
         await ctx.send(f"Mission '{mission_type}' started. It will end at {end_time.strftime('%Y-%m-%d %H:%M:%S')}.")
-
+        
     @commands.command()
     async def complete_mission(self, ctx, mission_type: str):
         """Complete a daily mission and claim rewards"""
