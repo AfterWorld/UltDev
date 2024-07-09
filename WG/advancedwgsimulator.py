@@ -719,8 +719,10 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
         for mission_type, mission in user_data['daily_missions'].items():
             status = "Completed" if mission['completed'] else "Not Started"
             if mission['start_time']:
-                time_left = mission['end_time'] - datetime.now()
-                if time_left > timedelta(0):
+                start_time = datetime.datetime.fromisoformat(mission['start_time'])
+                end_time = datetime.datetime.fromisoformat(mission['end_time'])
+                time_left = end_time - datetime.datetime.now()
+                if time_left > datetime.timedelta(0):
                     status = f"In Progress - {time_left.total_seconds() / 3600:.1f} hours left"
             embed.add_field(name=f"{mission_type.capitalize()} Mission", 
                             value=f"Description: {mission['description']}\nStatus: {status}", 
@@ -767,18 +769,21 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             return
 
         if mission['start_time']:
-            time_left = mission['end_time'] - datetime.now()
-            if time_left > timedelta(0):
+            start_time = datetime.datetime.fromisoformat(mission['start_time'])
+            end_time = datetime.datetime.fromisoformat(mission['end_time'])
+            time_left = end_time - datetime.datetime.now()
+            if time_left > datetime.timedelta(0):
                 await ctx.send(f"This mission is already in progress. It will end in {time_left.total_seconds() / 3600:.1f} hours.")
             else:
                 await ctx.send("This mission has ended. Use `.complete_mission` to claim your rewards.")
             return
 
-        mission['start_time'] = datetime.now()
-        mission['end_time'] = mission['start_time'] + timedelta(hours=mission['duration'])
+        mission['start_time'] = datetime.datetime.now().isoformat()
+        mission['end_time'] = (datetime.datetime.now() + datetime.timedelta(hours=mission['duration'])).isoformat()
         await self.config.user(ctx.author).set(user_data)
 
-        await ctx.send(f"Mission '{mission_type}' started. It will end at {mission['end_time'].strftime('%Y-%m-%d %H:%M:%S')}.")
+        end_time = datetime.datetime.fromisoformat(mission['end_time'])
+        await ctx.send(f"Mission '{mission_type}' started. It will end at {end_time.strftime('%Y-%m-%d %H:%M:%S')}.")
 
     @commands.command()
     async def complete_mission(self, ctx, mission_type: str):
@@ -808,8 +813,9 @@ class AdvancedWorldGovernmentSimulator(commands.Cog):
             await ctx.send("You haven't started this mission yet. Use `.start_mission` to begin.")
             return
 
-        time_left = mission['end_time'] - datetime.now()
-        if time_left > timedelta(0):
+        end_time = datetime.datetime.fromisoformat(mission['end_time'])
+        time_left = end_time - datetime.datetime.now()
+        if time_left > datetime.timedelta(0):
             await ctx.send(f"This mission is still in progress. It will end in {time_left.total_seconds() / 3600:.1f} hours.")
             return
 
