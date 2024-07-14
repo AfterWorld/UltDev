@@ -422,16 +422,16 @@ class OnePieceMod(commands.Cog):
 
         # Detailed permission logging
         self.logger.info(f"Bot permissions: {ctx.me.guild_permissions}")
-        self.logger.info(f"Mute role position: {mute_role.position}")
-        self.logger.info(f"Bot top role position: {ctx.me.top_role.position}")
+        self.logger.info(f"Mute role: {mute_role.name}")
+        self.logger.info(f"Bot top role: {ctx.me.top_role.name}")
 
         if not ctx.me.guild_permissions.manage_roles:
             self.logger.error("Bot lacks Manage Roles permission")
             return await ctx.send("I don't have the 'Manage Roles' permission to banish pirates to the Void Century!")
 
-        if mute_role.position >= ctx.me.top_role.position:
-            self.logger.error(f"Mute role ({mute_role.name}) is higher than bot's top role ({ctx.me.top_role.name})")
-            return await ctx.send("The Void Century role is higher than my highest role. I can't assign it!")
+        if mute_role >= ctx.me.top_role:
+            self.logger.error(f"Mute role ({mute_role.name}) is higher than or equal to bot's top role ({ctx.me.top_role.name})")
+            return await ctx.send("The Void Century role is higher than or equal to my highest role. I can't assign it!")
 
         duration = None
         reason = "No reason provided"
@@ -476,9 +476,9 @@ class OnePieceMod(commands.Cog):
                 for user in users:
                     self.logger.info(f"Attempting to mute user: {user.name} (ID: {user.id})")
                     try:
-                        self.logger.debug(f"Bot's top role: {ctx.me.top_role.name} (Position: {ctx.me.top_role.position})")
-                        self.logger.debug(f"User's top role: {user.top_role.name} (Position: {user.top_role.position})")
-                        self.logger.debug(f"Mute role: {mute_role.name} (Position: {mute_role.position})")
+                        self.logger.debug(f"Bot's top role: {ctx.me.top_role.name}")
+                        self.logger.debug(f"User's top role: {user.top_role.name}")
+                        self.logger.debug(f"Mute role: {mute_role.name}")
                         self.logger.debug(f"Bot's permissions: {ctx.me.guild_permissions}")
                         
                         if user.top_role >= ctx.me.top_role:
@@ -487,12 +487,12 @@ class OnePieceMod(commands.Cog):
                             continue
 
                         # Store the user's current roles
-                        self.muted_users[user.id] = [role.id for role in user.roles if role != ctx.guild.default_role]
+                        self.muted_users[user.id] = [role.id for role in user.roles if role != ctx.guild.default_role and role < ctx.me.top_role]
                         self.logger.debug(f"Stored roles for {user.name}: {self.muted_users[user.id]}")
                         
                         # Remove all roles and add mute role
                         self.logger.debug(f"Removing roles from {user.name}")
-                        await user.edit(roles=[])
+                        await user.edit(roles=[role for role in user.roles if role >= ctx.me.top_role])
                         self.logger.debug(f"Adding mute role to {user.name}")
                         await user.add_roles(mute_role, reason=audit_reason)
                         
@@ -549,25 +549,7 @@ class OnePieceMod(commands.Cog):
         else:
             await ctx.send("No users were successfully banished to the Void Century.")
             self.logger.warning("Mute command completed, but no users were successfully muted.")
-
-    async def schedule_unmute(self, guild: discord.Guild, user: discord.Member, duration: timedelta):
-        await asyncio.sleep(duration.total_seconds())
-        
-        # Check if the user is still muted
-        mute_role = guild.get_role(self.mute_role_id)
-        if mute_role and mute_role in user.roles:
-            # Create a mock context for the unmute command
-            channel = guild.text_channels[0]
-            mock_message = await channel.send(f"Scheduled unmute for {user.mention}")
-            ctx = await self.bot.get_context(mock_message)
-            await ctx.message.delete()  # Delete the mock message
             
-            await self.unmute(ctx, user, reason="Scheduled unmute: Void Century banishment has ended")
-
-    async def log_action(self, ctx, member: discord.Member, action: str, reason: str, moderator: discord.Member = None, jump_url: str = None, image_url: str = None):
-        # Implementation of log_action method (keep your existing implementation)
-        pass
-
     @commands.command()
     @checks.mod_or_permissions(manage_roles=True)
     async def unmute(self, ctx: commands.Context, user: discord.Member, *, reason: str = "Void Century banishment has ended"):
