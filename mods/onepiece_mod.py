@@ -453,13 +453,14 @@ class OnePieceMod(commands.Cog):
             await ctx.send(f"An unexpected error occurred: {e}")
             self.logger.error(f"Error in ban command: {e}", exc_info=True)
 
-    async def is_mod_or_admin(self, ctx):
+    @staticmethod
+    async def is_mod_or_admin(ctx):
         """Check if the user is a mod or admin."""
-        if await self.bot.is_owner(ctx.author):
+        if await ctx.bot.is_owner(ctx.author):
             return True
         if ctx.author == ctx.guild.owner:
             return True
-        if await self.bot.is_mod(ctx.author):
+        if await ctx.bot.is_mod(ctx.author):
             return True
         return False
             
