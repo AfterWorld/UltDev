@@ -422,16 +422,16 @@ class OnePieceMod(commands.Cog):
 
         # Detailed permission logging
         self.logger.info(f"Bot permissions: {ctx.me.guild_permissions}")
-        self.logger.info(f"Mute role: {mute_role.name}")
-        self.logger.info(f"Bot top role: {ctx.me.top_role.name}")
+        self.logger.info(f"Mute role: {mute_role.name} (Position: {mute_role.position})")
+        self.logger.info(f"Bot top role: {ctx.me.top_role.name} (Position: {ctx.me.top_role.position})")
 
         if not ctx.me.guild_permissions.manage_roles:
             self.logger.error("Bot lacks Manage Roles permission")
             return await ctx.send("I don't have the 'Manage Roles' permission to banish pirates to the Void Century!")
 
-        if mute_role >= ctx.me.top_role:
-            self.logger.error(f"Mute role ({mute_role.name}) is higher than or equal to bot's top role ({ctx.me.top_role.name})")
-            return await ctx.send("The Void Century role is higher than or equal to my highest role. I can't assign it!")
+        if mute_role.position >= ctx.me.top_role.position:
+            self.logger.error(f"Mute role ({mute_role.name}) is not lower than bot's top role ({ctx.me.top_role.name})")
+            return await ctx.send("The Void Century role is not below my highest role. I can't assign it!")
 
         duration = None
         reason = "No reason provided"
@@ -490,10 +490,9 @@ class OnePieceMod(commands.Cog):
                         self.muted_users[user.id] = [role.id for role in user.roles if role != ctx.guild.default_role and role < ctx.me.top_role]
                         self.logger.debug(f"Stored roles for {user.name}: {self.muted_users[user.id]}")
                         
-                        # Remove all roles and add mute role
-                        self.logger.debug(f"Removing roles from {user.name}")
-                        await user.edit(roles=[role for role in user.roles if role >= ctx.me.top_role])
-                        self.logger.debug(f"Adding mute role to {user.name}")
+                        # Remove manageable roles and add mute role
+                        roles_to_remove = [role for role in user.roles if role < ctx.me.top_role and role != ctx.guild.default_role]
+                        await user.remove_roles(*roles_to_remove, reason="Preparing for mute")
                         await user.add_roles(mute_role, reason=audit_reason)
                         
                         success_list.append(user)
