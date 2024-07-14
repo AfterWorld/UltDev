@@ -553,14 +553,13 @@ class OnePieceMod(commands.Cog):
         if not users:
             return await ctx.send_help()
         if ctx.me in users:
-            return await ctx.send("You cannot unmute me.")
+            return await ctx.send("Ye can't free the ship's Log Pose from the Void Century!")
         if ctx.author in users:
-            return await ctx.send("You cannot unmute yourself.")
+            return await ctx.send("Ye can't free yerself from the Void Century!")
 
-        mute_role_id = await self.config.guild(ctx.guild).mute_role()
-        mute_role = ctx.guild.get_role(mute_role_id)
+        mute_role = ctx.guild.get_role(self.mute_role_id)
         if not mute_role:
-            return await ctx.send("The Void Century role doesn't exist!")
+            return await ctx.send("Shiver me timbers! The Void Century role has vanished like a ghost ship!")
 
         async with ctx.typing():
             success_list = []
@@ -585,7 +584,7 @@ class OnePieceMod(commands.Cog):
         if success_list:
             await ctx.send(
                 f"{humanize_list([f'`{u}`' for u in success_list])} {'has' if len(success_list) == 1 else 'have'} "
-                f"returned from the Void Century."
+                f"returned from the Void Century and can speak again!"
             )
 
     async def unmute_user(
@@ -598,19 +597,18 @@ class OnePieceMod(commands.Cog):
         """Handles returning users from the Void Century"""
         ret = {"success": False, "reason": None}
 
-        mute_role_id = await self.config.guild(guild).mute_role()
-        mute_role = guild.get_role(mute_role_id)
+        mute_role = guild.get_role(self.mute_role_id)
 
         if not mute_role:
-            ret["reason"] = "The Void Century role is missing! Have ye checked the Grand Line?"
+            ret["reason"] = "The Void Century role has vanished like a mirage! Alert the captain!"
             return ret
 
         if mute_role not in user.roles:
-            ret["reason"] = f"{user.name} is not banished to the Void Century. They're free to speak!"
+            ret["reason"] = f"{user.name} isn't trapped in the Void Century. They're free as a seagull!"
             return ret
 
         if not await self.is_allowed_by_hierarchy(guild, author, user):
-            ret["reason"] = "Ye can't return a pirate of higher rank from the Void Century!"
+            ret["reason"] = "Ye can't free a pirate of higher rank from the Void Century!"
             return ret
 
         try:
@@ -621,6 +619,7 @@ class OnePieceMod(commands.Cog):
             ret["success"] = True
         except discord.Forbidden:
             ret["reason"] = "The Sea Kings prevent me from removing the Void Century role!"
+        
         return ret
         
     async def _restore_roles(self, user: discord.Member, reason: str):
