@@ -463,8 +463,21 @@ class OnePieceMod(commands.Cog):
         *,
         time_and_reason: str = None
     ):
-        """Banish crew members to the Void Century."""
-        # ... (previous checks remain the same)
+        """Banish crew members to the Void Century.
+        `<users...>` is a space separated list of usernames, ID's, or mentions.
+        `[time_and_reason]` is the time to mute for and reason. Time is
+        any valid time length such as `30 minutes` or `2 days`. If nothing
+        is provided the mute will use the set default time or indefinite if not set.
+        Examples:
+        `[p]mute @member1 @member2 mutiny 5 hours`
+        `[p]mute @member1 3 days Refusing to swab the deck`
+        """
+        if not users:
+            return await ctx.send_help()
+        if ctx.me in users:
+            return await ctx.send("You cannot banish the ship's Log Pose to the Void Century!")
+        if ctx.author in users:
+            return await ctx.send("You cannot banish yourself to the Void Century!")
 
         mute_role = ctx.guild.get_role(self.mute_role_id)
         if not mute_role:
@@ -515,59 +528,71 @@ class OnePieceMod(commands.Cog):
                 f"been banished to the Void Century{time_str}."
             )
 
-    async def mute_user(
-        self,
-        guild: discord.Guild,
-        author: discord.Member,
-        user: discord.Member,
-        until: Optional[datetime] = None,
-        reason: Optional[str] = None,
-    ) -> Dict[str, Union[bool, str]]:
-        """Handles banishing users to the Void Century"""
-        ret = {"success": False, "reason": None}
-
-        if user.guild_permissions.administrator:
-            ret["reason"] = "This pirate has the powers of a Yonko and cannot be banished!"
+        async def mute_user(
+            self,
+            guild: discord.Guild,
+            author: discord.Member,
+            user: discord.Member,
+            until: Optional[datetime] = None,
+            reason: Optional[str] = None,
+        ) -> Dict[str, Union[bool, str]]:
+            """Handles banishing users to the Void Century"""
+            ret = {"success": False, "reason": None}
+        
+            if user.guild_permissions.administrator:
+                ret["reason"] = "This pirate has the powers of a Yonko and cannot be banished!"
+                return ret
+        
+            if not await self.is_allowed_by_hierarchy(guild, author, user):
+                ret["reason"] = "Ye can't banish a pirate of higher rank!"
+                return ret
+        
+            mute_role = guild.get_role(self.mute_role_id)
+            if not mute_role:
+                ret["reason"] = "The Void Century role is missing! Have ye checked the Grand Line?"
+                return ret
+        
+            if mute_role >= author.top_role:
+                ret["reason"] = "The Void Century role is too powerful for ye to control!"
+                return ret
+        
+            bot_member = guild.me
+            if not bot_member.guild_permissions.manage_roles:
+                ret["reason"] = "I lack the Manage Roles permission to control the Void Century role!"
+                return ret
+        
+            if mute_role >= bot_member.top_role:
+                ret["reason"] = "The Void Century role is higher than my highest role. I can't assign it!"
+                return ret
+        
+            try:
+                # Store current roles
+                current_roles = [role for role in user.roles if role != guild.default_role and role != mute_role]
+                
+                # Remove all roles except @everyone and add mute role
+                await user.edit(roles=[mute_role], reason=reason)
+        
+                if guild.id not in self.mute_role_cache:
+                    self.mute_role_cache[guild.id] = {}
+                self.mute_role_cache[guild.id][user.id] = {
+                    "author": author.id,
+                    "member": user.id,
+                    "until": until.timestamp() if until else None,
+                    "roles": [r.id for r in current_roles]
+                }
+                await self.config.guild(guild).muted_users.set(self.mute_role_cache[guild.id])
+                ret["success"] = True
+            except discord.Forbidden as e:
+                ret["reason"] = f"The Sea Kings prevent me from assigning the Void Century role! Error: {e}"
+                self.logger.error(f"Failed to mute user {user.id} in guild {guild.id}. Error: {e}")
+            except discord.HTTPException as e:
+                ret["reason"] = f"A mysterious force interferes with the mute! Error: {e}"
+                self.logger.error(f"HTTP error while muting user {user.id} in guild {guild.id}. Error: {e}")
+            except Exception as e:
+                ret["reason"] = f"An unexpected tempest disrupts the mute! Error: {e}"
+                self.logger.error(f"Unexpected error while muting user {user.id} in guild {guild.id}. Error: {e}", exc_info=True)
             return ret
-
-        if not await self.is_allowed_by_hierarchy(guild, author, user):
-            ret["reason"] = "Ye can't banish a pirate of higher rank!"
-            return ret
-
-        mute_role = guild.get_role(self.mute_role_id)
-        if not mute_role:
-            ret["reason"] = "The Void Century role is missing! Have ye checked the Grand Line?"
-            return ret
-
-        if mute_role >= author.top_role:
-            ret["reason"] = "The Void Century role is too powerful for ye to control!"
-            return ret
-
-        if not guild.me.guild_permissions.manage_roles or mute_role >= guild.me.top_role:
-            ret["reason"] = "I lack the power to control the Void Century role!"
-            return ret
-
-        try:
-            # Store current roles
-            current_roles = [role for role in user.roles if role != guild.default_role and role != mute_role]
-            
-            # Remove all roles except @everyone and add mute role
-            await user.edit(roles=[mute_role], reason=reason)
-
-            if guild.id not in self.mute_role_cache:
-                self.mute_role_cache[guild.id] = {}
-            self.mute_role_cache[guild.id][user.id] = {
-                "author": author.id,
-                "member": user.id,
-                "until": until.timestamp() if until else None,
-                "roles": [r.id for r in current_roles]
-            }
-            await self.config.guild(guild).muted_users.set(self.mute_role_cache[guild.id])
-            ret["success"] = True
-        except discord.Forbidden:
-            ret["reason"] = "The Sea Kings prevent me from assigning the Void Century role!"
-        return ret
-
+    
     async def unmute_user(
         self,
         guild: discord.Guild,
