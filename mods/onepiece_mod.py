@@ -10,6 +10,7 @@ import re
 import random
 import pytz
 import logging
+from typing import Optional, List, Union, Dict
 
 original_commands = {}
 
