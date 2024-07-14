@@ -406,21 +406,7 @@ class OnePieceMod(commands.Cog):
         *,
         time_and_reason: str = None
     ):
-        """Banish crew members to the Void Century.
-
-        <users...> is a space separated list of usernames, ID's, or mentions.
-        [time_and_reason] is the time to mute for and/or the reason.
-        Time can be specified as a number followed by m(inutes), h(ours), d(ays), or w(eeks).
-        If no time is specified, the banishment will be indefinite.
-
-        You can also attach an image as evidence for the mute.
-
-        Examples:
-        `[p]mute @member1 @member2 10m Disrupting crew meeting`
-        `[p]mute @member1 1d Stealing food from the galley`
-        `[p]mute @member1 Insubordination` (indefinite banishment)
-        `[p]mute @member1` (indefinite banishment with no reason)
-        """
+        """Banish crew members to the Void Century."""
         if not users:
             return await ctx.send_help()
         if ctx.me in users:
@@ -431,6 +417,13 @@ class OnePieceMod(commands.Cog):
         mute_role = ctx.guild.get_role(self.mute_role_id)
         if not mute_role:
             return await ctx.send("The Void Century role hasn't been established yet!")
+
+        # Check bot permissions
+        if not ctx.me.guild_permissions.manage_roles:
+            return await ctx.send("I don't have the 'Manage Roles' permission to banish pirates to the Void Century!")
+
+        if mute_role.position >= ctx.me.top_role.position:
+            return await ctx.send("The Void Century role is higher than my highest role. I can't assign it!")
 
         duration = None
         reason = "No reason provided"
@@ -468,6 +461,11 @@ class OnePieceMod(commands.Cog):
             async with self.config.guild(ctx.guild).muted_users() as muted_users:
                 for user in users:
                     try:
+                        # Check if the bot can manage this user's roles
+                        if user.top_role >= ctx.me.top_role:
+                            await ctx.send(f"I can't manage roles for {user.name} as their top role is higher than or equal to mine.")
+                            continue
+
                         # Store the user's current roles
                         self.muted_users[user.id] = [role for role in user.roles if role != ctx.guild.default_role]
                         
@@ -503,10 +501,10 @@ class OnePieceMod(commands.Cog):
                         # Schedule unmute if duration is set
                         if duration:
                             self.bot.loop.create_task(self.schedule_unmute(ctx.guild, user, duration))
-                    except discord.Forbidden:
-                        await ctx.send(f"I don't have the authority to banish {user.name} to the Void Century!")
-                    except discord.HTTPException:
-                        await ctx.send(f"There was an error trying to banish {user.name}. The currents of time must be interfering with our Log Pose!")
+                    except discord.Forbidden as e:
+                        await ctx.send(f"I don't have the authority to banish {user.name} to the Void Century! Error: {e}")
+                    except discord.HTTPException as e:
+                        await ctx.send(f"There was an error trying to banish {user.name}. The currents of time must be interfering with our Log Pose! Error: {e}")
 
         if success_list:
             if len(success_list) == 1:
@@ -514,6 +512,8 @@ class OnePieceMod(commands.Cog):
             else:
                 msg = f"{humanize_list([f'`{u.name}`' for u in success_list])} have been banished to the Void Century{time_str}."
             await ctx.send(msg)
+        else:
+            await ctx.send("No users were successfully banished to the Void Century.")
 
     async def schedule_unmute(self, guild: discord.Guild, user: discord.Member, duration: timedelta):
         """Schedule an unmute operation."""
