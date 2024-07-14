@@ -127,6 +127,16 @@ class OnePieceMod(commands.Cog):
         except discord.Forbidden:
             pass  # Cannot send DM to the user
 
+    async def is_mod_or_admin(self, ctx):
+        """Check if the user is a mod or admin."""
+        if await self.bot.is_owner(ctx.author):
+            return True
+        if ctx.author == ctx.guild.owner:
+            return True
+        if await self.bot.is_mod(ctx.author):
+            return True
+        return False
+
     @commands.command()
     @checks.admin_or_permissions(manage_guild=True)
     async def setgeneralchannel(self, ctx, channel: discord.TextChannel):
@@ -455,7 +465,7 @@ class OnePieceMod(commands.Cog):
             
     @commands.command(usage="<users...> [time_and_reason]")
     @commands.guild_only()
-    @commands.mod_or_permissions(manage_roles=True)
+    @commands.check(is_mod_or_admin)
     async def mute(
         self,
         ctx: commands.Context,
@@ -464,10 +474,12 @@ class OnePieceMod(commands.Cog):
         time_and_reason: str = None
     ):
         """Banish crew members to the Void Century.
+
         `<users...>` is a space separated list of usernames, ID's, or mentions.
         `[time_and_reason]` is the time to mute for and reason. Time is
         any valid time length such as `30 minutes` or `2 days`. If nothing
         is provided the mute will use the set default time or indefinite if not set.
+
         Examples:
         `[p]mute @member1 @member2 mutiny 5 hours`
         `[p]mute @member1 3 days Refusing to swab the deck`
