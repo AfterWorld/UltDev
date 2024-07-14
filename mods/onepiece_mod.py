@@ -538,40 +538,40 @@ class OnePieceMod(commands.Cog):
         ) -> Dict[str, Union[bool, str]]:
             """Handles banishing users to the Void Century"""
             ret = {"success": False, "reason": None}
-        
+    
             if user.guild_permissions.administrator:
                 ret["reason"] = "This pirate has the powers of a Yonko and cannot be banished!"
                 return ret
-        
+    
             if not await self.is_allowed_by_hierarchy(guild, author, user):
                 ret["reason"] = "Ye can't banish a pirate of higher rank!"
                 return ret
-        
+    
             mute_role = guild.get_role(self.mute_role_id)
             if not mute_role:
                 ret["reason"] = "The Void Century role is missing! Have ye checked the Grand Line?"
                 return ret
-        
+    
             if mute_role >= author.top_role:
                 ret["reason"] = "The Void Century role is too powerful for ye to control!"
                 return ret
-        
+    
             bot_member = guild.me
             if not bot_member.guild_permissions.manage_roles:
                 ret["reason"] = "I lack the Manage Roles permission to control the Void Century role!"
                 return ret
-        
+    
             if mute_role >= bot_member.top_role:
                 ret["reason"] = "The Void Century role is higher than my highest role. I can't assign it!"
                 return ret
-        
+    
             try:
                 # Store current roles
                 current_roles = [role for role in user.roles if role != guild.default_role and role != mute_role]
                 
                 # Remove all roles except @everyone and add mute role
                 await user.edit(roles=[mute_role], reason=reason)
-        
+    
                 if guild.id not in self.mute_role_cache:
                     self.mute_role_cache[guild.id] = {}
                 self.mute_role_cache[guild.id][user.id] = {
@@ -592,7 +592,7 @@ class OnePieceMod(commands.Cog):
                 ret["reason"] = f"An unexpected tempest disrupts the mute! Error: {e}"
                 self.logger.error(f"Unexpected error while muting user {user.id} in guild {guild.id}. Error: {e}", exc_info=True)
             return ret
-    
+        
     async def unmute_user(
         self,
         guild: discord.Guild,
