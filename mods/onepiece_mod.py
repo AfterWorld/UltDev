@@ -347,16 +347,13 @@ class OnePieceMod(commands.Cog):
             # Select a random ban message
             ban_message, ban_gif = random.choice(self.ban_messages)
     
-            embed = discord.Embed(
-                title="⛓️ Pirate Banished to Impel Down! ⛓️",
-                description=f"{member.name} has been locked away!",
-                color=0xff0000
+            # Create the ban text message
+            ban_text = (
+                f"⛓️ Pirate Banished to Impel Down! ⛓️\n\n"
+                f"{member.name} has been locked away!\n\n"
+                f"**Crimes**\n{reason}\n\n"
+                f"**Warden's Note**\n{ban_message}"
             )
-            embed.add_field(name="Crimes", value=reason, inline=False)
-            embed.add_field(name="Warden's Note", value=ban_message, inline=False)
-            
-            # Instead of setting the image in the embed, we'll send it as a separate message
-            ban_text = f"{embed.title}\n\n{embed.description}\n\n**Crimes**\n{reason}\n\n**Warden's Note**\n{ban_message}"
     
             # Send the ban message to the general chat or the current channel
             general_chat = self.bot.get_channel(self.general_chat_id)
