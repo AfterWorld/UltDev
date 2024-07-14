@@ -504,7 +504,7 @@ class OnePieceMod(commands.Cog):
                     duration = timedelta(seconds=default_duration)
                     until = ctx.message.created_at + duration
 
-            time_str = f" for {humanize_timedelta(timedelta=duration)}" if duration else " indefinitely"
+            time_str = f"for {humanize_timedelta(timedelta=duration)}" if duration else "indefinitely"
 
             success_list = []
             for user in users:
@@ -522,15 +522,18 @@ class OnePieceMod(commands.Cog):
                         until=until,
                     )
                     await self._send_dm_notification(user, ctx.author, ctx.guild, "Banishment to the Void Century", reason, duration)
-                    await self.log_action(ctx, user, "Banished to the Void Century", reason, ctx.author)
+                    await self.log_action(ctx, user, f"Banished to Void Century {time_str}", reason, ctx.author)
                 else:
                     await ctx.send(f"I couldn't banish {user} to the Void Century: {result['reason']}")
 
         if success_list:
-            await ctx.send(
-                f"{humanize_list([f'`{u}`' for u in success_list])} {'has' if len(success_list) == 1 else 'have'} "
-                f"been banished to the Void Century{time_str}."
-            )
+            pirate_messages = [
+                f"Yarr! {humanize_list([f'`{u}`' for u in success_list])} {'has' if len(success_list) == 1 else 'have'} been cast into the Void Century {time_str}!",
+                f"Shiver me timbers! {humanize_list([f'`{u}`' for u in success_list])} {'has' if len(success_list) == 1 else 'have'} vanished into the mists of the Void Century {time_str}!",
+                f"By Davy Jones' locker! {humanize_list([f'`{u}`' for u in success_list])} {'has' if len(success_list) == 1 else 'have'} been marooned in the Void Century {time_str}!",
+                f"Blimey! {humanize_list([f'`{u}`' for u in success_list])} {'has' if len(success_list) == 1 else 'have'} been swallowed by the Void Century {time_str}!"
+            ]
+            await ctx.send(random.choice(pirate_messages))
 
     async def mute_user(
         self,
@@ -665,19 +668,16 @@ class OnePieceMod(commands.Cog):
     async def log_action(self, ctx, member: discord.Member, action: str, reason: str, moderator: discord.Member = None):
         log_channel = self.bot.get_channel(self.log_channel_id)
         if log_channel:
-            embed = discord.Embed(
-                title="🏴‍☠️ Crew Log Entry 🏴‍☠️",
-                color=discord.Color.red() if "Banished" in action else discord.Color.green(),
-                timestamp=ctx.message.created_at
+            log_message = (
+                "🏴‍☠️ **Crew Log Entry** 🏴‍☠️\n\n"
+                f"**Target Pirate:** {member.name} (ID: {member.id})\n"
+                f"**Action Taken:** {action}\n"
+                f"**Reason for Action:** {reason or 'No reason provided'}\n"
+                f"**Enforcing Officer:** {moderator.name} (ID: {moderator.id})\n"
+                f"**Incident Report:** [View Incident Details]({ctx.message.jump_url})\n\n"
+                f"Logged at {ctx.message.created_at.strftime('%Y-%m-%d %H:%M:%S')} | One Piece Moderation"
             )
-            embed.add_field(name="Target Pirate", value=f"{member.name} (ID: {member.id})", inline=False)
-            embed.add_field(name="Action Taken", value=action, inline=False)
-            embed.add_field(name="Reason for Action", value=reason or "No reason provided", inline=False)
-            if moderator:
-                embed.add_field(name="Enforcing Officer", value=f"{moderator.name} (ID: {moderator.id})", inline=False)
-            embed.set_footer(text="One Piece Moderation")
-            
-            await log_channel.send(embed=embed)
+            await log_channel.send(log_message)
             
     @commands.command()
     @checks.admin_or_permissions(manage_channels=True)
