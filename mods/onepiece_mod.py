@@ -637,30 +637,30 @@ class OnePieceMod(commands.Cog):
             return await ctx.send("Shiver me timbers! The Void Century role has vanished like a ghost ship!")
 
         async with ctx.typing():
-        success_list = []
-        for user in users:
-            result = await self.unmute_user(ctx.guild, ctx.author, user, reason)
-            if result["success"]:
-                success_list.append(user)
-                await modlog.create_case(
-                    self.bot,
-                    ctx.guild,
-                    ctx.message.created_at,
-                    "sunmute",
-                    user,
-                    ctx.author,
-                    reason,
-                    until=None,
-                )
-                await self._send_dm_notification(user, ctx.author, ctx.guild, "Return from the Void Century", reason)
-            else:
-                await ctx.send(f"I couldn't return {user} from the Void Century: {result['reason']}")
-
-    if success_list:
-        await ctx.send(
-            f"{humanize_list([f'`{u}`' for u in success_list])} {'has' if len(success_list) == 1 else 'have'} "
-            f"returned from the Void Century and can speak again!"
-        )
+            success_list = []
+            for user in users:
+                result = await self.unmute_user(ctx.guild, ctx.author, user, reason)
+                if result["success"]:
+                    success_list.append(user)
+                    await modlog.create_case(
+                        self.bot,
+                        ctx.guild,
+                        ctx.message.created_at,
+                        "sunmute",
+                        user,
+                        ctx.author,
+                        reason,
+                        until=None,
+                    )
+                    await self._send_dm_notification(user, ctx.author, ctx.guild, "Return from the Void Century", reason)
+                else:
+                    await ctx.send(f"I couldn't return {user} from the Void Century: {result['reason']}")
+    
+        if success_list:
+            await ctx.send(
+                f"{humanize_list([f'`{u}`' for u in success_list])} {'has' if len(success_list) == 1 else 'have'} "
+                f"returned from the Void Century and can speak again!"
+            )
 
     async def unmute_user(
         self,
