@@ -691,6 +691,39 @@ class OnePieceMod(commands.Cog):
         
         return ret
 
+    async def _restore_roles(self, member: discord.Member, reason: str):
+        """Helper method to restore roles for a user."""
+        guild = member.guild
+        if guild.id in self.mute_role_cache and member.id in self.mute_role_cache[guild.id]:
+            roles_to_add = []
+            for role_id in self.mute_role_cache[guild.id][member.id]["roles"]:
+                role = guild.get_role(role_id)
+                if role and role < guild.me.top_role and role not in member.roles:
+                    roles_to_add.append(role)
+            
+            if roles_to_add:
+                try:
+                    await member.add_roles(*roles_to_add, reason=f"Restoring roles after unmute: {reason}")
+                    self.logger.info(f"Restored roles for {member} in {guild}: {', '.join(r.name for r in roles_to_add)}")
+                except discord.Forbidden:
+                    self.logger.error(f"Failed to restore roles for {member} in {guild}: Missing Permissions")
+                except discord.HTTPException as e:
+                    self.logger.error(f"Failed to restore roles for {member} in {guild}: {e}")
+            
+            del self.mute_role_cache[guild.id][member.id]
+            await self.config.guild(guild).muted_users.set(self.mute_role_cache[guild.id])
+
+    @commands.Cog.listener()
+    async def on_member_update(self, before: discord.Member, after: discord.Member):
+        """Event listener to catch manual mute role removals."""
+        mute_role = before.guild.get_role(self.mute_role_id)
+        if not mute_role:
+            return
+
+        if mute_role in before.roles and mute_role not in after.roles:
+            # The mute role was manually removed
+            await self._restore_roles(after, "Manual unmute detected")
+
 
     async def log_action(self, ctx, member: discord.Member, action: str, reason: str, moderator: discord.Member = None):
         log_channel = self.bot.get_channel(self.log_channel_id)
