@@ -34,6 +34,7 @@ class OnePieceMod(commands.Cog):
     def __init__(self, bot: Red):
         self.bot = bot
         self.config = Config.get_conf(self, identifier=1234567890)
+        self.mute_tasks = {}
         default_guild = {
             "general_channel_id": None,
             "main_server_id": None,
@@ -523,6 +524,10 @@ class OnePieceMod(commands.Cog):
                     )
                     await self._send_dm_notification(user, ctx.author, ctx.guild, "Banishment to the Void Century", reason, duration)
                     await self.log_action(ctx, user, f"Banished to Void Century {time_str}", reason, ctx.author)
+                    
+                    # Schedule auto-unmute
+                    if duration:
+                        self.schedule_unmute(ctx.guild, user, duration)
                 else:
                     await ctx.send(f"I couldn't banish {user} to the Void Century: {result['reason']}")
 
@@ -535,49 +540,62 @@ class OnePieceMod(commands.Cog):
             ]
             await ctx.send(random.choice(pirate_messages))
 
-    async def mute_user(
+    def schedule_unmute(self, guild: discord.Guild, user: discord.Member, duration: timedelta):
+        async def unmute_later():
+            await asyncio.sleep(duration.total_seconds())
+            await self.unmute_user(guild, self.bot.user, user, "Automatic unmute: Void Century banishment has ended")
+            # Remove the task from the mute_tasks dict
+            if guild.id in self.mute_tasks and user.id in self.mute_tasks[guild.id]:
+                del self.mute_tasks[guild.id][user.id]
+
+        # Create a task for the delayed unmute
+        task = asyncio.create_task(unmute_later())
+        
+        # Store the task so it can be cancelled if needed
+        if guild.id not in self.mute_tasks:
+            self.mute_tasks[guild.id] = {}
+        self.mute_tasks[guild.id][user.id] = task
+
+    async def unmute_user(
         self,
         guild: discord.Guild,
         author: discord.Member,
         user: discord.Member,
-        until: Optional[datetime] = None,
         reason: Optional[str] = None,
     ) -> Dict[str, Union[bool, str]]:
-        """Handles banishing users to the Void Century"""
+        """Handles returning users from the Void Century"""
         ret = {"success": False, "reason": None}
 
         mute_role = guild.get_role(self.mute_role_id)
         if not mute_role:
-            ret["reason"] = "The Void Century role is missing! Have ye checked the Grand Line?"
+            ret["reason"] = "The Void Century role has vanished like a mirage! Alert the captain!"
             return ret
 
-        if mute_role in user.roles:
-            ret["reason"] = f"{user.name} is already banished to the Void Century!"
+        if mute_role not in user.roles:
+            ret["reason"] = f"{user.name} isn't trapped in the Void Century. They're free as a seagull!"
             return ret
 
         try:
-            # Store current roles
-            current_roles = [role for role in user.roles if role != guild.default_role and role != mute_role]
+            await user.remove_roles(mute_role, reason=reason)
             
-            # Remove all roles except @everyone and add mute role
-            await user.edit(roles=[mute_role], reason=reason)
-
-            if guild.id not in self.mute_role_cache:
-                self.mute_role_cache[guild.id] = {}
-            self.mute_role_cache[guild.id][user.id] = {
-                "author": author.id,
-                "member": user.id,
-                "until": until.timestamp() if until else None,
-                "roles": [r.id for r in current_roles]
-            }
-            await self.config.guild(guild).muted_users.set(self.mute_role_cache[guild.id])
+            # Restore previous roles
+            if guild.id in self.mute_role_cache and user.id in self.mute_role_cache[guild.id]:
+                roles_to_add = [guild.get_role(r_id) for r_id in self.mute_role_cache[guild.id][user.id]["roles"] if guild.get_role(r_id)]
+                await user.add_roles(*roles_to_add, reason="Restoring roles after unmute")
+                
+                del self.mute_role_cache[guild.id][user.id]
+                await self.config.guild(guild).muted_users.set(self.mute_role_cache[guild.id])
+            
             ret["success"] = True
-        except discord.Forbidden as e:
-            ret["reason"] = f"The Sea Kings prevent me from assigning the Void Century role! Error: {e}"
-        except discord.HTTPException as e:
-            ret["reason"] = f"A mysterious force interferes with the mute! Error: {e}"
-        except Exception as e:
-            ret["reason"] = f"An unexpected tempest disrupts the mute! Error: {e}"
+            
+            # Cancel any existing unmute task
+            if guild.id in self.mute_tasks and user.id in self.mute_tasks[guild.id]:
+                self.mute_tasks[guild.id][user.id].cancel()
+                del self.mute_tasks[guild.id][user.id]
+            
+        except discord.Forbidden:
+            ret["reason"] = "The Sea Kings prevent me from removing the Void Century role!"
+        
         return ret
 
     @commands.command()
@@ -619,7 +637,6 @@ class OnePieceMod(commands.Cog):
                         until=None,
                     )
                     await self._send_dm_notification(user, ctx.author, ctx.guild, "Return from the Void Century", reason)
-                    await self.log_action(ctx, user, "Returned from the Void Century", reason, ctx.author)
                 else:
                     await ctx.send(f"I couldn't return {user} from the Void Century: {result['reason']}")
     
