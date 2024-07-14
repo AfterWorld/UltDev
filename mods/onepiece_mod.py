@@ -453,12 +453,16 @@ class OnePieceMod(commands.Cog):
             else:
                 reason = time_and_reason
 
+        self.logger.info(f"Mute duration: {duration}, Reason: {reason}")
+
         # Check for image attachment
         image_url = None
         if ctx.message.attachments:
             attachment = ctx.message.attachments[0]
             if attachment.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
                 image_url = attachment.url
+        
+        self.logger.info(f"Image URL: {image_url}")
 
         async with ctx.typing():
             author = ctx.message.author
@@ -466,10 +470,17 @@ class OnePieceMod(commands.Cog):
             audit_reason = get_audit_reason(author, reason)
             success_list = []
             
+            self.logger.info(f"Mute command initiated by {author.name} (ID: {author.id})")
+            
             async with self.config.guild(ctx.guild).muted_users() as muted_users:
                 for user in users:
                     self.logger.info(f"Attempting to mute user: {user.name} (ID: {user.id})")
                     try:
+                        self.logger.debug(f"Bot's top role: {ctx.me.top_role.name} (Position: {ctx.me.top_role.position})")
+                        self.logger.debug(f"User's top role: {user.top_role.name} (Position: {user.top_role.position})")
+                        self.logger.debug(f"Mute role: {mute_role.name} (Position: {mute_role.position})")
+                        self.logger.debug(f"Bot's permissions: {ctx.me.guild_permissions}")
+                        
                         if user.top_role >= ctx.me.top_role:
                             self.logger.warning(f"Cannot mute {user.name} due to role hierarchy")
                             await ctx.send(f"I can't manage roles for {user.name} as their top role is higher than or equal to mine.")
@@ -496,6 +507,8 @@ class OnePieceMod(commands.Cog):
                             "jump_url": ctx.message.jump_url
                         }
                         
+                        self.logger.info(f"Mute information stored for {user.name}")
+                        
                         await modlog.create_case(
                             self.bot,
                             guild,
@@ -507,11 +520,14 @@ class OnePieceMod(commands.Cog):
                             until=ctx.message.created_at + duration if duration else None,
                         )
                         
+                        self.logger.info(f"Modlog case created for muting {user.name}")
+                        
                         time_str = f" for {humanize_timedelta(timedelta=duration)}" if duration else " indefinitely"
                         await self.log_action(ctx, user, f"Banished to Void Century{time_str}", reason, moderator=ctx.author, jump_url=ctx.message.jump_url, image_url=image_url)
                         
                         # Schedule unmute if duration is set
                         if duration:
+                            self.logger.info(f"Scheduling unmute for {user.name} in {duration}")
                             self.bot.loop.create_task(self.schedule_unmute(ctx.guild, user, duration))
                     except Forbidden as e:
                         self.logger.error(f"Forbidden error while muting {user.name}: {e}")
@@ -529,8 +545,10 @@ class OnePieceMod(commands.Cog):
             else:
                 msg = f"{humanize_list([f'`{u.name}`' for u in success_list])} have been banished to the Void Century{time_str}."
             await ctx.send(msg)
+            self.logger.info(f"Mute command completed successfully for users: {', '.join([u.name for u in success_list])}")
         else:
             await ctx.send("No users were successfully banished to the Void Century.")
+            self.logger.warning("Mute command completed, but no users were successfully muted.")
 
     async def schedule_unmute(self, guild: discord.Guild, user: discord.Member, duration: timedelta):
         await asyncio.sleep(duration.total_seconds())
@@ -549,7 +567,6 @@ class OnePieceMod(commands.Cog):
     async def log_action(self, ctx, member: discord.Member, action: str, reason: str, moderator: discord.Member = None, jump_url: str = None, image_url: str = None):
         # Implementation of log_action method (keep your existing implementation)
         pass
-
 
     @commands.command()
     @checks.mod_or_permissions(manage_roles=True)
