@@ -85,6 +85,48 @@ class OnePieceMod(commands.Cog):
         is_special = mod == guild.owner or await self.bot.is_owner(mod)
         return mod.top_role > user.top_role or is_special
 
+    async def _send_dm_notification(
+        self,
+        user: Union[discord.User, discord.Member],
+        moderator: Union[discord.User, discord.Member],
+        guild: discord.Guild,
+        action: str,
+        reason: Optional[str],
+        duration: Optional[timedelta] = None
+    ):
+        if user.bot:
+            return
+
+        if not await self.config.guild(guild).dm():
+            return
+
+        show_mod = await self.config.guild(guild).show_mod()
+        title = f"🏴‍☠️ {action} 🏴‍☠️"
+        
+        if duration:
+            duration_str = humanize_timedelta(timedelta=duration)
+            until = datetime.now(timezone.utc) + duration
+            until_str = discord.utils.format_dt(until)
+
+        moderator_str = str(moderator) if show_mod else "A mysterious pirate captain"
+
+        if not reason:
+            reason = "No reason provided, ye scurvy dog!"
+
+        message = f"{title}\n\n"
+        message += f"**Reason:** {reason}\n"
+        if show_mod:
+            message += f"**Enforcing Officer:** {moderator_str}\n"
+        if duration:
+            message += f"**Duration:** {duration_str}\n"
+            message += f"**Until:** {until_str}\n"
+        message += f"**Crew:** {guild.name}"
+
+        try:
+            await user.send(message)
+        except discord.Forbidden:
+            pass  # Cannot send DM to the user
+
     @commands.command()
     @checks.admin_or_permissions(manage_guild=True)
     async def setgeneralchannel(self, ctx, channel: discord.TextChannel):
