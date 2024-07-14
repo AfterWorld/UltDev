@@ -144,20 +144,33 @@ class OnePieceMod(commands.Cog):
 
     def get_random_reminder(self):
         reminder_messages = [
-            "🏴‍☠️ Ahoy, me hearties! Remember, loose lips sink ships! Keep them spoilers out of the general chat, or ye'll be walkin' the plank!",
-            "⚓ Avast ye! The Pirate Code (server rules) be posted in #rules. Any landlubber caught ignorin' 'em will be keelhauled!",
-            "🗺️ Arrr! This here ship be a peaceful one. Leave yer controversial topics at the dock, or face the wrath of the Sea Kings!",
-            "🍖 Oi! Just like Luffy respects his crew's privacy, respect yer fellow pirates' personal information. Don't be sharin' what ain't yours to share!",
-            "🎭 Yo ho ho! Keep it family-friendly, ye scurvy dogs! We run a clean ship here, like the Thousand Sunny!",
-            "🌊 Sea Kings ahead! Watch yer language in the general waters. This ain't the Grand Line, so keep it mild!",
-            "🍊 Nami says: 'Don't spam the chat or I'll charge you 100,000 berries per message!'",
-            "📚 Robin's daily reminder: Treat every crew member with respect, regardless of their background. That's the way of the Straw Hat Pirates!",
-            "🔧 Franky's SUPER reminder: Keep the server topics as organized as his workshop! Use the right channels for the right discussions!",
-            "🍳 Sanji's kitchen notice: All are welcome in our crew, just like in the Baratie! Discrimination of any kind will not be tolerated!",
-            "⚔️ Zoro's warning: Don't go starting fights in the chat. If ye have a problem, talk to a moderator before ye get lost in a ban!",
-            "🩺 Chopper's advice: If someone's breaking the rules, don't play doctor yourself. Report it to the ship's officers (moderators)!",
-            "🎵 Brook's melody of wisdom: Yohohoho! Remember to give credit when sharing others' work, or you'll face a copyright strike! ...Ah, but I don't have eyes to see copyrights! Skull joke!",
-            "👑 Words from the Pirate King: 'In this server, everyone's dreams are respected. Don't mock or belittle others for their passions!'"
+            "# 🏴‍☠️ __**Ahoy, me hearties!**__ 🏴‍☠️\n> Remember, loose lips sink ships!\n> **Keep them spoilers out of the general chat,\n> or ye'll be walkin' the plank!** 🦈",
+            
+            "# ⚓ __**Avast ye!**__ ⚓\n> The Pirate Code (server rules) be posted in <#rules>.\n> **Any landlubber caught ignorin' 'em will be keelhauled!** 🏴‍☠️",
+            
+            "# 🗺️ __**Arrr!**__ 🗺️\n> This here ship be a peaceful one.\n> **Leave yer controversial topics at the dock,\n> or face the wrath of the Sea Kings!** 🌊",
+            
+            "# 🍖 __**Oi!**__ 🍖\n> Just like Luffy respects his crew's privacy,\n> **respect yer fellow pirates' personal information.\n> Don't be sharin' what ain't yours to share!** 🤐",
+            
+            "# 🎭 __**Yo ho ho!**__ 🎭\n> Keep it family-friendly, ye scurvy dogs!\n> **We run a clean ship here, like the Thousand Sunny!** 🌟",
+            
+            "# 🌊 __**Sea Kings ahead!**__ 🌊\n> Watch yer language in the general waters.\n> **This ain't the Grand Line, so keep it mild!** 🧼",
+            
+            "# 🍊 __**Nami says:**__ 🍊\n> '**Don't spam the chat or I'll charge you\n> 100,000 berries per message!**' 💰",
+            
+            "# 📚 __**Robin's daily reminder:**__ 📚\n> Treat every crew member with respect,\n> regardless of their background.\n> **That's the way of the Straw Hat Pirates!** 🏴‍☠️",
+            
+            "# 🔧 __**Franky's SUPER reminder:**__ 🔧\n> Keep the server topics as organized as his workshop!\n> **Use the right channels for the right discussions!** 🛠️",
+            
+            "# 🍳 __**Sanji's kitchen notice:**__ 🍳\n> All are welcome in our crew, just like in the Baratie!\n> **Discrimination of any kind will not be tolerated!** 🥘",
+            
+            "# ⚔️ __**Zoro's warning:**__ ⚔️\n> Don't go starting fights in the chat.\n> **If ye have a problem, talk to a moderator\n> before ye get lost in a ban!** 🧭",
+            
+            "# 🩺 __**Chopper's advice:**__ 🩺\n> If someone's breaking the rules, don't play doctor yourself.\n> **Report it to the ship's officers (moderators)!** 🚨",
+            
+            "# 🎵 __**Brook's melody of wisdom:**__ 🎵\n> Yohohoho! Remember to give credit when sharing others' work,\n> **or you'll face a copyright strike!**\n> ...Ah, but I don't have eyes to see copyrights! Skull joke! 💀",
+            
+            "# 👑 __**Words from the Pirate King:**__ 👑\n> '**In this server, everyone's dreams are respected.\n> Don't mock or belittle others for their passions!**' 🌈"
         ]
         return random.choice(reminder_messages)
 
