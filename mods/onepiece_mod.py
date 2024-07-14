@@ -539,38 +539,54 @@ class OnePieceMod(commands.Cog):
         """Handles banishing users to the Void Century"""
         ret = {"success": False, "reason": None}
 
+        self.logger.info(f"Attempting to mute user {user.name} (ID: {user.id}) in guild {guild.name} (ID: {guild.id})")
+
         if user.guild_permissions.administrator:
             ret["reason"] = "This pirate has the powers of a Yonko and cannot be banished!"
+            self.logger.info(f"Cannot mute {user.name}: User is an administrator")
             return ret
 
         if not await self.is_allowed_by_hierarchy(guild, author, user):
             ret["reason"] = "Ye can't banish a pirate of higher rank!"
+            self.logger.info(f"Cannot mute {user.name}: Hierarchy check failed")
             return ret
 
         mute_role = guild.get_role(self.mute_role_id)
         if not mute_role:
             ret["reason"] = "The Void Century role is missing! Have ye checked the Grand Line?"
+            self.logger.error(f"Mute role (ID: {self.mute_role_id}) not found in guild {guild.name}")
             return ret
+
+        self.logger.info(f"Mute role found: {mute_role.name} (ID: {mute_role.id})")
 
         if mute_role >= author.top_role:
             ret["reason"] = "The Void Century role is too powerful for ye to control!"
+            self.logger.info(f"Cannot mute {user.name}: Mute role is higher than or equal to author's top role")
             return ret
 
         bot_member = guild.me
+        self.logger.info(f"Bot permissions: {bot_member.guild_permissions.value}")
+        
         if not bot_member.guild_permissions.manage_roles:
             ret["reason"] = "I lack the Manage Roles permission to control the Void Century role!"
+            self.logger.error(f"Bot lacks Manage Roles permission in guild {guild.name}")
             return ret
 
         if mute_role >= bot_member.top_role:
             ret["reason"] = "The Void Century role is higher than my highest role. I can't assign it!"
+            self.logger.error(f"Mute role is higher than bot's top role in guild {guild.name}")
             return ret
 
         try:
+            self.logger.info(f"Current roles of {user.name}: {[role.name for role in user.roles]}")
+            
             # Store current roles
             current_roles = [role for role in user.roles if role != guild.default_role and role != mute_role]
             
+            self.logger.info(f"Attempting to edit roles for {user.name}")
             # Remove all roles except @everyone and add mute role
             await user.edit(roles=[mute_role], reason=reason)
+            self.logger.info(f"Successfully edited roles for {user.name}")
 
             if guild.id not in self.mute_role_cache:
                 self.mute_role_cache[guild.id] = {}
@@ -581,16 +597,19 @@ class OnePieceMod(commands.Cog):
                 "roles": [r.id for r in current_roles]
             }
             await self.config.guild(guild).muted_users.set(self.mute_role_cache[guild.id])
+            self.logger.info(f"Updated mute_role_cache and config for {user.name}")
             ret["success"] = True
         except discord.Forbidden as e:
             ret["reason"] = f"The Sea Kings prevent me from assigning the Void Century role! Error: {e}"
-            self.logger.error(f"Failed to mute user {user.id} in guild {guild.id}. Error: {e}")
+            self.logger.error(f"Forbidden error while muting {user.name} in {guild.name}: {e}")
         except discord.HTTPException as e:
             ret["reason"] = f"A mysterious force interferes with the mute! Error: {e}"
-            self.logger.error(f"HTTP error while muting user {user.id} in guild {guild.id}. Error: {e}")
+            self.logger.error(f"HTTP error while muting {user.name} in {guild.name}: {e}")
         except Exception as e:
             ret["reason"] = f"An unexpected tempest disrupts the mute! Error: {e}"
-            self.logger.error(f"Unexpected error while muting user {user.id} in guild {guild.id}. Error: {e}", exc_info=True)
+            self.logger.error(f"Unexpected error while muting {user.name} in {guild.name}: {e}", exc_info=True)
+        
+        self.logger.info(f"Mute operation result for {user.name}: {ret['success']}")
         return ret
         
     async def unmute_user(
