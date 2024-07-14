@@ -416,13 +416,20 @@ class OnePieceMod(commands.Cog):
 
         mute_role = ctx.guild.get_role(self.mute_role_id)
         if not mute_role:
+            self.logger.error(f"Mute role not found. ID: {self.mute_role_id}")
             return await ctx.send("The Void Century role hasn't been established yet!")
 
-        # Check bot permissions
+        # Detailed permission logging
+        self.logger.info(f"Bot permissions: {ctx.me.guild_permissions}")
+        self.logger.info(f"Mute role position: {mute_role.position}")
+        self.logger.info(f"Bot top role position: {ctx.me.top_role.position}")
+
         if not ctx.me.guild_permissions.manage_roles:
+            self.logger.error("Bot lacks Manage Roles permission")
             return await ctx.send("I don't have the 'Manage Roles' permission to banish pirates to the Void Century!")
 
         if mute_role.position >= ctx.me.top_role.position:
+            self.logger.error(f"Mute role ({mute_role.name}) is higher than bot's top role ({ctx.me.top_role.name})")
             return await ctx.send("The Void Century role is higher than my highest role. I can't assign it!")
 
         duration = None
@@ -460,17 +467,21 @@ class OnePieceMod(commands.Cog):
             
             async with self.config.guild(ctx.guild).muted_users() as muted_users:
                 for user in users:
+                    self.logger.info(f"Attempting to mute user: {user.name} (ID: {user.id})")
                     try:
-                        # Check if the bot can manage this user's roles
                         if user.top_role >= ctx.me.top_role:
+                            self.logger.warning(f"Cannot mute {user.name} due to role hierarchy")
                             await ctx.send(f"I can't manage roles for {user.name} as their top role is higher than or equal to mine.")
                             continue
 
                         # Store the user's current roles
-                        self.muted_users[user.id] = [role for role in user.roles if role != ctx.guild.default_role]
+                        self.muted_users[user.id] = [role.id for role in user.roles if role != ctx.guild.default_role]
+                        self.logger.debug(f"Stored roles for {user.name}: {self.muted_users[user.id]}")
                         
                         # Remove all roles and add mute role
+                        self.logger.debug(f"Removing roles from {user.name}")
                         await user.edit(roles=[])
+                        self.logger.debug(f"Adding mute role to {user.name}")
                         await user.add_roles(mute_role, reason=audit_reason)
                         
                         success_list.append(user)
@@ -501,10 +512,15 @@ class OnePieceMod(commands.Cog):
                         # Schedule unmute if duration is set
                         if duration:
                             self.bot.loop.create_task(self.schedule_unmute(ctx.guild, user, duration))
-                    except discord.Forbidden as e:
+                    except Forbidden as e:
+                        self.logger.error(f"Forbidden error while muting {user.name}: {e}")
                         await ctx.send(f"I don't have the authority to banish {user.name} to the Void Century! Error: {e}")
-                    except discord.HTTPException as e:
+                    except HTTPException as e:
+                        self.logger.error(f"HTTP error while muting {user.name}: {e}")
                         await ctx.send(f"There was an error trying to banish {user.name}. The currents of time must be interfering with our Log Pose! Error: {e}")
+                    except Exception as e:
+                        self.logger.error(f"Unexpected error while muting {user.name}: {e}", exc_info=True)
+                        await ctx.send(f"An unexpected error occurred while trying to banish {user.name}: {e}")
 
         if success_list:
             if len(success_list) == 1:
@@ -516,19 +532,23 @@ class OnePieceMod(commands.Cog):
             await ctx.send("No users were successfully banished to the Void Century.")
 
     async def schedule_unmute(self, guild: discord.Guild, user: discord.Member, duration: timedelta):
-        """Schedule an unmute operation."""
         await asyncio.sleep(duration.total_seconds())
         
         # Check if the user is still muted
         mute_role = guild.get_role(self.mute_role_id)
         if mute_role and mute_role in user.roles:
             # Create a mock context for the unmute command
-            channel = self.bot.get_channel(self.general_chat_id) or guild.text_channels[0]
+            channel = guild.text_channels[0]
             mock_message = await channel.send(f"Scheduled unmute for {user.mention}")
             ctx = await self.bot.get_context(mock_message)
             await ctx.message.delete()  # Delete the mock message
             
             await self.unmute(ctx, user, reason="Scheduled unmute: Void Century banishment has ended")
+
+    async def log_action(self, ctx, member: discord.Member, action: str, reason: str, moderator: discord.Member = None, jump_url: str = None, image_url: str = None):
+        # Implementation of log_action method (keep your existing implementation)
+        pass
+
 
     @commands.command()
     @checks.mod_or_permissions(manage_roles=True)
