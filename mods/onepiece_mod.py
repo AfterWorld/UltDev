@@ -127,16 +127,6 @@ class OnePieceMod(commands.Cog):
         except discord.Forbidden:
             pass  # Cannot send DM to the user
 
-    async def is_mod_or_admin(self, ctx):
-        """Check if the user is a mod or admin."""
-        if await self.bot.is_owner(ctx.author):
-            return True
-        if ctx.author == ctx.guild.owner:
-            return True
-        if await self.bot.is_mod(ctx.author):
-            return True
-        return False
-
     @commands.command()
     @checks.admin_or_permissions(manage_guild=True)
     async def setgeneralchannel(self, ctx, channel: discord.TextChannel):
@@ -462,6 +452,16 @@ class OnePieceMod(commands.Cog):
         except Exception as e:
             await ctx.send(f"An unexpected error occurred: {e}")
             self.logger.error(f"Error in ban command: {e}", exc_info=True)
+
+    async def is_mod_or_admin(self, ctx):
+        """Check if the user is a mod or admin."""
+        if await self.bot.is_owner(ctx.author):
+            return True
+        if ctx.author == ctx.guild.owner:
+            return True
+        if await self.bot.is_mod(ctx.author):
+            return True
+        return False
             
     @commands.command(usage="<users...> [time_and_reason]")
     @commands.guild_only()
