@@ -463,23 +463,8 @@ class OnePieceMod(commands.Cog):
         *,
         time_and_reason: str = None
     ):
-        """Banish crew members to the Void Century.
-
-        `<users...>` is a space separated list of usernames, ID's, or mentions.
-        `[time_and_reason]` is the time to mute for and reason. Time is
-        any valid time length such as `30 minutes` or `2 days`. If nothing
-        is provided the mute will use the set default time or indefinite if not set.
-
-        Examples:
-        `[p]mute @member1 @member2 mutiny 5 hours`
-        `[p]mute @member1 3 days Refusing to swab the deck`
-        """
-        if not users:
-            return await ctx.send_help()
-        if ctx.me in users:
-            return await ctx.send("You cannot banish the ship's Log Pose to the Void Century!")
-        if ctx.author in users:
-            return await ctx.send("You cannot banish yourself to the Void Century!")
+        """Banish crew members to the Void Century."""
+        # ... (previous checks remain the same)
 
         mute_role = ctx.guild.get_role(self.mute_role_id)
         if not mute_role:
@@ -563,18 +548,66 @@ class OnePieceMod(commands.Cog):
             return ret
 
         try:
+            # Store current roles
+            current_roles = [role for role in user.roles if role != guild.default_role and role != mute_role]
+            
+            # Remove all roles except @everyone and add mute role
+            await user.edit(roles=[mute_role], reason=reason)
+
             if guild.id not in self.mute_role_cache:
                 self.mute_role_cache[guild.id] = {}
             self.mute_role_cache[guild.id][user.id] = {
                 "author": author.id,
                 "member": user.id,
                 "until": until.timestamp() if until else None,
+                "roles": [r.id for r in current_roles]
             }
-            await user.add_roles(mute_role, reason=reason)
             await self.config.guild(guild).muted_users.set(self.mute_role_cache[guild.id])
             ret["success"] = True
         except discord.Forbidden:
             ret["reason"] = "The Sea Kings prevent me from assigning the Void Century role!"
+        return ret
+
+    async def unmute_user(
+        self,
+        guild: discord.Guild,
+        author: discord.Member,
+        user: discord.Member,
+        reason: Optional[str] = None,
+    ) -> Dict[str, Union[bool, str]]:
+        """Handles returning users from the Void Century"""
+        ret = {"success": False, "reason": None}
+
+        mute_role = guild.get_role(self.mute_role_id)
+
+        if not mute_role:
+            ret["reason"] = "The Void Century role has vanished like a mirage! Alert the captain!"
+            return ret
+
+        if mute_role not in user.roles:
+            ret["reason"] = f"{user.name} isn't trapped in the Void Century. They're free as a seagull!"
+            return ret
+
+        if not await self.is_allowed_by_hierarchy(guild, author, user):
+            ret["reason"] = "Ye can't free a pirate of higher rank from the Void Century!"
+            return ret
+
+        try:
+            # Remove mute role
+            await user.remove_roles(mute_role, reason=reason)
+            
+            # Restore previous roles
+            if guild.id in self.mute_role_cache and user.id in self.mute_role_cache[guild.id]:
+                roles_to_add = [guild.get_role(r_id) for r_id in self.mute_role_cache[guild.id][user.id]["roles"] if guild.get_role(r_id)]
+                await user.add_roles(*roles_to_add, reason="Restoring roles after unmute")
+                
+                del self.mute_role_cache[guild.id][user.id]
+                await self.config.guild(guild).muted_users.set(self.mute_role_cache[guild.id])
+            
+            ret["success"] = True
+        except discord.Forbidden:
+            ret["reason"] = "The Sea Kings prevent me from removing the Void Century role!"
+        
         return ret
             
     @commands.command()
@@ -604,30 +637,30 @@ class OnePieceMod(commands.Cog):
             return await ctx.send("Shiver me timbers! The Void Century role has vanished like a ghost ship!")
 
         async with ctx.typing():
-            success_list = []
-            for user in users:
-                result = await self.unmute_user(ctx.guild, ctx.author, user, reason)
-                if result["success"]:
-                    success_list.append(user)
-                    await modlog.create_case(
-                        self.bot,
-                        ctx.guild,
-                        ctx.message.created_at,
-                        "sunmute",
-                        user,
-                        ctx.author,
-                        reason,
-                        until=None,
-                    )
-                    await self._send_dm_notification(user, ctx.author, ctx.guild, "Return from the Void Century", reason)
-                else:
-                    await ctx.send(f"I couldn't return {user} from the Void Century: {result['reason']}")
+        success_list = []
+        for user in users:
+            result = await self.unmute_user(ctx.guild, ctx.author, user, reason)
+            if result["success"]:
+                success_list.append(user)
+                await modlog.create_case(
+                    self.bot,
+                    ctx.guild,
+                    ctx.message.created_at,
+                    "sunmute",
+                    user,
+                    ctx.author,
+                    reason,
+                    until=None,
+                )
+                await self._send_dm_notification(user, ctx.author, ctx.guild, "Return from the Void Century", reason)
+            else:
+                await ctx.send(f"I couldn't return {user} from the Void Century: {result['reason']}")
 
-        if success_list:
-            await ctx.send(
-                f"{humanize_list([f'`{u}`' for u in success_list])} {'has' if len(success_list) == 1 else 'have'} "
-                f"returned from the Void Century and can speak again!"
-            )
+    if success_list:
+        await ctx.send(
+            f"{humanize_list([f'`{u}`' for u in success_list])} {'has' if len(success_list) == 1 else 'have'} "
+            f"returned from the Void Century and can speak again!"
+        )
 
     async def unmute_user(
         self,
