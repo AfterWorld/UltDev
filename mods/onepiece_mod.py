@@ -439,9 +439,9 @@ class OnePieceMod(commands.Cog):
         if ctx.author in users:
             return await ctx.send("You cannot banish yourself to the Void Century!")
 
-        mute_role = await self.config.guild(ctx.guild).mute_role()
+        mute_role = ctx.guild.get_role(self.mute_role_id)
         if not mute_role:
-            return await ctx.send("The Void Century role hasn't been established yet!")
+            return await ctx.send("Blimey! The Void Century role has vanished like a mirage! Alert the captain!")
 
         async with ctx.typing():
             duration = None
@@ -507,8 +507,7 @@ class OnePieceMod(commands.Cog):
             ret["reason"] = "Ye can't banish a pirate of higher rank!"
             return ret
 
-        mute_role_id = await self.config.guild(guild).mute_role()
-        mute_role = guild.get_role(mute_role_id)
+        mute_role = guild.get_role(self.mute_role_id)
         if not mute_role:
             ret["reason"] = "The Void Century role is missing! Have ye checked the Grand Line?"
             return ret
