@@ -556,46 +556,49 @@ class OnePieceMod(commands.Cog):
             self.mute_tasks[guild.id] = {}
         self.mute_tasks[guild.id][user.id] = task
 
-    async def unmute_user(
+    async def mute_user(
         self,
         guild: discord.Guild,
         author: discord.Member,
         user: discord.Member,
+        until: Optional[datetime] = None,
         reason: Optional[str] = None,
     ) -> Dict[str, Union[bool, str]]:
-        """Handles returning users from the Void Century"""
+        """Handles banishing users to the Void Century"""
         ret = {"success": False, "reason": None}
 
         mute_role = guild.get_role(self.mute_role_id)
         if not mute_role:
-            ret["reason"] = "The Void Century role has vanished like a mirage! Alert the captain!"
+            ret["reason"] = "The Void Century role is missing! Have ye checked the Grand Line?"
             return ret
 
-        if mute_role not in user.roles:
-            ret["reason"] = f"{user.name} isn't trapped in the Void Century. They're free as a seagull!"
+        if mute_role in user.roles:
+            ret["reason"] = f"{user.name} is already banished to the Void Century!"
             return ret
 
         try:
-            await user.remove_roles(mute_role, reason=reason)
+            # Store current roles
+            current_roles = [role for role in user.roles if role != guild.default_role and role != mute_role]
             
-            # Restore previous roles
-            if guild.id in self.mute_role_cache and user.id in self.mute_role_cache[guild.id]:
-                roles_to_add = [guild.get_role(r_id) for r_id in self.mute_role_cache[guild.id][user.id]["roles"] if guild.get_role(r_id)]
-                await user.add_roles(*roles_to_add, reason="Restoring roles after unmute")
-                
-                del self.mute_role_cache[guild.id][user.id]
-                await self.config.guild(guild).muted_users.set(self.mute_role_cache[guild.id])
-            
+            # Remove all roles except @everyone and add mute role
+            await user.edit(roles=[mute_role], reason=reason)
+
+            if guild.id not in self.mute_role_cache:
+                self.mute_role_cache[guild.id] = {}
+            self.mute_role_cache[guild.id][user.id] = {
+                "author": author.id,
+                "member": user.id,
+                "until": until.timestamp() if until else None,
+                "roles": [r.id for r in current_roles]
+            }
+            await self.config.guild(guild).muted_users.set(self.mute_role_cache[guild.id])
             ret["success"] = True
-            
-            # Cancel any existing unmute task
-            if guild.id in self.mute_tasks and user.id in self.mute_tasks[guild.id]:
-                self.mute_tasks[guild.id][user.id].cancel()
-                del self.mute_tasks[guild.id][user.id]
-            
-        except discord.Forbidden:
-            ret["reason"] = "The Sea Kings prevent me from removing the Void Century role!"
-        
+        except discord.Forbidden as e:
+            ret["reason"] = f"The Sea Kings prevent me from assigning the Void Century role! Error: {e}"
+        except discord.HTTPException as e:
+            ret["reason"] = f"A mysterious force interferes with the mute! Error: {e}"
+        except Exception as e:
+            ret["reason"] = f"An unexpected tempest disrupts the mute! Error: {e}"
         return ret
 
     @commands.command()
@@ -677,10 +680,17 @@ class OnePieceMod(commands.Cog):
                 await self.config.guild(guild).muted_users.set(self.mute_role_cache[guild.id])
             
             ret["success"] = True
+            
+            # Cancel any existing unmute task
+            if guild.id in self.mute_tasks and user.id in self.mute_tasks[guild.id]:
+                self.mute_tasks[guild.id][user.id].cancel()
+                del self.mute_tasks[guild.id][user.id]
+            
         except discord.Forbidden:
             ret["reason"] = "The Sea Kings prevent me from removing the Void Century role!"
         
         return ret
+
 
     async def log_action(self, ctx, member: discord.Member, action: str, reason: str, moderator: discord.Member = None):
         log_channel = self.bot.get_channel(self.log_channel_id)
