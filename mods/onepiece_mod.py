@@ -640,6 +640,7 @@ class OnePieceMod(commands.Cog):
                         until=None,
                     )
                     await self._send_dm_notification(user, ctx.author, ctx.guild, "Return from the Void Century", reason)
+                    await self.log_action(ctx, user, "Returned from the Void Century", reason, ctx.author)
                 else:
                     await ctx.send(f"I couldn't return {user} from the Void Century: {result['reason']}")
     
@@ -649,6 +650,26 @@ class OnePieceMod(commands.Cog):
                 f"returned from the Void Century and can speak again!"
             )
 
+    @commands.Cog.listener()
+    async def on_member_join(self, member: discord.Member):
+        guild = member.guild
+        async with self.config.guild(guild).muted_users() as muted_users:
+            if str(member.id) in muted_users:
+                mute_data = muted_users[str(member.id)]
+                mute_role = guild.get_role(self.mute_role_id)
+                
+                if mute_role:
+                    try:
+                        await member.add_roles(mute_role, reason="Reapplying mute on rejoin")
+                        until = datetime.fromisoformat(mute_data['until']) if mute_data['until'] else None
+                        if until and until > datetime.now(timezone.utc):
+                            await self.schedule_unmute(guild, member, until - datetime.now(timezone.utc))
+                        self.logger.info(f"Reapplied mute to {member} upon rejoining {guild}")
+                    except discord.Forbidden:
+                        self.logger.error(f"Failed to reapply mute to {member} in {guild}: Missing Permissions")
+                    except discord.HTTPException as e:
+                        self.logger.error(f"Failed to reapply mute to {member} in {guild}: {e}")
+                        
     async def unmute_user(
         self,
         guild: discord.Guild,
