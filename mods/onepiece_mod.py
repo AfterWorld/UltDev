@@ -55,7 +55,7 @@ class OnePieceMod(commands.Cog):
         self.config.register_member(**default_member)
         self.config.register_guild(**default_guild)
         self.mute_role_cache = {}
-        self.log_channel_id = 1245208777003634698
+        self.log_channel_id = 1245208777003634698  # Make sure this is set to your actual log channel ID
         self.mute_role_id = 808869058476769312  # Pre-set mute role ID
         self.general_chat_id = 425068612542398476
         self.default_mute_time = timedelta(hours=24)  # Default mute time of 24 hours
@@ -910,7 +910,7 @@ class OnePieceMod(commands.Cog):
         except (discord.Forbidden, discord.NotFound):
             pass  # If we can't delete the message, we'll still warn the user
 
-        # Increment the offense counter and get the current count
+        ## Increment the offense counter and get the current count
         offense_count = await self.increment_offense_counter(message.author)
 
         # Determine the action based on the number of offenses
@@ -953,15 +953,46 @@ class OnePieceMod(commands.Cog):
 
         await message.channel.send(warning_message, delete_after=30)
 
-        # Log the incident
-        await self.log_action(
-            message.channel, 
-            message.author, 
-            f"Used banned word (Offense #{offense_count})", 
-            f"Automated action: Message deleted and user {action}",
-            self.bot.user  # Use the bot as the moderator for automated actions
-        )
+        # Update the log
+        await self.update_banned_word_log(message.author, offense_count, action, duration)
 
+    async def update_banned_word_log(self, user: discord.Member, offense_count: int, action: str, duration: Optional[timedelta] = None):
+        log_channel = self.bot.get_channel(self.log_channel_id)
+        if not log_channel:
+            return  # Log channel not found
+
+        # Check if there's an existing log message for this user
+        async for message in log_channel.history(limit=100):
+            if message.author == self.bot.user and message.embeds:
+                embed = message.embeds[0]
+                if embed.title and embed.title.startswith(f"🚫 Banned Word Log for {user.display_name}"):
+                    # Update existing log message
+                    new_embed = self.create_banned_word_log_embed(user, offense_count, action, duration)
+                    await message.edit(embed=new_embed)
+                    return
+
+        # If no existing message found, create a new one
+        new_embed = self.create_banned_word_log_embed(user, offense_count, action, duration)
+        await log_channel.send(embed=new_embed)
+
+    def create_banned_word_log_embed(self, user: discord.Member, offense_count: int, action: str, duration: Optional[timedelta] = None):
+        embed = discord.Embed(
+            title=f"🚫 Banned Word Log for {user.display_name}",
+            color=discord.Color.red(),
+            timestamp=datetime.now(timezone.utc)
+        )
+        
+        embed.set_thumbnail(url=user.avatar.url if user.avatar else user.default_avatar.url)
+        
+        embed.add_field(name="Offense Count", value=str(offense_count), inline=False)
+        embed.add_field(name="Latest Action", value=action.capitalize(), inline=False)
+        
+        if duration:
+            embed.add_field(name="Mute Duration", value=humanize_timedelta(timedelta=duration), inline=False)
+        
+        embed.set_footer(text=f"User ID: {user.id}")
+        return embed
+        
     async def increment_offense_counter(self, member: discord.Member) -> int:
         async with self.config.member(member).all() as member_data:
             current_time = datetime.now(timezone.utc)
