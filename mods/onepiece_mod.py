@@ -419,17 +419,17 @@ class OnePieceMod(commands.Cog):
             # Ensure the bot has permission to ban
             if not ctx.guild.me.guild_permissions.ban_members:
                 return await ctx.send("I don't have the authority to banish pirates to Impel Down!")
-    
+        
             # Check role hierarchy
             if ctx.author.top_role <= member.top_role or ctx.guild.me.top_role <= member.top_role:
                 return await ctx.send("Ye can't banish a pirate of equal or higher rank!")
-    
+        
             # Ban the user
-            await ctx.guild.ban(member, reason=reason, delete_message_days=7)
-    
+            await ctx.guild.ban(member, reason=reason, delete_message_seconds=7 * 24 * 60 * 60)
+        
             # Select a random ban message
             ban_message, ban_gif = random.choice(self.ban_messages)
-    
+        
             # Create the ban text message
             ban_text = (
                 f"⛓️ Pirate Banished to Impel Down! ⛓️\n\n"
@@ -437,7 +437,7 @@ class OnePieceMod(commands.Cog):
                 f"**Crimes**\n{reason}\n\n"
                 f"**Warden's Note**\n{ban_message}"
             )
-    
+        
             # Send the ban message to the general chat or the current channel
             general_chat = self.bot.get_channel(self.general_chat_id)
             if general_chat:
@@ -447,10 +447,10 @@ class OnePieceMod(commands.Cog):
                 await ctx.send("Couldn't find the general chat channel. Posting here instead:")
                 await ctx.send(ban_text)
                 await ctx.send(ban_gif)
-    
+        
             # Log the action
             await self.log_action(ctx, member, "Banished to Impel Down", reason, moderator=ctx.author)
-    
+        
             # Create a case in the modlog
             case = await modlog.create_case(
                 self.bot, ctx.guild, ctx.message.created_at, action_type="ban",
@@ -458,7 +458,7 @@ class OnePieceMod(commands.Cog):
             )
             if case:
                 await ctx.send(f"The traitor's crimes have been recorded in the ship's log. Case number: {case.case_number}")
-    
+        
         except discord.Forbidden:
             await ctx.send("I don't have the authority to banish that pirate to Impel Down!")
         except discord.HTTPException as e:
