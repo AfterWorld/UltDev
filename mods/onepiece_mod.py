@@ -48,6 +48,11 @@ class OnePieceMod(commands.Cog):
             "dm": False,
             "show_mod": False,
         }
+        default_member = {
+            "nword_offenses": 0,
+            "last_offense_time": None
+        }
+        self.config.register_member(**default_member)
         self.config.register_guild(**default_guild)
         self.mute_role_cache = {}
         self.log_channel_id = 1245208777003634698
@@ -56,6 +61,7 @@ class OnePieceMod(commands.Cog):
         self.default_mute_time = timedelta(hours=24)  # Default mute time of 24 hours
         self.muted_users = {}  # Store muted users' roles
         self.reminder_task = None
+        self.nword_pattern = re.compile(r'\bn[i!1l]+[g6b4]+[e3a4]+r?s?\b|\bn[i!1l]+[g6b4]+[a@4]+s?\b', re.IGNORECASE)
         self.logger = logging.getLogger('red.onepiece_mod')
         self.logger.setLevel(logging.DEBUG)
         self.ban_messages = [
@@ -70,6 +76,7 @@ class OnePieceMod(commands.Cog):
             ("Buggy's Chop-Chop Fruit sent you flying!", "https://tenor.com/view/bara-bara-no-mi-bara-bara-no-mi-o-grande-one-piece-rp-gif-22513624"),
             ("Big Mom's Soul-Soul Fruit has taken your lifespan... and your server access!", "https://tenor.com/view/%E5%A4%A7%E5%AA%BDauntie-aunt-granny-grandmom-gif-12576437")
         ]
+        
 
     async def initialize(self):
         self.reminder_task = self.bot.loop.create_task(self.send_periodic_reminder())
@@ -832,6 +839,11 @@ class OnePieceMod(commands.Cog):
     async def on_message(self, message):
         if message.author.bot or not message.guild:
             return
+
+        # Check for banned words
+        if await self.contains_banned_word(message.content):
+            await self.handle_banned_word(message)
+            return
     
         # Check if the user is new (less than 24 hours in the server)
         utc_now = datetime.now(pytz.utc)
@@ -887,6 +899,83 @@ class OnePieceMod(commands.Cog):
             if required_role and not any(role >= required_role for role in message.author.roles):
                 await self.delete_and_warn(message, "restricted_channel", required_role)
                 return
+
+    async def contains_banned_word(self, content: str) -> bool:
+        return bool(self.nword_pattern.search(content))
+
+    async def handle_banned_word(self, message: discord.Message):
+        # Delete the message
+        try:
+            await message.delete()
+        except (discord.Forbidden, discord.NotFound):
+            pass  # If we can't delete the message, we'll still warn the user
+
+        # Increment the offense counter and get the current count
+        offense_count = await self.increment_offense_counter(message.author)
+
+        # Determine the action based on the number of offenses
+        if offense_count == 1:
+            action = "warned"
+            duration = None
+        else:
+            action = "muted"
+            duration = timedelta(minutes=30 * (offense_count - 1))  # Escalating mute duration
+
+        # Take action (warn or mute)
+        if action == "muted":
+            await self.mute_user(message.guild, self.bot.user, message.author, duration, "Use of banned language")
+
+        # Prepare the warning message
+        warning_messages = [
+            f"Oi oi, {message.author.mention}! Even Luffy wouldn't approve of that language! The Pirate King's dream is about freedom, not disrespect!",
+            f"Yohohoho! {message.author.mention}, that word is more forbidden than the Poneglyphs! As a skeleton, I have no ears to hear such things... but I'm all bones! Skull joke!",
+            f"Oi, {message.author.mention}! Sanji says a true pirate's Black Leg style is about kicking ass, not using crass words!",
+            f"Huh?! {message.author.mention}, are you trying to make Chopper cry with that language? He's a reindeer, not a swear-deer!",
+            f"Oi oi oi! {message.author.mention}, Zoro got lost and ended up here, and even he knows that word is more dangerous than Mihawk's sword!",
+            f"Nami says if you use that word again, {message.author.mention}, she'll raise your debt by 100,000 berries! And trust me, she WILL collect!"
+        ]
+        
+        base_warning = random.choice(warning_messages)
+        
+        if action == "warned":
+            consequence = (
+                "\n\nThis be yer first warnin', rookie! One more slip of the tongue, "
+                "and ye'll be scrubbing barnacles off the Thousand Sunny!"
+            )
+        else:
+            consequence = (
+                f"\n\nYe've been caught {offense_count} times now, ye scurvy dog! "
+                f"By the order of the Fleet Admiral, ye're banished to Impel Down (muted) "
+                f"for {humanize_timedelta(timedelta=duration)}! Reflect on the Way of the Pirate!"
+            )
+
+        warning_message = base_warning + consequence
+
+        await message.channel.send(warning_message, delete_after=30)
+
+        # Log the incident
+        await self.log_action(
+            message.channel, 
+            message.author, 
+            f"Used banned word (Offense #{offense_count})", 
+            f"Automated action: Message deleted and user {action}",
+            self.bot.user  # Use the bot as the moderator for automated actions
+        )
+
+    async def increment_offense_counter(self, member: discord.Member) -> int:
+        async with self.config.member(member).all() as member_data:
+            current_time = datetime.now(timezone.utc)
+            last_offense_time = member_data['last_offense_time']
+
+            # Reset counter if last offense was more than 24 hours ago
+            if last_offense_time and (current_time - datetime.fromisoformat(last_offense_time)) > timedelta(hours=24):
+                member_data['nword_offenses'] = 0
+
+            member_data['nword_offenses'] += 1
+            member_data['last_offense_time'] = current_time.isoformat()
+
+            return member_data['nword_offenses']
+
 
     def contains_url(self, text):
         url_regex = re.compile(
