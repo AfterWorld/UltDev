@@ -910,7 +910,7 @@ class OnePieceMod(commands.Cog):
         except (discord.Forbidden, discord.NotFound):
             pass  # If we can't delete the message, we'll still warn the user
 
-        ## Increment the offense counter and get the current count
+        # Increment the offense counter and get the current count
         offense_count = await self.increment_offense_counter(message.author)
 
         # Determine the action based on the number of offenses
@@ -923,7 +923,7 @@ class OnePieceMod(commands.Cog):
 
         # Take action (warn or mute)
         if action == "muted":
-            await self.mute_user(message.guild, self.bot.user, message.author, duration, "Use of banned language")
+            await self.mute_user(message.guild, self.bot.user, message.author, until=datetime.now(timezone.utc) + duration, reason="Use of banned language")
 
         # Prepare the warning message
         warning_messages = [
@@ -955,6 +955,48 @@ class OnePieceMod(commands.Cog):
 
         # Update the log
         await self.update_banned_word_log(message.author, offense_count, action, duration)
+
+    async def mute_user(
+        self,
+        guild: discord.Guild,
+        author: discord.Member,
+        user: discord.Member,
+        until: Optional[datetime] = None,
+        reason: Optional[str] = None,
+    ) -> Dict[str, Union[bool, str]]:
+        ret = {"success": False, "reason": None}
+
+        mute_role = guild.get_role(self.mute_role_id)
+        if not mute_role:
+            ret["reason"] = "The Void Century role is missing! Have ye checked the Grand Line?"
+            return ret
+
+        if mute_role in user.roles:
+            ret["reason"] = f"{user.name} is already banished to the Void Century!"
+            return ret
+
+        try:
+            # Store current roles
+            current_roles = [role for role in user.roles if role != guild.default_role and role != mute_role]
+            
+            # Remove all roles except @everyone and add mute role
+            await user.edit(roles=[mute_role], reason=reason)
+
+            async with self.config.guild(guild).muted_users() as muted_users:
+                muted_users[str(user.id)] = {
+                    "author": author.id,
+                    "user": user.id,
+                    "until": until.isoformat() if until else None,
+                    "roles": [r.id for r in current_roles]
+                }
+
+            ret["success"] = True
+        except discord.Forbidden:
+            ret["reason"] = "The Sea Kings prevent me from assigning the Void Century role!"
+        except discord.HTTPException as e:
+            ret["reason"] = f"A mysterious force interferes with the mute! Error: {e}"
+        
+        return ret
 
     async def update_banned_word_log(self, user: discord.Member, offense_count: int, action: str, duration: Optional[timedelta] = None):
         log_channel = self.bot.get_channel(self.log_channel_id)
