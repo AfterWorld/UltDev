@@ -495,11 +495,11 @@ class OnePieceMod(commands.Cog):
             return await ctx.send("You cannot banish the ship's Log Pose to the Void Century!")
         if ctx.author in users:
             return await ctx.send("You cannot banish yourself to the Void Century!")
-
+    
         mute_role = ctx.guild.get_role(self.mute_role_id)
         if not mute_role:
             return await ctx.send("Blimey! The Void Century role has vanished like a mirage! Alert the captain!")
-
+    
         async with ctx.typing():
             duration = None
             until = None
@@ -517,9 +517,9 @@ class OnePieceMod(commands.Cog):
                 if default_duration:
                     duration = timedelta(seconds=default_duration)
                     until = ctx.message.created_at + duration
-
+    
             time_str = f"for {humanize_timedelta(timedelta=duration)}" if duration else "indefinitely"
-
+    
             success_list = []
             for user in users:
                 result = await self.mute_user(ctx.guild, ctx.author, user, until, reason)
@@ -536,19 +536,31 @@ class OnePieceMod(commands.Cog):
                         until=until,
                     )
                     await self._send_dm_notification(user, ctx.author, ctx.guild, "Banishment to the Void Century", reason, duration)
+                    await self.log_action(ctx, user, f"Banished to Void Century {time_str}", reason, ctx.author)
                     
                     # Schedule auto-unmute
                     if duration:
                         self.schedule_unmute(ctx.guild, user, duration)
                 else:
                     await ctx.send(f"I couldn't banish {user} to the Void Century: {result['reason']}")
-
+    
         if success_list:
             pirate_messages = [
-                f"Yarr! {humanize_list([f'`{u}`' for u in success_list])} {'has' if len(success_list) == 1 else 'have'} been cast into the Void Century {time_str}!",
-                f"Shiver me timbers! {humanize_list([f'`{u}`' for u in success_list])} {'has' if len(success_list) == 1 else 'have'} vanished into the mists of the Void Century {time_str}!",
-                f"By Davy Jones' locker! {humanize_list([f'`{u}`' for u in success_list])} {'has' if len(success_list) == 1 else 'have'} been marooned in the Void Century {time_str}!",
-                f"Blimey! {humanize_list([f'`{u}`' for u in success_list])} {'has' if len(success_list) == 1 else 'have'} been swallowed by the Void Century {time_str}!"
+                f"Yohohoho! {humanize_list([f'`{u}`' for u in success_list])} {'has' if len(success_list) == 1 else 'have'} been silenced like Brook without his voice box {time_str}!",
+                f"Great Scott! {humanize_list([f'`{u}`' for u in success_list])} {'has' if len(success_list) == 1 else 'have'} been sent to the Calm Belt of chat {time_str}! Not even a Den Den Mushi can reach {'them' if len(success_list) > 1 else 'them'}!",
+                f"Holy Merry! {humanize_list([f'`{u}`' for u in success_list])} {'has' if len(success_list) == 1 else 'have'} been caught in Foxy's Noro Noro Beam {time_str}! {'Their' if len(success_list) > 1 else 'Their'} messages will be slowed to a crawl!",
+                f"Gomu Gomu no Silence! {humanize_list([f'`{u}`' for u in success_list])} {'has' if len(success_list) == 1 else 'have'} had {'their' if len(success_list) > 1 else 'their'} chat privileges stretched to the limit {time_str}!",
+                f"Mamamama! Big Mom has stolen the voice of {humanize_list([f'`{u}`' for u in success_list])} and put it in her collection {time_str}!",
+                f"Zoro got lost again and accidentally led {humanize_list([f'`{u}`' for u in success_list])} into the Void Century {time_str}! Good luck finding your way back!",
+                f"Sanji's Diable Jambe was too hot! It burned {humanize_list([f'`{u}`' for u in success_list])}'s keyboard to a crisp {time_str}!",
+                f"Crocodile's sand has dried up the ink in {humanize_list([f'`{u}`' for u in success_list])}'s pen {time_str}. No more writing for you!",
+                f"Usopp's latest invention, the 'Shut-Up-A-Pirate 3000', worked perfectly on {humanize_list([f'`{u}`' for u in success_list])} {time_str}!",
+                f"Chopper's Rumble Ball had an odd effect on {humanize_list([f'`{u}`' for u in success_list])}. {'They' if len(success_list) > 1 else 'They'} can't type {time_str}!",
+                f"Robin sprouted hands all over {humanize_list([f'`{u}`' for u in success_list])}'s keyboard, preventing {'them' if len(success_list) > 1 else 'them'} from typing {time_str}!",
+                f"Franky performed a SUPER mute on {humanize_list([f'`{u}`' for u in success_list])} {time_str}! Cola-powered silence!",
+                f"Jinbei's Fish-Man Karate sent {humanize_list([f'`{u}`' for u in success_list])} flying into the Void Century {time_str}!",
+                f"Nami's Thunder Tempo has short-circuited {humanize_list([f'`{u}`' for u in success_list])}'s communication devices {time_str}!",
+                f"Buggy's Chop-Chop Fruit accidentally divided {humanize_list([f'`{u}`' for u in success_list])}'s messages into tiny, unreadable pieces {time_str}!"
             ]
             await ctx.send(random.choice(pirate_messages))
 
@@ -578,23 +590,23 @@ class OnePieceMod(commands.Cog):
     ) -> Dict[str, Union[bool, str]]:
         """Handles banishing users to the Void Century"""
         ret = {"success": False, "reason": None}
-
+    
         mute_role = guild.get_role(self.mute_role_id)
         if not mute_role:
             ret["reason"] = "The Void Century role is missing! Have ye checked the Grand Line?"
             return ret
-
+    
         if mute_role in user.roles:
             ret["reason"] = f"{user.name} is already banished to the Void Century!"
             return ret
-
+    
         try:
             # Store current roles
             current_roles = [role for role in user.roles if role != guild.default_role and role != mute_role]
             
             # Remove all roles except @everyone and add mute role
             await user.edit(roles=[mute_role], reason=reason)
-
+    
             if guild.id not in self.mute_role_cache:
                 self.mute_role_cache[guild.id] = {}
             self.mute_role_cache[guild.id][user.id] = {
