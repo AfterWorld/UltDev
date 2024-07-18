@@ -331,7 +331,11 @@ class OnePieceMod(commands.Cog):
             color=discord.Color.red(),
             timestamp=datetime.fromisoformat(warn_data['timestamp'])
         )
-        embed.set_thumbnail(url=member.avatar.url)
+        
+        # Check if the member has an avatar before setting it as thumbnail
+        if member.avatar:
+            embed.set_thumbnail(url=member.avatar.url)
+        
         embed.add_field(name="Warning Count", value=str(warn_data['count']), inline=False)
         embed.add_field(name="Reasons", value="\n".join(f"• {reason}" for reason in warn_data['reasons']), inline=False)
         moderator = member.guild.get_member(warn_data['moderator'])
