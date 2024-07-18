@@ -536,7 +536,6 @@ class OnePieceMod(commands.Cog):
                         until=until,
                     )
                     await self._send_dm_notification(user, ctx.author, ctx.guild, "Banishment to the Void Century", reason, duration)
-                    await self.log_action(ctx, user, f"Banished to Void Century {time_str}", reason, ctx.author)
                     
                     # Schedule auto-unmute
                     if duration:
