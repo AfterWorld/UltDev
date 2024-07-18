@@ -617,51 +617,54 @@ class OnePieceMod(commands.Cog):
     @commands.command()
     @commands.guild_only()
     @commands.check(is_mod_or_admin)
-    async def unmute_user(
+    async def unmute(
         self,
-        guild: discord.Guild,
-        author: discord.Member,
-        user: discord.Member,
-        reason: Optional[str] = None,
-    ) -> Dict[str, Union[bool, str]]:
-        """Handles returning users from the Void Century"""
-        ret = {"success": False, "reason": None}
+        ctx: commands.Context,
+        users: commands.Greedy[discord.Member],
+        *,
+        reason: str = "Void Century banishment has ended"
+    ):
+        """Return crew members from the Void Century."""
+        if not users:
+            return await ctx.send_help()
+        if ctx.me in users:
+            return await ctx.send("Ye can't free the ship's Log Pose from the Void Century!")
+        if ctx.author in users:
+            return await ctx.send("Ye can't free yerself from the Void Century!")
     
-        mute_role = guild.get_role(self.mute_role_id)
+        mute_role = ctx.guild.get_role(self.mute_role_id)
         if not mute_role:
-            ret["reason"] = "The Void Century role has vanished like a mirage! Alert the captain!"
-            return ret
+            return await ctx.send("Shiver me timbers! The Void Century role has vanished like a ghost ship!")
     
-        if mute_role not in user.roles:
-            ret["reason"] = f"{user.name} isn't trapped in the Void Century. They're free as a seagull!"
-            return ret
-    
-        try:
-            await user.remove_roles(mute_role, reason=reason)
-            
-            # Restore previous roles
-            if guild.id in self.mute_role_cache and user.id in self.mute_role_cache[guild.id]:
-                roles_to_add = [guild.get_role(r_id) for r_id in self.mute_role_cache[guild.id][user.id]["roles"] if guild.get_role(r_id)]
-                await user.add_roles(*roles_to_add, reason="Restoring roles after unmute")
-                
-                # Safely remove the user's mute data from the cache
-                self.mute_role_cache[guild.id].pop(user.id, None)
-                await self.config.guild(guild).muted_users.set(self.mute_role_cache[guild.id])
-            
-            ret["success"] = True
-            
-            # Cancel any existing unmute task
-            if guild.id in self.mute_tasks and user.id in self.mute_tasks[guild.id]:
-                self.mute_tasks[guild.id][user.id].cancel()
-                del self.mute_tasks[guild.id][user.id]
-            
-        except discord.Forbidden:
-            ret["reason"] = "The Sea Kings prevent me from removing the Void Century role!"
-        except Exception as e:
-            ret["reason"] = f"An unexpected error occurred: {str(e)}"
-            self.logger.error(f"Error in unmute_user: {e}", exc_info=True)
+        async with ctx.typing():
+            success_list = []
+            for user in users:
+                self.logger.info(f"Attempting to unmute user {user.id}")
+                result = await self.unmute_user(ctx.guild, ctx.author, user, reason)
+                if result["success"]:
+                    success_list.append(user)
+                    await modlog.create_case(
+                        self.bot,
+                        ctx.guild,
+                        ctx.message.created_at,
+                        "sunmute",
+                        user,
+                        ctx.author,
+                        reason,
+                        until=None,
+                    )
+                    await self._send_dm_notification(user, ctx.author, ctx.guild, "Return from the Void Century", reason)
+                    await self.log_action(ctx, user, "Returned from the Void Century", reason, ctx.author)
+                else:
+                    await ctx.send(f"I couldn't return {user} from the Void Century: {result['reason']}")
         
-        return ret
+        if success_list:
+            await ctx.send(
+                f"{humanize_list([f'`{u}`' for u in success_list])} {'has' if len(success_list) == 1 else 'have'} "
+                f"returned from the Void Century and can speak again!"
+            )
+        else:
+            await ctx.send("Arrr! No crew members were freed from the Void Century this time.")
     
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
@@ -683,6 +686,65 @@ class OnePieceMod(commands.Cog):
                     except discord.HTTPException as e:
                         self.logger.error(f"Failed to reapply mute to {member} in {guild}: {e}")
                         
+    async def unmute_user(
+        self,
+        guild: discord.Guild,
+        author: discord.Member,
+        user: discord.Member,
+        reason: Optional[str] = None,
+    ) -> Dict[str, Union[bool, str]]:
+        """Handles returning users from the Void Century"""
+        ret = {"success": False, "reason": None}
+    
+        self.logger.info(f"Attempting to unmute user {user.id} in guild {guild.id}")
+    
+        mute_role = guild.get_role(self.mute_role_id)
+        if not mute_role:
+            self.logger.error(f"Mute role {self.mute_role_id} not found in guild {guild.id}")
+            ret["reason"] = "The Void Century role has vanished like a mirage! Alert the captain!"
+            return ret
+    
+        if mute_role not in user.roles:
+            self.logger.info(f"User {user.id} doesn't have the mute role in guild {guild.id}")
+            ret["reason"] = f"{user.name} isn't trapped in the Void Century. They're free as a seagull!"
+            return ret
+    
+        try:
+            self.logger.info(f"Removing mute role {mute_role.id} from user {user.id}")
+            await user.remove_roles(mute_role, reason=reason)
+            
+            # Restore previous roles
+            if guild.id in self.mute_role_cache and user.id in self.mute_role_cache[guild.id]:
+                roles_to_add = [guild.get_role(r_id) for r_id in self.mute_role_cache[guild.id][user.id]["roles"] if guild.get_role(r_id)]
+                self.logger.info(f"Restoring roles for user {user.id}: {[r.id for r in roles_to_add]}")
+                await user.add_roles(*roles_to_add, reason="Restoring roles after unmute")
+                
+                # Safely remove the user's mute data from the cache
+                self.mute_role_cache[guild.id].pop(user.id, None)
+                await self.config.guild(guild).muted_users.set(self.mute_role_cache[guild.id])
+            else:
+                self.logger.warning(f"No mute cache found for user {user.id} in guild {guild.id}")
+            
+            ret["success"] = True
+            self.logger.info(f"Successfully unmuted user {user.id} in guild {guild.id}")
+            
+            # Cancel any existing unmute task
+            if guild.id in self.mute_tasks and user.id in self.mute_tasks[guild.id]:
+                self.logger.info(f"Cancelling unmute task for user {user.id} in guild {guild.id}")
+                self.mute_tasks[guild.id][user.id].cancel()
+                del self.mute_tasks[guild.id][user.id]
+            
+        except discord.Forbidden as e:
+            self.logger.error(f"Forbidden error when unmuting user {user.id} in guild {guild.id}: {e}")
+            ret["reason"] = "The Sea Kings prevent me from removing the Void Century role!"
+        except discord.HTTPException as e:
+            self.logger.error(f"HTTP error when unmuting user {user.id} in guild {guild.id}: {e}")
+            ret["reason"] = f"A mysterious force interferes with the unmute! Error: {e}"
+        except Exception as e:
+            self.logger.error(f"Unexpected error when unmuting user {user.id} in guild {guild.id}: {e}", exc_info=True)
+            ret["reason"] = f"An unexpected tempest disrupts the unmute! Error: {e}"
+        
+        return ret
 
     async def _restore_roles(self, member: discord.Member, reason: str):
         """Helper method to restore roles for a user."""
