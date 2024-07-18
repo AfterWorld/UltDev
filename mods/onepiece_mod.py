@@ -326,15 +326,24 @@ class OnePieceMod(commands.Cog):
         await log_channel.send(embed=new_embed)
 
     def create_warn_embed(self, member, warn_data):
+        self.logger.debug(f"Creating warn embed for member: {member.id}")
+        self.logger.debug(f"Member avatar: {member.avatar}")
+        self.logger.debug(f"Member default avatar: {member.default_avatar}")
+
         embed = discord.Embed(
             title=f"⚠️ Warning Log for {member.display_name}",
             color=discord.Color.red(),
             timestamp=datetime.fromisoformat(warn_data['timestamp'])
         )
         
-        # Check if the member has an avatar before setting it as thumbnail
         if member.avatar:
-            embed.set_thumbnail(url=member.avatar.url)
+            avatar_url = member.avatar.url
+            self.logger.debug(f"Using custom avatar: {avatar_url}")
+        else:
+            avatar_url = member.default_avatar.url
+            self.logger.debug(f"Using default avatar: {avatar_url}")
+        
+        embed.set_thumbnail(url=avatar_url)
         
         embed.add_field(name="Warning Count", value=str(warn_data['count']), inline=False)
         embed.add_field(name="Reasons", value="\n".join(f"• {reason}" for reason in warn_data['reasons']), inline=False)
