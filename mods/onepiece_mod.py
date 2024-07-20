@@ -853,7 +853,18 @@ class OnePieceMod(commands.Cog):
                 return await ctx.send(f"{user.mention} be cast into the Void Century without an end date! They be needin' a pardon from the captain!")
     
             now = datetime.now(timezone.utc)
-            until = datetime.fromisoformat(until)
+            
+            # Convert 'until' to datetime object, handling both timestamp and ISO format
+            if isinstance(until, (int, float)):
+                until = datetime.fromtimestamp(until, tz=timezone.utc)
+            elif isinstance(until, str):
+                try:
+                    until = datetime.fromisoformat(until).replace(tzinfo=timezone.utc)
+                except ValueError:
+                    return await ctx.send(f"Arrr! There be some strange magic with {user.mention}'s mute timer. It be needin' the captain's attention!")
+            else:
+                return await ctx.send(f"Shiver me timbers! {user.mention}'s mute timer be in an unknown format. The captain needs to look into this!")
+    
             if until <= now:
                 return await ctx.send(f"Shiver me timbers! {user.mention}'s mute timer has already expired! They should be free as a seagull!")
     
