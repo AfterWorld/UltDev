@@ -688,7 +688,6 @@ class OnePieceMod(commands.Cog):
                         until=None,
                     )
                     await self._send_dm_notification(user, ctx.author, ctx.guild, "Return from the Void Century", reason)
-                    await self.log_action(ctx, user, "Returned from the Void Century", reason, ctx.author)
                 else:
                     await ctx.send(f"I couldn't return {user} from the Void Century: {result['reason']}")
         
