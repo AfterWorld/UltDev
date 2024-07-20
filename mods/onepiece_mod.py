@@ -77,7 +77,7 @@ class OnePieceMod(commands.Cog):
             ("Big Mom's Soul-Soul Fruit has taken your lifespan... and your server access!", "https://tenor.com/view/%E5%A4%A7%E5%AA%BDauntie-aunt-granny-grandmom-gif-12576437")
         ]
 
-    def parse_timedelta(time_string: str) -> timedelta:
+    def parse_timedelta(self, time_string: str) -> timedelta:
         match = re.match(r"(\d+)([dwhm])", time_string.lower())
         if not match:
             raise ValueError("Invalid time format")
