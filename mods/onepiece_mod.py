@@ -485,15 +485,16 @@ class OnePieceMod(commands.Cog):
             return True
         return False
             
-    @commands.command(usage="<users...> [time_and_reason]")
+    @commands.command(usage="<users...> [time] [reason]")
     @commands.guild_only()
     @commands.check(is_mod_or_admin)
     async def mute(
         self,
         ctx: commands.Context,
         users: commands.Greedy[discord.Member],
+        time: Optional[str] = None,
         *,
-        time_and_reason: str = None
+        reason: str = "No reason provided"
     ):
         """Banish crew members to the Void Century."""
         if not users:
@@ -510,15 +511,13 @@ class OnePieceMod(commands.Cog):
         async with ctx.typing():
             duration = None
             until = None
-            reason = None
-            if time_and_reason:
-                converter = MuteTime()
-                time_data = await converter.convert(ctx, time_and_reason)
-                duration = time_data.get("duration")
-                reason = time_data.get("reason")
-                if duration:
+            if time:
+                try:
+                    duration = parse_timedelta(time)
                     until = ctx.message.created_at + duration
-            
+                except ValueError:
+                    return await ctx.send("Yarr! That be an invalid time format. Use something like '1d', '12h', or '30m', ye scurvy dog!")
+    
             if not duration:
                 default_duration = await self.config.guild(ctx.guild).default_time()
                 if default_duration:
@@ -570,6 +569,23 @@ class OnePieceMod(commands.Cog):
                 f"Buggy's Chop-Chop Fruit accidentally divided {humanize_list([f'`{u}`' for u in success_list])}'s messages into tiny, unreadable pieces {time_str}!"
             ]
             await ctx.send(random.choice(pirate_messages))
+
+    def parse_timedelta(time_string: str) -> timedelta:
+        match = re.match(r"(\d+)([dwh])", time_string.lower())
+        if not match:
+            raise ValueError("Invalid time format")
+        
+        amount, unit = match.groups()
+        amount = int(amount)
+        
+        if unit == 'd':
+            return timedelta(days=amount)
+        elif unit == 'm':
+            return timedelta(minutes=amount)
+        elif unit == 'w':
+            return timedelta(weeks=amount)
+        elif unit == 'h':
+            return timedelta(hours=amount)
 
     def schedule_unmute(self, guild: discord.Guild, user: discord.Member, duration: timedelta):
         async def unmute_later():
@@ -811,6 +827,44 @@ class OnePieceMod(commands.Cog):
                 f"Logged at {ctx.message.created_at.strftime('%Y-%m-%d %H:%M:%S')} | One Piece Moderation"
             )
             await log_channel.send(log_message)
+
+    @commands.command(name="mutecheck", aliases=["checkmutetimer", "checkmute"])
+    @commands.guild_only()
+    @commands.check(is_mod_or_admin)
+    async def check_mute_timer(self, ctx: commands.Context, user: discord.Member):
+        """Check the remaining time for a muted user."""
+        mute_role = ctx.guild.get_role(self.mute_role_id)
+        if not mute_role:
+            return await ctx.send("Arr! The Void Century role be missin'! Someone alert the captain!")
+    
+        if mute_role not in user.roles:
+            return await ctx.send(f"{user.mention} ain't currently banished to the Void Century, ye barnacle-brain!")
+    
+        mute_data = self.mute_role_cache.get(ctx.guild.id, {}).get(user.id)
+        if not mute_data:
+            return await ctx.send(f"Blimey! I can't find any mute data for {user.mention}. They might be marooned indefinitely!")
+    
+        until = mute_data.get("until")
+        if not until:
+            return await ctx.send(f"{user.mention} be cast into the Void Century without an end date! They be needin' a pardon from the captain!")
+    
+        now = datetime.now(timezone.utc)
+        until = datetime.fromtimestamp(until, tz=timezone.utc)
+        if until <= now:
+            return await ctx.send(f"Shiver me timbers! {user.mention}'s mute timer has already expired! They should be free as a seagull!")
+    
+        remaining = until - now
+        remaining_str = humanize_timedelta(timedelta=remaining)
+    
+        messages = [
+            f"Aye! {user.mention} still has {remaining_str} left in the Void Century!",
+            f"Arrr! {user.mention} won't be escapin' the Void Century for another {remaining_str}!",
+            f"By Davy Jones' locker! {user.mention} be trapped in the Void Century for {remaining_str} more!",
+            f"Yo ho ho! {user.mention}'s voice will be locked away for {remaining_str} longer!",
+            f"Blow me down! {user.mention} has {remaining_str} left before they can speak again!"
+        ]
+    
+        await ctx.send(random.choice(messages))
             
     @commands.command()
     @checks.admin_or_permissions(manage_channels=True)
