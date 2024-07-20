@@ -748,16 +748,19 @@ class OnePieceMod(commands.Cog):
             await user.remove_roles(mute_role, reason=reason)
             
             # Restore previous roles
-            if guild.id in self.mute_role_cache and user.id in self.mute_role_cache[guild.id]:
-                roles_to_add = [guild.get_role(r_id) for r_id in self.mute_role_cache[guild.id][user.id]["roles"] if guild.get_role(r_id)]
-                self.logger.info(f"Restoring roles for user {user.id}: {[r.id for r in roles_to_add]}")
-                await user.add_roles(*roles_to_add, reason="Restoring roles after unmute")
-                
-                # Safely remove the user's mute data from the cache
-                self.mute_role_cache[guild.id].pop(user.id, None)
-                await self.config.guild(guild).muted_users.set(self.mute_role_cache[guild.id])
-            else:
-                self.logger.warning(f"No mute cache found for user {user.id} in guild {guild.id}")
+            async with self.config.guild(guild).muted_users() as muted_users:
+                if str(user.id) in muted_users:
+                    roles_to_add = []
+                    for role_id in muted_users[str(user.id)]["roles"]:
+                        role = guild.get_role(role_id)
+                        if role and role < guild.me.top_role and role not in user.roles:
+                            roles_to_add.append(role)
+                    
+                    if roles_to_add:
+                        await user.add_roles(*roles_to_add, reason="Restoring roles after unmute")
+                        self.logger.info(f"Restored roles for {user} in {guild}: {', '.join(r.name for r in roles_to_add)}")
+                    
+                    del muted_users[str(user.id)]
             
             ret["success"] = True
             self.logger.info(f"Successfully unmuted user {user.id} in guild {guild.id}")
@@ -840,31 +843,32 @@ class OnePieceMod(commands.Cog):
         if mute_role not in user.roles:
             return await ctx.send(f"{user.mention} ain't currently banished to the Void Century, ye barnacle-brain!")
     
-        mute_data = self.mute_role_cache.get(ctx.guild.id, {}).get(user.id)
-        if not mute_data:
-            return await ctx.send(f"Blimey! I can't find any mute data for {user.mention}. They might be marooned indefinitely!")
+        async with self.config.guild(ctx.guild).muted_users() as muted_users:
+            mute_data = muted_users.get(str(user.id))
+            if not mute_data:
+                return await ctx.send(f"Blimey! I can't find any mute data for {user.mention}. They might be marooned indefinitely!")
     
-        until = mute_data.get("until")
-        if not until:
-            return await ctx.send(f"{user.mention} be cast into the Void Century without an end date! They be needin' a pardon from the captain!")
+            until = mute_data.get("until")
+            if not until:
+                return await ctx.send(f"{user.mention} be cast into the Void Century without an end date! They be needin' a pardon from the captain!")
     
-        now = datetime.now(timezone.utc)
-        until = datetime.fromtimestamp(until, tz=timezone.utc)
-        if until <= now:
-            return await ctx.send(f"Shiver me timbers! {user.mention}'s mute timer has already expired! They should be free as a seagull!")
+            now = datetime.now(timezone.utc)
+            until = datetime.fromisoformat(until)
+            if until <= now:
+                return await ctx.send(f"Shiver me timbers! {user.mention}'s mute timer has already expired! They should be free as a seagull!")
     
-        remaining = until - now
-        remaining_str = humanize_timedelta(timedelta=remaining)
+            remaining = until - now
+            remaining_str = humanize_timedelta(timedelta=remaining)
     
-        messages = [
-            f"Aye! {user.mention} still has {remaining_str} left in the Void Century!",
-            f"Arrr! {user.mention} won't be escapin' the Void Century for another {remaining_str}!",
-            f"By Davy Jones' locker! {user.mention} be trapped in the Void Century for {remaining_str} more!",
-            f"Yo ho ho! {user.mention}'s voice will be locked away for {remaining_str} longer!",
-            f"Blow me down! {user.mention} has {remaining_str} left before they can speak again!"
-        ]
+            messages = [
+                f"Aye! {user.mention} still has {remaining_str} left in the Void Century!",
+                f"Arrr! {user.mention} won't be escapin' the Void Century for another {remaining_str}!",
+                f"By Davy Jones' locker! {user.mention} be trapped in the Void Century for {remaining_str} more!",
+                f"Yo ho ho! {user.mention}'s voice will be locked away for {remaining_str} longer!",
+                f"Blow me down! {user.mention} has {remaining_str} left before they can speak again!"
+            ]
     
-        await ctx.send(random.choice(messages))
+            await ctx.send(random.choice(messages))
             
     @commands.command()
     @checks.admin_or_permissions(manage_channels=True)
