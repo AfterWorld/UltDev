@@ -76,6 +76,23 @@ class OnePieceMod(commands.Cog):
             ("Buggy's Chop-Chop Fruit sent you flying!", "https://tenor.com/view/bara-bara-no-mi-bara-bara-no-mi-o-grande-one-piece-rp-gif-22513624"),
             ("Big Mom's Soul-Soul Fruit has taken your lifespan... and your server access!", "https://tenor.com/view/%E5%A4%A7%E5%AA%BDauntie-aunt-granny-grandmom-gif-12576437")
         ]
+
+    def parse_timedelta(time_string: str) -> timedelta:
+        match = re.match(r"(\d+)([dwh])", time_string.lower())
+        if not match:
+            raise ValueError("Invalid time format")
+        
+        amount, unit = match.groups()
+        amount = int(amount)
+        
+        if unit == 'd':
+            return timedelta(days=amount)
+        elif unit == 'm':
+            return timedelta(minutes=amount)
+        elif unit == 'w':
+            return timedelta(weeks=amount)
+        elif unit == 'h':
+            return timedelta(hours=amount)
         
 
     async def initialize(self):
@@ -513,7 +530,7 @@ class OnePieceMod(commands.Cog):
             until = None
             if time:
                 try:
-                    duration = parse_timedelta(time)
+                    duration = self.parse_timedelta(time)
                     until = ctx.message.created_at + duration
                 except ValueError:
                     return await ctx.send("Yarr! That be an invalid time format. Use something like '1d', '12h', or '30m', ye scurvy dog!")
@@ -569,23 +586,6 @@ class OnePieceMod(commands.Cog):
                 f"Buggy's Chop-Chop Fruit accidentally divided {humanize_list([f'`{u}`' for u in success_list])}'s messages into tiny, unreadable pieces {time_str}!"
             ]
             await ctx.send(random.choice(pirate_messages))
-
-    def parse_timedelta(time_string: str) -> timedelta:
-        match = re.match(r"(\d+)([dwh])", time_string.lower())
-        if not match:
-            raise ValueError("Invalid time format")
-        
-        amount, unit = match.groups()
-        amount = int(amount)
-        
-        if unit == 'd':
-            return timedelta(days=amount)
-        elif unit == 'm':
-            return timedelta(minutes=amount)
-        elif unit == 'w':
-            return timedelta(weeks=amount)
-        elif unit == 'h':
-            return timedelta(hours=amount)
 
     def schedule_unmute(self, guild: discord.Guild, user: discord.Member, duration: timedelta):
         async def unmute_later():
