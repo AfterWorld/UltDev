@@ -78,7 +78,7 @@ class OnePieceMod(commands.Cog):
         ]
 
     def parse_timedelta(self, time_string: str) -> timedelta:
-        match = re.match(r"(\d+)([dwhm])", time_string.lower())
+        match = re.match(r"(\d+)([dwhms])", time_string.lower())
         if not match:
             raise ValueError("Invalid time format")
         
@@ -89,6 +89,8 @@ class OnePieceMod(commands.Cog):
             return timedelta(days=amount)
         elif unit == 'm':
             return timedelta(minutes=amount)
+        elif unit == 's':
+            return timedelta(seconds=amount)
         elif unit == 'w':
             return timedelta(weeks=amount)
         elif unit == 'h':
