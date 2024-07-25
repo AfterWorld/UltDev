@@ -955,11 +955,36 @@ class OnePieceMod(commands.Cog):
             remaining_str = humanize_timedelta(timedelta=remaining)
     
             messages = [
-                f"Aye! {user.mention} still has {remaining_str} left in the Void Century!",
-                f"Arrr! {user.mention} won't be escapin' the Void Century for another {remaining_str}!",
-                f"By Davy Jones' locker! {user.mention} be trapped in the Void Century for {remaining_str} more!",
-                f"Yo ho ho! {user.mention}'s voice will be locked away for {remaining_str} longer!",
-                f"Blow me down! {user.mention} has {remaining_str} left before they can speak again!"
+                f"Gomu Gomu no Silence! {user.mention} is stretching through {remaining_str} of quiet time!",
+                f"Yohohoho! {user.mention}'s voice is as absent as my flesh for {remaining_str} more!",
+                f"Suuuuper! {user.mention} is building their voice back for {remaining_str}!",
+                f"Mellorine~! {user.mention} is swirling in a sea of silence for {remaining_str}!",
+                f"Meat?! No, {user.mention} can't ask for meat for {remaining_str} more!",
+                f"Zoro got lost again, and so did {user.mention}'s voice! {remaining_str} left to find it!",
+                f"Nami'd charge 100,000 berries to speak for {user.mention}, but they've still got {remaining_str} to go!",
+                f"Franky's cola ran out, and so did {user.mention}'s words! Refilling for {remaining_str}!",
+                f"Robin could sprout a hundred mouths, but {user.mention} can't use one for {remaining_str}!",
+                f"Sanji's cooking up a storm, but {user.mention}'s voice is still marinating for {remaining_str}!",
+                f"Usopp's tall tales are more audible than {user.mention} for {remaining_str} more!",
+                f"Chopper's Rumble Ball lasted longer than {user.mention}'s voice! {remaining_str} to go!",
+                f"Even the Soul King can't make {user.mention} sing for {remaining_str}!",
+                f"Jinbe's making waves, but {user.mention}'s voice is still underwater for {remaining_str}!",
+                f"Luffy's Haki can't sense {user.mention}'s voice for {remaining_str} more!",
+                f"Smoker's got {user.mention}'s voice trapped in sea stone for {remaining_str}!",
+                f"Buggy's Chop-Chop fruit split {user.mention}'s words apart for {remaining_str}!",
+                f"Not even Ivankov's hormones can bring {user.mention}'s voice back for {remaining_str}!",
+                f"Trafalgar Law swapped {user.mention}'s voice with silence for {remaining_str} more!",
+                f"{user.mention}'s voice is as hidden as the One Piece for {remaining_str}!",
+                f"Even Garp's Fist of Love can't knock a sound out of {user.mention} for {remaining_str}!",
+                f"Doflamingo's strings are keeping {user.mention}'s mouth shut for {remaining_str}!",
+                f"Blackbeard's darkness swallowed {user.mention}'s words for {remaining_str} more!",
+                f"Not even Shanks' Conqueror's Haki can make {user.mention} speak for {remaining_str}!",
+                f"{user.mention}'s voice is taking a longer break than Oda! {remaining_str} to go!",
+                f"Aokiji froze {user.mention}'s words solid for {remaining_str}!",
+                f"Kizaru's light speed kick sent {user.mention}'s voice flying for {remaining_str}!",
+                f"Kaido's Thunder Bagua knocked {user.mention} speechless for {remaining_str}!",
+                f"Big Mom's Soul Pocus stole {user.mention}'s voice for {remaining_str} more!",
+                f"{user.mention}'s voice is as elusive as the All Blue for {remaining_str}!"
             ]
     
             await ctx.send(random.choice(messages))
