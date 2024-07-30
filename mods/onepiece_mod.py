@@ -47,6 +47,7 @@ class OnePieceMod(commands.Cog):
             "default_time": 0,
             "dm": False,
             "show_mod": False,
+            "allowed_gif_users": [],
         }
         default_member = {
             "nword_offenses": 0,
@@ -1069,7 +1070,7 @@ class OnePieceMod(commands.Cog):
     async def on_message(self, message):
         if message.author.bot or not message.guild:
             return
-
+    
         # Check for banned words
         if await self.contains_banned_word(message.content):
             await self.handle_banned_word(message)
@@ -1083,14 +1084,14 @@ class OnePieceMod(commands.Cog):
         if is_new_user:
             # First check for obvious URLs
             contains_url = self.contains_url(message.content)
-
+    
             if contains_url:
                 await self.delete_and_warn(message, "new_user_link")
                 return
-
+    
             # If no obvious URL, wait a short time and check for embeds
             await asyncio.sleep(1)  # Wait for Discord to process potential embeds
-
+    
             # Fetch the message again to check for embeds
             try:
                 updated_message = await message.channel.fetch_message(message.id)
@@ -1100,27 +1101,31 @@ class OnePieceMod(commands.Cog):
             except discord.NotFound:
                 # Message was deleted, no action needed
                 pass
-
+    
         # Get the minimum image role
         minimum_image_role_id = await self.config.guild(message.guild).minimum_image_role_id()
         if minimum_image_role_id is None:
             return  # If no minimum role is set, don't apply any restrictions
-
+    
         minimum_image_role = message.guild.get_role(minimum_image_role_id)
         if minimum_image_role is None:
             return  # If the role doesn't exist anymore, don't apply any restrictions
-
+    
         # Check if the user has the minimum role or higher
         has_permission = any(role >= minimum_image_role for role in message.author.roles)
-
-        # Filter images and GIFs for users without the minimum role or higher
-        if not has_permission:
+    
+        # Check if the user is in the allowed_gif_users list
+        allowed_gif_users = await self.config.guild(message.guild).allowed_gif_users()
+        is_allowed_gif_user = message.author.id in allowed_gif_users
+    
+        # Filter images and GIFs for users without the minimum role or higher and not in allowed_gif_users
+        if not has_permission and not is_allowed_gif_user:
             contains_gif = re.search(r'\b(?:gif|giphy)\b', message.content, re.IGNORECASE)
             has_attachments = len(message.attachments) > 0
             if contains_gif or has_attachments or message.embeds:
                 await self.delete_and_warn(message, "low_rank_image", minimum_image_role)
                 return
-
+    
         # Check if the channel is restricted
         restricted_channels = await self.config.guild(message.guild).restricted_channels()
         if str(message.channel.id) in restricted_channels:
@@ -1129,63 +1134,42 @@ class OnePieceMod(commands.Cog):
             if required_role and not any(role >= required_role for role in message.author.roles):
                 await self.delete_and_warn(message, "restricted_channel", required_role)
                 return
-
-    async def contains_banned_word(self, content: str) -> bool:
-        return bool(self.nword_pattern.search(content))
-
-    async def handle_banned_word(self, message: discord.Message):
-        # Delete the message
-        try:
-            await message.delete()
-        except (discord.Forbidden, discord.NotFound):
-            pass  # If we can't delete the message, we'll still warn the user
-
-        # Increment the offense counter and get the current count
-        offense_count = await self.increment_offense_counter(message.author)
-
-        # Determine the action based on the number of offenses
-        if offense_count == 1:
-            action = "warned"
-            duration = None
-        else:
-            action = "muted"
-            duration = timedelta(minutes=30 * (offense_count - 1))  # Escalating mute duration
-
-        # Take action (warn or mute)
-        if action == "muted":
-            await self.mute_user(message.guild, self.bot.user, message.author, until=datetime.now(timezone.utc) + duration, reason="Use of banned language")
-
-        # Prepare the warning message
-        warning_messages = [
-            f"Oi oi, {message.author.mention}! Even Luffy wouldn't approve of that language! The Pirate King's dream is about freedom, not disrespect!",
-            f"Yohohoho! {message.author.mention}, that word is more forbidden than the Poneglyphs! As a skeleton, I have no ears to hear such things... but I'm all bones! Skull joke!",
-            f"Oi, {message.author.mention}! Sanji says a true pirate's Black Leg style is about kicking ass, not using crass words!",
-            f"Huh?! {message.author.mention}, are you trying to make Chopper cry with that language? He's a reindeer, not a swear-deer!",
-            f"Oi oi oi! {message.author.mention}, Zoro got lost and ended up here, and even he knows that word is more dangerous than Mihawk's sword!",
-            f"Nami says if you use that word again, {message.author.mention}, she'll raise your debt by 100,000 berries! And trust me, she WILL collect!"
-        ]
+    
+    @commands.command()
+    @checks.mod_or_permissions(manage_messages=True)
+    async def allowgif(self, ctx, user: discord.Member):
+        """Allow a user below level 5 to post GIFs."""
+        async with self.config.guild(ctx.guild).allowed_gif_users() as allowed_users:
+            if user.id in allowed_users:
+                await ctx.send(f"{user.mention} is already allowed to post GIFs!")
+            else:
+                allowed_users.append(user.id)
+                await ctx.send(f"{user.mention} has been granted permission to post GIFs!")
+    
+    @commands.command()
+    @checks.mod_or_permissions(manage_messages=True)
+    async def revokegif(self, ctx, user: discord.Member):
+        """Revoke a user's permission to post GIFs."""
+        async with self.config.guild(ctx.guild).allowed_gif_users() as allowed_users:
+            if user.id in allowed_users:
+                allowed_users.remove(user.id)
+                await ctx.send(f"{user.mention}'s permission to post GIFs has been revoked!")
+            else:
+                await ctx.send(f"{user.mention} didn't have special permission to post GIFs!")
+    
+    def schedule_unmute(self, guild: discord.Guild, user: discord.Member, duration: timedelta):
+        async def unmute_later():
+            await asyncio.sleep(duration.total_seconds())
+            await self.unmute_user(guild, self.bot.user, user, "Automatic unmute: Void Century banishment has ended")
+            if guild.id in self.mute_tasks and user.id in self.mute_tasks[guild.id]:
+                del self.mute_tasks[guild.id][user.id]
+    
+        task = asyncio.create_task(unmute_later())
         
-        base_warning = random.choice(warning_messages)
-        
-        if action == "warned":
-            consequence = (
-                "\n\nThis be yer first warnin', rookie! One more slip of the tongue, "
-                "and ye'll be scrubbing barnacles off the Thousand Sunny!"
-            )
-        else:
-            consequence = (
-                f"\n\nYe've been caught {offense_count} times now, ye scurvy dog! "
-                f"By the order of the Fleet Admiral, ye're banished to Impel Down (muted) "
-                f"for {humanize_timedelta(timedelta=duration)}! Reflect on the Way of the Pirate!"
-            )
-
-        warning_message = base_warning + consequence
-
-        await message.channel.send(warning_message, delete_after=30)
-
-        # Update the log
-        await self.update_banned_word_log(message.author, offense_count, action, duration)
-
+        if guild.id not in self.mute_tasks:
+            self.mute_tasks[guild.id] = {}
+        self.mute_tasks[guild.id][user.id] = task
+    
     async def mute_user(
         self,
         guild: discord.Guild,
@@ -1195,23 +1179,20 @@ class OnePieceMod(commands.Cog):
         reason: Optional[str] = None,
     ) -> Dict[str, Union[bool, str]]:
         ret = {"success": False, "reason": None}
-
+    
         mute_role = guild.get_role(self.mute_role_id)
         if not mute_role:
             ret["reason"] = "The Void Century role is missing! Have ye checked the Grand Line?"
             return ret
-
+    
         if mute_role in user.roles:
             ret["reason"] = f"{user.name} is already banished to the Void Century!"
             return ret
-
+    
         try:
-            # Store current roles
             current_roles = [role for role in user.roles if role != guild.default_role and role != mute_role]
-            
-            # Remove all roles except @everyone and add mute role
             await user.edit(roles=[mute_role], reason=reason)
-
+    
             async with self.config.guild(guild).muted_users() as muted_users:
                 muted_users[str(user.id)] = {
                     "author": author.id,
@@ -1219,76 +1200,19 @@ class OnePieceMod(commands.Cog):
                     "until": until.isoformat() if until else None,
                     "roles": [r.id for r in current_roles]
                 }
-
+    
             ret["success"] = True
+            
+            # Schedule auto-unmute if duration is provided
+            if until:
+                self.schedule_unmute(guild, user, until - datetime.now(timezone.utc))
         except discord.Forbidden:
             ret["reason"] = "The Sea Kings prevent me from assigning the Void Century role!"
         except discord.HTTPException as e:
             ret["reason"] = f"A mysterious force interferes with the mute! Error: {e}"
         
         return ret
-
-    async def update_banned_word_log(self, user: discord.Member, offense_count: int, action: str, duration: Optional[timedelta] = None):
-        log_channel = self.bot.get_channel(self.log_channel_id)
-        if not log_channel:
-            return  # Log channel not found
-
-        # Check if there's an existing log message for this user
-        async for message in log_channel.history(limit=100):
-            if message.author == self.bot.user and message.embeds:
-                embed = message.embeds[0]
-                if embed.title and embed.title.startswith(f"🚫 Banned Word Log for {user.display_name}"):
-                    # Update existing log message
-                    new_embed = self.create_banned_word_log_embed(user, offense_count, action, duration)
-                    await message.edit(embed=new_embed)
-                    return
-
-        # If no existing message found, create a new one
-        new_embed = self.create_banned_word_log_embed(user, offense_count, action, duration)
-        await log_channel.send(embed=new_embed)
-
-    def create_banned_word_log_embed(self, user: discord.Member, offense_count: int, action: str, duration: Optional[timedelta] = None):
-        embed = discord.Embed(
-            title=f"🚫 Banned Word Log for {user.display_name}",
-            color=discord.Color.red(),
-            timestamp=datetime.now(timezone.utc)
-        )
-        
-        embed.set_thumbnail(url=user.avatar.url if user.avatar else user.default_avatar.url)
-        
-        embed.add_field(name="Offense Count", value=str(offense_count), inline=False)
-        embed.add_field(name="Latest Action", value=action.capitalize(), inline=False)
-        
-        if duration:
-            embed.add_field(name="Mute Duration", value=humanize_timedelta(timedelta=duration), inline=False)
-        
-        embed.set_footer(text=f"User ID: {user.id}")
-        return embed
-        
-    async def increment_offense_counter(self, member: discord.Member) -> int:
-        async with self.config.member(member).all() as member_data:
-            current_time = datetime.now(timezone.utc)
-            last_offense_time = member_data['last_offense_time']
-
-            # Reset counter if last offense was more than 24 hours ago
-            if last_offense_time and (current_time - datetime.fromisoformat(last_offense_time)) > timedelta(hours=24):
-                member_data['nword_offenses'] = 0
-
-            member_data['nword_offenses'] += 1
-            member_data['last_offense_time'] = current_time.isoformat()
-
-            return member_data['nword_offenses']
-
-
-    def contains_url(self, text):
-        url_regex = re.compile(
-            r'(?i)\b((?:https?://|www\d{0,3}[.]|discord[.]gg|discordapp[.]com|discord[.]com|t[.]me|twitch[.]tv|picarto[.]tv|youtube[.]com|youtu[.]be|facebook[.]com|fb[.]com|instagram[.]com|instagr[.]am|twitter[.]com|x[.]com|tumblr[.]com|reddit[.]com|reddit[.]it|linkedin[.]com|linkd[.]in|snapchat[.]com|snap[.]com|whatsapp[.]com|whatsapp[.]net|weibo[.]com|qq[.]com|qzone[.]qq[.]com|tiktok[.]com|douyin[.]com|bilibili[.]com|b23[.]tv|vk[.]com|ok[.]ru)\S*)\b')
-        return re.search(url_regex, text) is not None
-
-    async def delete_and_warn(self, message, message_type, role=None):
-        await message.delete()
-        await self.send_themed_message(message.channel, message.author, message_type, role)
-
+    
     async def send_themed_message(self, channel, user, message_type, role=None):
         messages = {
             "new_user_link": [
@@ -1315,18 +1239,16 @@ class OnePieceMod(commands.Cog):
             themed_message = themed_message.replace("certain rank", f"ranked {role.name} or higher")
         
         await channel.send(themed_message, delete_after=15)
-
-            
-    @commands.Cog.listener()
-    async def on_member_update(self, before: discord.Member, after: discord.Member):
-        """Event listener to catch manual mute role removals."""
-        mute_role = before.guild.get_role(self.mute_role_id)
-        if not mute_role:
-            return
-
-        if mute_role in before.roles and mute_role not in after.roles:
-            # The mute role was manually removed
-            await self._restore_roles(after, "Manual unmute detected")
+    
+    # Warning messages for banned words
+    warning_messages = [
+        f"Oi oi, {{user.mention}}! Even Luffy wouldn't approve of that language! The Pirate King's dream is about freedom, not disrespect!",
+        f"Yohohoho! {{user.mention}}, that word is more forbidden than the Poneglyphs! As a skeleton, I have no ears to hear such things... but I'm all bones! Skull joke!",
+        f"Oi, {{user.mention}}! Sanji says a true pirate's Black Leg style is about kicking ass, not using crass words!",
+        f"Huh?! {{user.mention}}, are you trying to make Chopper cry with that language? He's a reindeer, not a swear-deer!",
+        f"Oi oi oi! {{user.mention}}, Zoro got lost and ended up here, and even he knows that word is more dangerous than Mihawk's sword!",
+        f"Nami says if you use that word again, {{user.mention}}, she'll raise your debt by 100,000 berries! And trust me, she WILL collect!"
+    ]
 
     @commands.command()
     @checks.admin_or_permissions(manage_guild=True)
