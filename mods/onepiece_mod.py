@@ -49,6 +49,7 @@ class OnePieceMod(commands.Cog):
             "show_mod": False,
             "allowed_gif_users": [],
             "banned_words": [],
+            "banned_word_strikes": {},
         }
         default_member = {
             "nword_offenses": 0,
@@ -103,15 +104,54 @@ class OnePieceMod(commands.Cog):
         guild = self.bot.guilds[0]  # Assumes the bot is only in one guild
         banned_words = await self.config.guild(guild).banned_words()
         content_lower = content.lower()
-        return any(word.lower() in content_lower for word in banned_words)
+        return any(re.search(r'\b' + re.escape(word.lower()) + r'\b', content_lower) for word in banned_words)
 
     async def handle_banned_word(self, message):
         # Delete the message
-        await message.delete()
-        
+        try:
+            await message.delete()
+        except discord.errors.NotFound:
+            # Message was already deleted
+            pass
+
+        # Increment the strike count for the user
+        async with self.config.guild(message.guild).banned_word_strikes() as strikes:
+            strikes[str(message.author.id)] = strikes.get(str(message.author.id), 0) + 1
+            strike_count = strikes[str(message.author.id)]
+
+        # Determine the consequence based on the number of strikes
+        if strike_count == 1:
+            consequence = "You've been given a warning."
+        elif strike_count == 2:
+            consequence = "You've been muted for 10 minutes."
+            await self.mute_user(message.guild, self.bot.user, message.author, until=discord.utils.utcnow() + datetime.timedelta(minutes=10), reason="Second banned word violation")
+        elif strike_count >= 3:
+            consequence = "You've been muted for 1 hour."
+            await self.mute_user(message.guild, self.bot.user, message.author, until=discord.utils.utcnow() + datetime.timedelta(hours=1), reason="Third or more banned word violation")
+
         # Send a warning
         warning = random.choice(self.warning_messages).format(user=message.author)
-        await message.channel.send(warning, delete_after=10)
+        warning += f"\n\nThis is strike {strike_count}. {consequence}"
+        await message.channel.send(warning, delete_after=20)
+
+        # Log the incident
+        log_channel = self.bot.get_channel(self.log_channel_id)
+        if log_channel:
+            await log_channel.send(f"🚫 **Banned Word Used**\n"
+                                   f"User: {message.author.mention} (ID: {message.author.id})\n"
+                                   f"Channel: {message.channel.mention}\n"
+                                   f"Strike Count: {strike_count}\n"
+                                   f"Consequence: {consequence}\n"
+                                   f"Message Content: ||{message.content}||")
+
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        if message.author.bot:
+            return
+
+        if await self.contains_banned_word(message.content):
+            await self.handle_banned_word(message)
+            return
         
 
     async def initialize(self):
@@ -1294,9 +1334,25 @@ class OnePieceMod(commands.Cog):
         """List all banned words."""
         banned_words = await self.config.guild(ctx.guild).banned_words()
         if banned_words:
-            await ctx.send(f"Banned words: {', '.join(banned_words)}")
+            # Send the list in a private message to avoid showing banned words in public
+            try:
+                await ctx.author.send(f"Banned words: {', '.join(banned_words)}")
+                await ctx.send("I've sent you a private message with the list of banned words.")
+            except discord.Forbidden:
+                await ctx.send("I couldn't send you a private message. Please enable DMs from server members and try again.")
         else:
             await ctx.send("There are no banned words.")
+
+    @commands.command()
+    @checks.admin_or_permissions(manage_guild=True)
+    async def resetbannedwordstrikes(self, ctx, user: discord.Member):
+        """Reset the banned word strike count for a user."""
+        async with self.config.guild(ctx.guild).banned_word_strikes() as strikes:
+            if str(user.id) in strikes:
+                del strikes[str(user.id)]
+                await ctx.send(f"Reset banned word strikes for {user.mention}.")
+            else:
+                await ctx.send(f"{user.mention} has no banned word strikes.")
             
 async def setup(bot):
     global original_commands
