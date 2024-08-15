@@ -48,6 +48,7 @@ class OnePieceMod(commands.Cog):
             "dm": False,
             "show_mod": False,
             "allowed_gif_users": [],
+            "banned_words": [],
         }
         default_member = {
             "nword_offenses": 0,
@@ -97,6 +98,20 @@ class OnePieceMod(commands.Cog):
             return timedelta(weeks=amount)
         elif unit == 'h':
             return timedelta(hours=amount)
+
+    async def contains_banned_word(self, content: str) -> bool:
+        guild = self.bot.guilds[0]  # Assumes the bot is only in one guild
+        banned_words = await self.config.guild(guild).banned_words()
+        content_lower = content.lower()
+        return any(word.lower() in content_lower for word in banned_words)
+
+    async def handle_banned_word(self, message):
+        # Delete the message
+        await message.delete()
+        
+        # Send a warning
+        warning = random.choice(self.warning_messages).format(user=message.author)
+        await message.channel.send(warning, delete_after=10)
         
 
     async def initialize(self):
@@ -1253,95 +1268,35 @@ class OnePieceMod(commands.Cog):
 
     @commands.command()
     @checks.admin_or_permissions(manage_guild=True)
-    async def send_server_rules(self, ctx, channel: discord.TextChannel = None):
-        """Send the full server rules and information to the specified channel."""
-        if channel is None:
-            channel = ctx.channel
+    async def addbannedword(self, ctx, word: str):
+        """Add a word to the banned words list."""
+        async with self.config.guild(ctx.guild).banned_words() as banned_words:
+            if word.lower() not in banned_words:
+                banned_words.append(word.lower())
+                await ctx.send(f"Added '{word}' to the banned words list.")
+            else:
+                await ctx.send(f"'{word}' is already in the banned words list.")
 
-        rules = """
-# 🏴‍☠️ Grand Line Pirates' Code of Conduct 🏴‍☠️
+    @commands.command()
+    @checks.admin_or_permissions(manage_guild=True)
+    async def removebannedword(self, ctx, word: str):
+        """Remove a word from the banned words list."""
+        async with self.config.guild(ctx.guild).banned_words() as banned_words:
+            if word.lower() in banned_words:
+                banned_words.remove(word.lower())
+                await ctx.send(f"Removed '{word}' from the banned words list.")
+            else:
+                await ctx.send(f"'{word}' is not in the banned words list.")
 
-Ahoy, fellow pirates! Welcome aboard the Grand Line Discord Server. Before ye set sail on this grand adventure, make sure to familiarize yourself with our code of conduct and Discord's Terms of Service. Remember, even pirates have rules to follow!
-
-## 📜 Discord Terms of Service
-
-All crew members must adhere to Discord's Terms of Service. Here are some key points:
-
-- 🔞 You must be at least 13 years old to use Discord
-- 🚫 No harassment, hate speech, or extreme political content
-- 🔒 Respect others' privacy and intellectual property
-- 🛡️ Don't share or promote harmful content or illegal activities
-- 🤖 Don't use self-bots or user-bots
-
-For the full terms, visit: [Discord Terms of Service](https://discord.com/\u200Bterms)
-
-## 🏴‍☠️ Server Rules (Applies to all crew members, from cabin boys to Yonko)
-
-1. 🤝 Respect yer fellow pirates. Swearing be allowed, but mind yer tongue and respect others' boundaries.
-2. 🤐 Sensitive topics such as politics, religion, or personal matters are off-limits. Keep 'em in Davy Jones' locker!
-3. 🌈 No discriminatin' against race, religion, or background. We be a diverse crew, savvy?
-4. 🔇 No spammin' outside the designated areas. Don't make us walk ye off the plank!
-5. 📢 Advertisin' other pirate crews (Discord servers) without permission is mutiny. Ye've been warned!
-6. 🤫 Keep manga spoilers in the appropriate channels. Don't ruin the adventure for others!
-7. 💡 Respect others' ideas and theories. Ask permission and give credit where it's due.
-8. 📖 Read the channel topics before postin'. They contain valuable treasure maps of information!
-9. 🔞 No NSFW content. Keep it family-friendly, ye scurvy dogs!
-10. 👨‍⚖️ The Moderators and Admins have the final say in disputes. Respect their authority or face the consequences!
-"""
-
-        rules_part2 = """
-## ⚓ Consequences for Breakin' the Code
-
-1. ⚠️ First offense: Ye'll get a warnin' shot across the bow
-2. 🔇 Second offense: Ye'll be thrown in the brig (muted)
-3. 🏝️ Third offense: Ye'll be marooned (banned)
-
-## 👑 Crew Hierarchy
-
-- 👑 Pirate King: Server Owner
-- ⭐️ Yonko: High-ranking Administrators
-- ⚓️ Admirals: Senior Moderators
-- 💎 Legends: Trusted friends and partners
-- 👑 Shichibukai: Novice Moderators
-"""
-
-        rules_part3 = """
-## 🌊 Choose Your Sea
-
-Join one of the five seas from One Piece:
-- ⭕ Grand Line 
-- 🔵 East Blue 
-- ⚪ West Blue 
-- ⚫ North Blue 
-- 🔴 South Blue 
-
-Select your sea in the designated channel to participate in sea tournaments!
-
-## 🏴‍☠️ Join a Pirate Crew
-
-Enlist in one of our fearsome pirate crews:
-- 🕷️ Phantom Troupe
-- 🦊 Foxy Pirates
-- 🐉 Revolutionary Army
-
-Each crew has 4 ranks: Cabin Boy, First Mate, Commander, and Right Hand
-
-## 📈 Pirate Ranking System
-
-
-Now, hoist the colors and set sail for adventure! If ye have any questions, consult yer Log Pose (ping a moderator). May the winds be ever in yer favor! ⛵🌊🏝️
-"""
-
-        chunks = [rules, rules_part2, rules_part3]
-
-        try:
-            for chunk in chunks:
-                await channel.send(chunk)
-            await ctx.send(f"Full server rules and information sent to {channel.mention}!")
-        except discord.Forbidden:
-            await ctx.send("I don't have permission to send messages in that channel!")
-        except discord.HTTPException:
-            await ctx.send("There was an error sending the rules. Please try again later.")
+    @commands.command()
+    @checks.admin_or_permissions(manage_guild=True)
+    async def listbannedwords(self, ctx):
+        """List all banned words."""
+        banned_words = await self.config.guild(ctx.guild).banned_words()
+        if banned_words:
+            await ctx.send(f"Banned words: {', '.join(banned_words)}")
+        else:
+            await ctx.send("There are no banned words.")
             
 async def setup(bot):
     global original_commands
