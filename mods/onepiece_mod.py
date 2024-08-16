@@ -28,6 +28,8 @@ class OnePieceMod(commands.Cog):
             "general_channel": None,
         }
         self.config.register_guild(**default_guild)
+        self.reminder_task = None
+        self.start_tasks()
         self.mute_tasks = {}
         self.check_mutes.start()
         self.ban_messages = [
@@ -53,6 +55,13 @@ class OnePieceMod(commands.Cog):
             if cmd:
                 self.bot.add_command(cmd)
         original_commands.clear()
+        
+    def start_tasks(self):
+        self.reminder_task = self.bot.loop.create_task(self.send_periodic_reminder())
+
+    def cog_unload(self):
+        if self.reminder_task:
+            self.reminder_task.cancel()
 
     @staticmethod
     def parse_duration(duration_str: str) -> timedelta:
@@ -83,65 +92,92 @@ class OnePieceMod(commands.Cog):
                     if user:
                         await self.unmute_user(guild, user, "Automatic unmute: mute duration expired")
 
-    async def mute_user(self, guild: discord.Guild, user: discord.Member, moderator: discord.Member, duration: timedelta = None, reason: str = None):
-        mute_role_id = await self.config.guild(guild).mute_role()
-        if not mute_role_id:
-            return False, "Mute role not set for this server."
+    async def mute_user(
+        self,
+        guild: discord.Guild,
+        author: discord.Member,
+        user: discord.Member,
+        until: Optional[datetime] = None,
+        reason: Optional[str] = None,
+    ) -> Dict[str, Union[bool, str]]:
+        """Handles banishing users to the Void Century"""
+        ret = {"success": False, "reason": None}
 
-        mute_role = guild.get_role(mute_role_id)
+        mute_role = guild.get_role(self.mute_role_id)
         if not mute_role:
-            return False, "Mute role not found in the server."
+            ret["reason"] = "The Void Century role is missing! Have ye checked the Grand Line?"
+            return ret
 
         if mute_role in user.roles:
-            return False, f"{user.name} is already muted."
+            ret["reason"] = f"{user.name} is already banished to the Void Century!"
+            return ret
 
         try:
-            await user.add_roles(mute_role, reason=reason)
-            until = (datetime.now(timezone.utc) + duration) if duration else None
-            mute_data = {
-                "moderator": moderator.id,
-                "reason": reason,
-                "until": until.isoformat() if until else None
-            }
+            # Store current roles
+            current_roles = [role for role in user.roles if role != guild.default_role and role != mute_role]
+            
+            # Remove all roles except @everyone and add mute role
+            await user.edit(roles=[mute_role], reason=reason)
+
             async with self.config.guild(guild).muted_users() as muted_users:
-                muted_users[str(user.id)] = mute_data
+                muted_users[str(user.id)] = {
+                    "author": author.id,
+                    "member": user.id,
+                    "until": until.isoformat() if until else None,
+                    "roles": [r.id for r in current_roles]
+                }
 
-            if duration:
-                await self.schedule_unmute(guild, user, duration)
-
-            return True, None
-        except discord.Forbidden:
-            return False, "I don't have permission to mute that user."
+            ret["success"] = True
+        except discord.Forbidden as e:
+            ret["reason"] = f"The Sea Kings prevent me from assigning the Void Century role! Error: {e}"
+        except discord.HTTPException as e:
+            ret["reason"] = f"A mysterious force interferes with the mute! Error: {e}"
         except Exception as e:
-            return False, f"An error occurred while muting the user: {str(e)}"
+            ret["reason"] = f"An unexpected tempest disrupts the mute! Error: {e}"
+        return ret
 
-    async def unmute_user(self, guild: discord.Guild, user: discord.Member, reason: str = None):
-        mute_role_id = await self.config.guild(guild).mute_role()
-        if not mute_role_id:
-            return False, "Mute role not set for this server."
+    async def unmute_user(
+        self,
+        guild: discord.Guild,
+        user: discord.Member,
+        reason: Optional[str] = None,
+    ) -> Dict[str, Union[bool, str]]:
+        """Handles returning users from the Void Century"""
+        ret = {"success": False, "reason": None}
 
-        mute_role = guild.get_role(mute_role_id)
+        mute_role = guild.get_role(self.mute_role_id)
         if not mute_role:
-            return False, "Mute role not found in the server."
+            ret["reason"] = "The Void Century role has vanished like a mirage! Alert the captain!"
+            return ret
 
         if mute_role not in user.roles:
-            return False, f"{user.name} is not muted."
+            ret["reason"] = f"{user.name} isn't trapped in the Void Century. They're free as a seagull!"
+            return ret
 
         try:
             await user.remove_roles(mute_role, reason=reason)
+            
             async with self.config.guild(guild).muted_users() as muted_users:
                 if str(user.id) in muted_users:
+                    roles_to_add = []
+                    for role_id in muted_users[str(user.id)]["roles"]:
+                        role = guild.get_role(role_id)
+                        if role and role < guild.me.top_role and role not in user.roles:
+                            roles_to_add.append(role)
+                    
+                    if roles_to_add:
+                        await user.add_roles(*roles_to_add, reason="Restoring roles after unmute")
+                    
                     del muted_users[str(user.id)]
 
-            if guild.id in self.mute_tasks and user.id in self.mute_tasks[guild.id]:
-                self.mute_tasks[guild.id][user.id].cancel()
-                del self.mute_tasks[guild.id][user.id]
-
-            return True, None
-        except discord.Forbidden:
-            return False, "I don't have permission to unmute that user."
+            ret["success"] = True
+        except discord.Forbidden as e:
+            ret["reason"] = f"The Sea Kings prevent me from removing the Void Century role! Error: {e}"
+        except discord.HTTPException as e:
+            ret["reason"] = f"A mysterious force interferes with the unmute! Error: {e}"
         except Exception as e:
-            return False, f"An error occurred while unmuting the user: {str(e)}"
+            ret["reason"] = f"An unexpected tempest disrupts the unmute! Error: {e}"
+        return ret
 
     async def schedule_unmute(self, guild: discord.Guild, user: discord.Member, duration: timedelta):
         async def unmute_later():
@@ -152,6 +188,26 @@ class OnePieceMod(commands.Cog):
         if guild.id not in self.mute_tasks:
             self.mute_tasks[guild.id] = {}
         self.mute_tasks[guild.id][user.id] = task
+        
+    @commands.command()
+    @commands.admin_or_permissions(administrator=True)
+    async def setreminderchannel(self, ctx, channel: discord.TextChannel):
+        """Set the channel for periodic reminders."""
+        await self.config.guild(ctx.guild).general_channel.set(channel.id)
+        await ctx.send(f"Reminder channel set to {channel.mention}")
+
+    @commands.command()
+    @commands.admin_or_permissions(administrator=True)
+    async def sendreminder(self, ctx):
+        """Manually send a reminder to the set channel."""
+        channel_id = await self.config.guild(ctx.guild).general_channel()
+        channel = ctx.guild.get_channel(channel_id)
+        if channel:
+            reminder = self.get_random_reminder()
+            await channel.send(reminder)
+            await ctx.send("Reminder sent!")
+        else:
+            await ctx.send("Reminder channel not set or not found.")
 
     @commands.command()
     @checks.mod_or_permissions(manage_roles=True)
@@ -231,16 +287,21 @@ class OnePieceMod(commands.Cog):
         if not log_channel:
             return
 
-        embed = discord.Embed(title=f"🏴‍☠️ Moderator Action: {action.capitalize()}", color=discord.Color.red())
-        embed.add_field(name="Target", value=f"{target} (ID: {target.id})", inline=False)
-        embed.add_field(name="Moderator", value=f"{moderator} (ID: {moderator.id})", inline=False)
-        if reason:
-            embed.add_field(name="Reason", value=reason, inline=False)
+        action_str = f"{action.capitalize()}"
         if duration:
-            embed.add_field(name="Duration", value=humanize_timedelta(timedelta=duration), inline=False)
-        embed.set_footer(text=f"Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
+            action_str += f" for {humanize_timedelta(timedelta=duration)}"
 
-        await log_channel.send(embed=embed)
+        log_message = (
+            "🏴‍☠️ **Crew Log Entry** 🏴‍☠️\n\n"
+            f"**Target Pirate:** {target.name} (ID: {target.id})\n"
+            f"**Action Taken:** {action_str}\n"
+            f"**Reason for Action:** {reason or 'No reason provided'}\n"
+            f"**Enforcing Officer:** {moderator.name} (ID: {moderator.id})\n"
+            f"**Incident Report:** [View Incident Details]({moderator.jump_url})\n\n"
+            f"Logged at {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} | One Piece Moderation"
+        )
+
+        await log_channel.send(log_message)
 
     async def send_themed_message(self, channel: discord.TextChannel, user: discord.Member, action: str, duration: str = ""):
         messages = {
