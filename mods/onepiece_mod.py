@@ -43,7 +43,18 @@ class OnePieceMod(commands.Cog):
             ("Big Mom's Soul-Soul Fruit has taken your lifespan... and your server access!", "https://tenor.com/view/%E5%A4%A7%E5%AA%BDauntie-aunt-granny-grandmom-gif-12576437"),
             ("Silence… Kidd Fan :LuffyTRUTH:","https://tenor.com/view/shanks-one-piece-divine-departure-kamusari-kid-gif-2484508146019442683")
         ]
-        
+
+    def cog_unload(self):
+        self.check_mutes.cancel()
+        global original_commands
+        for cmd_name, cmd in original_commands.items():
+            if self.bot.get_command(cmd_name):
+                self.bot.remove_command(cmd_name)
+            if cmd:
+                self.bot.add_command(cmd)
+        original_commands.clear()
+
+    @staticmethod
     def parse_duration(duration_str: str) -> timedelta:
         """Parse a duration string into a timedelta object."""
         match = re.match(r"(\d+)([smhd])", duration_str.lower())
@@ -61,16 +72,6 @@ class OnePieceMod(commands.Cog):
             return timedelta(hours=amount)
         elif unit == 'd':
             return timedelta(days=amount)
-
-    def cog_unload(self):
-        self.check_mutes.cancel()
-        global original_commands
-        for cmd_name, cmd in original_commands.items():
-            if self.bot.get_command(cmd_name):
-                self.bot.remove_command(cmd_name)
-            if cmd:
-                self.bot.add_command(cmd)
-        original_commands.clear()
 
     @tasks.loop(minutes=5)
     async def check_mutes(self):
@@ -158,7 +159,7 @@ class OnePieceMod(commands.Cog):
         """Mute a user, optionally for a specified duration."""
         if duration:
             try:
-                duration = parse_duration(duration)
+                duration = self.parse_duration(duration)
             except ValueError as e:
                 return await ctx.send(str(e))
         
@@ -383,7 +384,7 @@ class OnePieceMod(commands.Cog):
     async def tempmute(self, ctx, member: discord.Member, duration: str, *, reason: str = None):
         """Temporarily mute a user."""
         try:
-            duration = parse_duration(duration)
+            duration = self.parse_duration(duration)
         except ValueError as e:
             return await ctx.send(str(e))
 
