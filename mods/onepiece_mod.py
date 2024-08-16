@@ -3,7 +3,7 @@ from discord.ext import commands, tasks
 from discord.errors import Forbidden, HTTPException
 from redbot.core import commands, checks, modlog, Config
 from redbot.core.utils.chat_formatting import humanize_list, humanize_timedelta
-from redbot.core.utils.mod import get_audit_reason, parse_time_amount
+from redbot.core.utils.mod import get_audit_reason
 from redbot.core.utils.menus import start_adding_reactions
 from redbot.core.utils.predicates import ReactionPredicate
 from redbot.core.utils.chat_formatting import inline
@@ -90,28 +90,39 @@ class OnePieceMod(commands.Cog):
             self.reminder_task.cancel()
 
     @staticmethod
-    def parse_timedelta(time_string: str) -> timedelta:
-        """Parse a time string into a timedelta object."""
-        regex = re.compile(r'(\d+)([smhdw])')
-        matches = regex.findall(time_string.lower())
-        if not matches:
-            raise ValueError("Invalid time format. Use a number followed by s, m, h, d, or w.")
-
-        time_delta = timedelta()
-        for value, unit in matches:
-            value = int(value)
-            if unit == 's':
-                time_delta += timedelta(seconds=value)
-            elif unit == 'm':
-                time_delta += timedelta(minutes=value)
-            elif unit == 'h':
-                time_delta += timedelta(hours=value)
-            elif unit == 'd':
-                time_delta += timedelta(days=value)
-            elif unit == 'w':
-                time_delta += timedelta(weeks=value)
-
-        return time_delta
+    def parse_timedelta(time_string: str) -> Optional[timedelta]:
+        if not time_string:
+            return None
+        try:
+            # Remove all whitespace and convert to lowercase
+            time_string = "".join(time_string.split()).lower()
+            total_seconds = 0
+            current_number = ""
+            for char in time_string:
+                if char.isdigit():
+                    current_number += char
+                elif char in ['s', 'm', 'h', 'd', 'w']:
+                    if not current_number:
+                        raise ValueError("Invalid time format")
+                    number = int(current_number)
+                    if char == 's':
+                        total_seconds += number
+                    elif char == 'm':
+                        total_seconds += number * 60
+                    elif char == 'h':
+                        total_seconds += number * 3600
+                    elif char == 'd':
+                        total_seconds += number * 86400
+                    elif char == 'w':
+                        total_seconds += number * 604800
+                    current_number = ""
+                else:
+                    raise ValueError("Invalid time format")
+            if current_number:
+                raise ValueError("Invalid time format")
+            return timedelta(seconds=total_seconds)
+        except ValueError:
+            return None
 
     async def send_periodic_reminder(self):
         await self.bot.wait_until_ready()
@@ -449,16 +460,13 @@ class OnePieceMod(commands.Cog):
         if not await self._check_for_mute_role(ctx):
             return
     
-        mute_time = None
-        if duration:
-            try:
-                mute_time = parse_time_amount(duration)
-            except ValueError:
-                return await ctx.send(_("Invalid time format. Try `5h` or `1d`."))
+        mute_time = parse_timedelta(duration)
+        if duration and not mute_time:
+            return await ctx.send(_("Invalid time format. Try `5h` or `1d`."))
         
         until = None
         if mute_time:
-            until = ctx.message.created_at + timedelta(seconds=mute_time)
+            until = ctx.message.created_at + mute_time
     
         async with ctx.typing():
             author = ctx.message.author
