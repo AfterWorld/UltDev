@@ -43,6 +43,24 @@ class OnePieceMod(commands.Cog):
             ("Big Mom's Soul-Soul Fruit has taken your lifespan... and your server access!", "https://tenor.com/view/%E5%A4%A7%E5%AA%BDauntie-aunt-granny-grandmom-gif-12576437"),
             ("Silence… Kidd Fan :LuffyTRUTH:","https://tenor.com/view/shanks-one-piece-divine-departure-kamusari-kid-gif-2484508146019442683")
         ]
+        
+    def parse_duration(duration_str: str) -> timedelta:
+        """Parse a duration string into a timedelta object."""
+        match = re.match(r"(\d+)([smhd])", duration_str.lower())
+        if not match:
+            raise ValueError("Invalid duration format. Use a number followed by s, m, h, or d.")
+        
+        amount, unit = match.groups()
+        amount = int(amount)
+        
+        if unit == 's':
+            return timedelta(seconds=amount)
+        elif unit == 'm':
+            return timedelta(minutes=amount)
+        elif unit == 'h':
+            return timedelta(hours=amount)
+        elif unit == 'd':
+            return timedelta(days=amount)
 
     def cog_unload(self):
         self.check_mutes.cancel()
@@ -140,9 +158,9 @@ class OnePieceMod(commands.Cog):
         """Mute a user, optionally for a specified duration."""
         if duration:
             try:
-                duration = timedelta(**{duration[-1]: int(duration[:-1])})
-            except ValueError:
-                return await ctx.send("Invalid duration format. Use a number followed by s, m, h, or d.")
+                duration = parse_duration(duration)
+            except ValueError as e:
+                return await ctx.send(str(e))
         
         success, error_message = await self.mute_user(ctx.guild, member, ctx.author, duration, reason)
         if success:
@@ -152,7 +170,7 @@ class OnePieceMod(commands.Cog):
             await self.send_themed_message(ctx.channel, member, "mute", duration_str)
         else:
             await ctx.send(f"Failed to mute {member.mention}: {error_message}")
-
+            
     @commands.command()
     @checks.mod_or_permissions(manage_roles=True)
     async def unmute(self, ctx, member: discord.Member, *, reason: str = None):
@@ -365,9 +383,9 @@ class OnePieceMod(commands.Cog):
     async def tempmute(self, ctx, member: discord.Member, duration: str, *, reason: str = None):
         """Temporarily mute a user."""
         try:
-            duration = timedelta(**{duration[-1]: int(duration[:-1])})
-        except ValueError:
-            return await ctx.send("Invalid duration format. Use a number followed by s, m, h, or d.")
+            duration = parse_duration(duration)
+        except ValueError as e:
+            return await ctx.send(str(e))
 
         success, error_message = await self.mute_user(ctx.guild, member, ctx.author, duration, reason)
         if success:
