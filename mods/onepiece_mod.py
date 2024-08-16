@@ -389,70 +389,83 @@ class OnePieceMod(commands.Cog):
         else:
             await ctx.send("Reminder channel not set or not found.")
 
-    @commands.command()
-    @checks.mod_or_permissions(manage_roles=True)
-    async def mute(
-        self,
-        ctx: commands.Context,
-        users: commands.Greedy[discord.Member],
-        time: Optional[str] = None,
-        *,
-        reason: str = "No reason provided"
-    ):
-        """Banish crew members to the Void Century."""
-        if not users:
-            return await ctx.send_help()
-        if ctx.me in users:
-            return await ctx.send("You cannot banish the ship's Log Pose to the Void Century!")
-        if ctx.author in users:
-            return await ctx.send("You cannot banish yourself to the Void Century!")
-    
-        mute_role_id = await self.config.guild(ctx.guild).mute_role()
-        mute_role = ctx.guild.get_role(mute_role_id)
-        if not mute_role:
-            return await ctx.send("Blimey! The Void Century role has vanished like a mirage! Alert the captain!")
-    
-        async with ctx.typing():
-            duration = None
-            until = None
-            if time:
-                try:
-                    duration = self.parse_timedelta(time)
-                    until = ctx.message.created_at + duration
-                except ValueError as e:
-                    return await ctx.send(str(e))
-    
-            if not duration:
-                default_duration = await self.config.guild(ctx.guild).default_time()
-                if default_duration:
-                    duration = timedelta(seconds=default_duration)
-                    until = ctx.message.created_at + duration
-    
-            time_str = f"for {humanize_timedelta(timedelta=duration)}" if duration else "indefinitely"
-    
-            success_list = []
-            for user in users:
-                result = await self.mute_user(ctx.guild, ctx.author, user, until, reason)
-                if result["success"]:
-                    success_list.append(user)
-                    await modlog.create_case(
-                        self.bot,
-                        ctx.guild,
-                        ctx.message.created_at,
-                        "smute",
-                        user,
-                        ctx.author,
-                        reason,
-                        until=until,
-                    )
-                    await self._send_dm_notification(user, ctx.author, ctx.guild, "Banishment to the Void Century", reason, duration)
-                    await self.log_action(ctx, user, f"Banished to Void Century {time_str}", reason, ctx.author)
-                    
-                    # Schedule auto-unmute
-                    if duration:
-                        self.schedule_unmute(ctx.guild, user, duration)
-                else:
-                    await ctx.send(f"I couldn't banish {user} to the Void Century: {result['reason']}")
+    @commands.command(usage="<users...> [time_and_reason]")
+@commands.guild_only()
+@commands.mod_or_permissions(manage_roles=True)
+async def mute(
+    self,
+    ctx: commands.Context,
+    users: commands.Greedy[discord.Member],
+    *,
+    time_and_reason: MuteTime = {},
+):
+    """Mute users."""
+    if not users:
+        return await ctx.send_help()
+    if ctx.me in users:
+        return await ctx.send(_("You cannot mute me."))
+    if ctx.author in users:
+        return await ctx.send(_("You cannot mute yourself."))
+
+    if not await self._check_for_mute_role(ctx):
+        return
+    async with ctx.typing():
+        until = time_and_reason.get("until", None)
+        reason = time_and_reason.get("reason", None)
+        time = ""
+        duration = None
+        if until:
+            duration = time_and_reason.get("duration")
+            length = humanize_timedelta(timedelta=duration)
+            time = _(" for {length} until {duration}").format(
+                length=length, duration=discord.utils.format_dt(until)
+            )
+        else:
+            default_duration = await self.config.guild(ctx.guild).default_time()
+            if default_duration:
+                duration = timedelta(seconds=default_duration)
+                until = ctx.message.created_at + duration
+                length = humanize_timedelta(seconds=default_duration)
+                time = _(" for {length} until {duration}").format(
+                    length=length, duration=discord.utils.format_dt(until)
+                )
+
+        author = ctx.message.author
+        guild = ctx.guild
+        audit_reason = get_audit_reason(author, reason, shorten=True)
+        success_list = []
+        issue_list = []
+        for user in users:
+            result = await self.mute_user(guild, author, user, until, audit_reason)
+            if result.success:
+                success_list.append(user)
+                await modlog.create_case(
+                    self.bot,
+                    guild,
+                    ctx.message.created_at,
+                    "smute",
+                    user,
+                    author,
+                    reason,
+                    until=until,
+                    channel=None,
+                )
+                await self._send_dm_notification(
+                    user, author, guild, _("Server mute"), reason, duration
+                )
+            else:
+                issue_list.append(result)
+    if success_list:
+        if ctx.guild.id not in self._server_mutes:
+            self._server_mutes[ctx.guild.id] = {}
+        msg = _("{users} has been muted in this server{time}.")
+        if len(success_list) > 1:
+            msg = _("{users} have been muted in this server{time}.")
+        await ctx.send(
+            msg.format(users=humanize_list([f"`{u}`" for u in success_list]), time=time)
+        )
+    if issue_list:
+        await self.handle_issues(ctx, issue_list)
     
         if success_list:
             pirate_messages = [
