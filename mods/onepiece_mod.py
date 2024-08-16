@@ -122,23 +122,28 @@ class OnePieceMod(commands.Cog):
     ) -> Dict[str, Union[bool, str]]:
         """Handles banishing users to the Void Century"""
         ret = {"success": False, "reason": None}
-
-        mute_role = guild.get_role(self.mute_role_id)
+    
+        mute_role_id = await self.config.guild(guild).mute_role()
+        if not mute_role_id:
+            ret["reason"] = "The Void Century role is not set! Use [p]setmuterole to set it."
+            return ret
+    
+        mute_role = guild.get_role(mute_role_id)
         if not mute_role:
             ret["reason"] = "The Void Century role is missing! Have ye checked the Grand Line?"
             return ret
-
+    
         if mute_role in user.roles:
             ret["reason"] = f"{user.name} is already banished to the Void Century!"
             return ret
-
+    
         try:
             # Store current roles
             current_roles = [role for role in user.roles if role != guild.default_role and role != mute_role]
             
             # Remove all roles except @everyone and add mute role
             await user.edit(roles=[mute_role], reason=reason)
-
+    
             async with self.config.guild(guild).muted_users() as muted_users:
                 muted_users[str(user.id)] = {
                     "author": author.id,
@@ -146,7 +151,7 @@ class OnePieceMod(commands.Cog):
                     "until": until.isoformat() if until else None,
                     "roles": [r.id for r in current_roles]
                 }
-
+    
             ret["success"] = True
         except discord.Forbidden as e:
             ret["reason"] = f"The Sea Kings prevent me from assigning the Void Century role! Error: {e}"
@@ -433,11 +438,11 @@ class OnePieceMod(commands.Cog):
         await channel.send(random.choice(messages[action]))
 
     @commands.command()
-    @checks.admin_or_permissions(manage_guild=True)
+    @commands.admin_or_permissions(manage_roles=True)
     async def setmuterole(self, ctx, role: discord.Role):
-        """Set the mute role for the server."""
+        """Set the role to be used for mutes."""
         await self.config.guild(ctx.guild).mute_role.set(role.id)
-        await ctx.send(f"Mute role has been set to {role.name}")
+        await ctx.send(f"The Void Century role has been set to {role.name}.")
 
     @commands.command()
     @checks.admin_or_permissions(manage_guild=True)
