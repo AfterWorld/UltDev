@@ -1,12 +1,16 @@
 import discord
-from discord.ext import commands, tasks
-from redbot.core import Config, checks, modlog
-from redbot.core.bot import Red
+from discord.errors import Forbidden, HTTPException
+from redbot.core import commands, checks, modlog, Config
 from redbot.core.utils.chat_formatting import humanize_list, humanize_timedelta
-from datetime import datetime, timedelta, timezone
+from redbot.core.utils.mod import get_audit_reason
+from redbot.core.bot import Red
+from datetime import timedelta, datetime, timezone
 import asyncio
-import random
 import re
+import random
+import pytz
+import logging
+from typing import Optional, List, Union, Dict
 
 original_commands = {}
 
