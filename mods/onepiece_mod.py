@@ -386,7 +386,7 @@ class OnePieceMod(commands.Cog):
         except discord.HTTPException:
             await ctx.send("An error occurred while trying to ban the user.")
 
-    async def send_mod_log(self, guild: discord.Guild, action: str, target: discord.Member, moderator: discord.Member, reason: str = None, duration: timedelta = None, ctx: commands.Context = None):
+    async def send_mod_log(self, guild: discord.Guild, action: str, target: Optional[discord.Member], moderator: discord.Member, reason: str = None, duration: timedelta = None, ctx: commands.Context = None):
         log_channel_id = await self.config.guild(guild).mod_log_channel()
         if not log_channel_id:
             return
@@ -399,9 +399,14 @@ class OnePieceMod(commands.Cog):
         if duration:
             action_str += f" for {humanize_timedelta(timedelta=duration)}"
     
-        log_message = (
-            "🏴‍☠️ **Crew Log Entry** 🏴‍☠️\n\n"
-            f"**Target Pirate:** {target.name} (ID: {target.id})\n"
+        log_message = "🏴‍☠️ **Crew Log Entry** 🏴‍☠️\n\n"
+    
+        if target:
+            log_message += f"**Target Pirate:** {target.name} (ID: {target.id})\n"
+        else:
+            log_message += "**Target Pirate:** N/A\n"
+    
+        log_message += (
             f"**Action Taken:** {action_str}\n"
             f"**Reason for Action:** {reason or 'No reason provided'}\n"
             f"**Enforcing Officer:** {moderator.name} (ID: {moderator.id})\n"
@@ -626,23 +631,23 @@ class OnePieceMod(commands.Cog):
         mute_role_id = await self.config.guild(ctx.guild).mute_role()
         if not mute_role_id:
             return await ctx.send("No mute role set for this server.")
-
+    
         mute_role = ctx.guild.get_role(mute_role_id)
         if not mute_role:
             return await ctx.send("Mute role not found in the server.")
-
+    
         count = 0
         async with ctx.typing():
             for member in ctx.guild.members:
                 if mute_role in member.roles:
                     await member.remove_roles(mute_role, reason="Mass mute clearance")
                     count += 1
-
+    
             await self.config.guild(ctx.guild).muted_users.set({})
-
+    
         await ctx.send(f"Cleared mutes for {count} member(s).")
-        await self.send_mod_log(ctx.guild, "clearmutes", None, ctx.author, f"Cleared mutes for {count} member(s)")
-
+        await self.send_mod_log(ctx.guild, "clearmutes", None, ctx.author, f"Cleared mutes for {count} member(s)", ctx=ctx)
+        
 async def setup(bot):
     global original_commands
     cog = OnePieceMod(bot)
