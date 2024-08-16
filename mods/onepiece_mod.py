@@ -142,7 +142,9 @@ class OnePieceMod(commands.Cog):
             current_roles = [role for role in user.roles if role != guild.default_role and role != mute_role]
             
             # Remove all roles except @everyone and add mute role
-            await user.edit(roles=[mute_role], reason=reason)
+            roles_to_remove = [role for role in user.roles if role != guild.default_role and role != mute_role]
+            await user.remove_roles(*roles_to_remove, reason="Removing roles for mute")
+            await user.add_roles(mute_role, reason=reason)
     
             async with self.config.guild(guild).muted_users() as muted_users:
                 muted_users[str(user.id)] = {
@@ -154,7 +156,7 @@ class OnePieceMod(commands.Cog):
     
             ret["success"] = True
         except discord.Forbidden as e:
-            ret["reason"] = f"The Sea Kings prevent me from assigning the Void Century role! Error: {e}"
+            ret["reason"] = f"The Sea Kings prevent me from managing roles! Error: {e}"
         except discord.HTTPException as e:
             ret["reason"] = f"A mysterious force interferes with the mute! Error: {e}"
         except Exception as e:
@@ -169,35 +171,40 @@ class OnePieceMod(commands.Cog):
     ) -> Dict[str, Union[bool, str]]:
         """Handles returning users from the Void Century"""
         ret = {"success": False, "reason": None}
-
-        mute_role = guild.get_role(self.mute_role_id)
+    
+        mute_role_id = await self.config.guild(guild).mute_role()
+        if not mute_role_id:
+            ret["reason"] = "The Void Century role is not set! Use [p]setmuterole to set it."
+            return ret
+    
+        mute_role = guild.get_role(mute_role_id)
         if not mute_role:
             ret["reason"] = "The Void Century role has vanished like a mirage! Alert the captain!"
             return ret
-
+    
         if mute_role not in user.roles:
             ret["reason"] = f"{user.name} isn't trapped in the Void Century. They're free as a seagull!"
             return ret
-
+    
         try:
-            await user.remove_roles(mute_role, reason=reason)
+            await user.remove_roles(mute_role, reason="Unmuting user")
             
             async with self.config.guild(guild).muted_users() as muted_users:
                 if str(user.id) in muted_users:
-                    roles_to_add = []
+                    roles_to_restore = []
                     for role_id in muted_users[str(user.id)]["roles"]:
                         role = guild.get_role(role_id)
-                        if role and role < guild.me.top_role and role not in user.roles:
-                            roles_to_add.append(role)
+                        if role and role < guild.me.top_role and role != mute_role:
+                            roles_to_restore.append(role)
                     
-                    if roles_to_add:
-                        await user.add_roles(*roles_to_add, reason="Restoring roles after unmute")
+                    if roles_to_restore:
+                        await user.add_roles(*roles_to_restore, reason="Restoring roles after unmute")
                     
                     del muted_users[str(user.id)]
-
+    
             ret["success"] = True
         except discord.Forbidden as e:
-            ret["reason"] = f"The Sea Kings prevent me from removing the Void Century role! Error: {e}"
+            ret["reason"] = f"The Sea Kings prevent me from managing roles! Error: {e}"
         except discord.HTTPException as e:
             ret["reason"] = f"A mysterious force interferes with the unmute! Error: {e}"
         except Exception as e:
