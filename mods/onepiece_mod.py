@@ -3,7 +3,7 @@ from discord.ext import commands, tasks
 from discord.errors import Forbidden, HTTPException
 from redbot.core import commands, checks, modlog, Config
 from redbot.core.utils.chat_formatting import humanize_list, humanize_timedelta
-from redbot.core.utils.mod import get_audit_reason, parse_time_amount
+from redbot.core.utils.mod import get_audit_reason
 from redbot.core.utils.menus import start_adding_reactions
 from redbot.core.utils.predicates import ReactionPredicate
 from redbot.core.bot import Red
