@@ -124,63 +124,85 @@ class OnePieceMod(commands.Cog):
         user: discord.Member,
         until: Optional[datetime] = None,
         reason: Optional[str] = None,
-    ) -> Dict[str, Union[bool, str]]:
-        """Handles banishing users to the Void Century"""
-        ret = {"success": False, "reason": None}
+    ) -> MuteResponse:
+        """
+        Handles muting users
+        """
+        permissions = user.guild_permissions
+        ret: MuteResponse = MuteResponse(success=False, reason=None, user=user)
     
-        mute_role_id = await self.config.guild(guild).mute_role()
-        mute_role = guild.get_role(mute_role_id)
-        if not mute_role:
-            ret["reason"] = "The Void Century role is missing! Have ye checked the Grand Line?"
+        if permissions.administrator:
+            ret.reason = _(MUTE_UNMUTE_ISSUES["is_admin"])
             return ret
-    
-        if mute_role in user.roles:
-            ret["reason"] = f"{user.name} is already banished to the Void Century!"
+        if not await self.is_allowed_by_hierarchy(guild, author, user):
+            ret.reason = _(MUTE_UNMUTE_ISSUES["hierarchy_problem"])
             return ret
+        mute_role = await self.config.guild(guild).mute_role()
     
-        # Detailed permission checks
-        bot_member = guild.me
-        if not bot_member.guild_permissions.manage_roles:
-            ret["reason"] = "I don't have the 'Manage Roles' permission in this server!"
-            return ret
-    
-        if not bot_member.top_role > user.top_role:
-            ret["reason"] = f"Arr! {user.name}'s role is too high in the crew hierarchy for me to manage!"
-            return ret
-    
-        if not bot_member.top_role > mute_role:
-            ret["reason"] = "The Void Century role is above my highest role! I can't manage it!"
-            return ret
-    
-        try:
-            # Store current roles
-            current_roles = [role for role in user.roles if role != guild.default_role and role != mute_role]
+        if mute_role:
+            role = guild.get_role(mute_role)
+            if not role:
+                ret.reason = _(MUTE_UNMUTE_ISSUES["role_missing"])
+                return ret
+            if author != guild.owner and role >= author.top_role:
+                ret.reason = _(MUTE_UNMUTE_ISSUES["assigned_role_hierarchy_problem"])
+                return ret
+            if not guild.me.guild_permissions.manage_roles:
+                ret.reason = f"I don't have 'Manage Roles' permission. {_(MUTE_UNMUTE_ISSUES['permissions_issue_role'])}"
+                return ret
+            if role >= guild.me.top_role:
+                ret.reason = f"The mute role is higher than my highest role. {_(MUTE_UNMUTE_ISSUES['permissions_issue_role'])}"
+                return ret
             
-            # First, try to add the mute role
-            await user.add_roles(mute_role, reason=reason)
-            
-            # If successful, remove other roles
-            for role in current_roles:
-                await user.remove_roles(role, reason=reason)
+            # This is here to prevent the modlog case from happening on role updates
+            # we need to update the cache early so it's there before we receive the member_update event
+            if guild.id not in self._server_mutes:
+                self._server_mutes[guild.id] = {}
     
-            # Update muted_users in config
-            async with self.config.guild(guild).muted_users() as muted_users:
-                muted_users[str(user.id)] = {
-                    "author": author.id,
-                    "member": user.id,
-                    "until": until.isoformat() if until else None,
-                    "roles": [r.id for r in current_roles]
-                }
+            self._server_mutes[guild.id][user.id] = {
+                "author": author.id,
+                "member": user.id,
+                "until": until.timestamp() if until else None,
+            }
+            try:
+                await user.add_roles(role, reason=reason)
+                await self.config.guild(guild).muted_users.set(self._server_mutes[guild.id])
+            except discord.errors.Forbidden as e:
+                if guild.id in self._server_mutes and user.id in self._server_mutes[guild.id]:
+                    del self._server_mutes[guild.id][user.id]
+                ret.reason = f"Forbidden error when adding role: {e}. {_(MUTE_UNMUTE_ISSUES['permissions_issue_role'])}"
+                return ret
+            except discord.errors.HTTPException as e:
+                if guild.id in self._server_mutes and user.id in self._server_mutes[guild.id]:
+                    del self._server_mutes[guild.id][user.id]
+                ret.reason = f"HTTP error when adding role: {e}. {_(MUTE_UNMUTE_ISSUES['permissions_issue_role'])}"
+                return ret
             
-            ret["success"] = True
-        except discord.Forbidden as e:
-            ret["reason"] = f"The Sea Kings prevent me from assigning the Void Century role! Error: {e}"
-        except discord.HTTPException as e:
-            ret["reason"] = f"A mysterious force interferes with the mute! Error: {e}"
-        except Exception as e:
-            ret["reason"] = f"An unexpected tempest disrupts the mute! Error: {e}"
-        
-        return ret
+            if user.voice:
+                try:
+                    await user.move_to(user.voice.channel)
+                except discord.HTTPException:
+                    # catch all discord errors because the result will be the same
+                    # we successfully muted by this point but can't move the user
+                    ret.reason = _(MUTE_UNMUTE_ISSUES["voice_mute_permission"])
+            ret.success = True
+            return ret
+        else:
+            if until and (until - datetime.now(tz=timezone.utc)) > timedelta(days=28):
+                ret.reason = _(MUTE_UNMUTE_ISSUES["mute_is_too_long"])
+                return ret
+            if not until:
+                ret.reason = _(MUTE_UNMUTE_ISSUES["timeouts_require_time"])
+                return ret
+            if guild.me.guild_permissions.moderate_members:
+                try:
+                    await user.edit(timed_out_until=until, reason=reason)
+                    ret.success = True
+                except Exception as e:
+                    ret.reason = f"Error applying timeout: {e}. {_(MUTE_UNMUTE_ISSUES['permissions_issue_guild'])}"
+            else:
+                ret.reason = _("I lack the moderate members permission.")
+            return ret
 
     async def unmute_user(
         self,
