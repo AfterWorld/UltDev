@@ -6,6 +6,7 @@ from redbot.core.utils.chat_formatting import humanize_list, humanize_timedelta
 from redbot.core.utils.mod import get_audit_reason
 from redbot.core.utils.menus import start_adding_reactions
 from redbot.core.utils.predicates import ReactionPredicate
+from redbot.core.utils.chat_formatting import inline
 from redbot.core.bot import Red
 from datetime import timedelta, datetime, timezone
 from dataclasses import dataclass
@@ -138,6 +139,29 @@ class OnePieceMod(commands.Cog):
                     user = guild.get_member(int(user_id))
                     if user:
                         await self.unmute_user(guild, user, "Automatic unmute: mute duration expired")
+
+    async def _check_for_mute_role(self, ctx: commands.Context) -> bool:
+        """
+        This explains to the user whether or not mutes are setup correctly for
+        automatic unmutes.
+        """
+        command_1 = f"{ctx.clean_prefix}muteset role"
+        command_2 = f"{ctx.clean_prefix}muteset makerole"
+        msg = _(
+            "This server does not have a mute role setup. "
+            "You can setup a mute role with {command_1} or"
+            " {command_2} if you just want a basic role created setup.\n\n"
+        ).format(
+            command_1=inline(command_1),
+            command_2=inline(command_2),
+        )
+        mute_role_id = await self.config.guild(ctx.guild).mute_role()
+        mute_role = ctx.guild.get_role(mute_role_id)
+        if not mute_role:
+            await ctx.send(msg)
+            return False
+    
+        return True
 
     async def is_allowed_by_hierarchy(self, guild: discord.Guild, mod: discord.Member, user: discord.Member):
         is_special = mod == guild.owner or await self.bot.is_owner(mod)
