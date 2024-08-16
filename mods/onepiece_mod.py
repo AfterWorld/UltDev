@@ -208,6 +208,89 @@ class OnePieceMod(commands.Cog):
         if guild.id not in self.mute_tasks:
             self.mute_tasks[guild.id] = {}
         self.mute_tasks[guild.id][user.id] = task
+
+    def get_random_reminder(self):
+        reminder_messages = [
+            "# 🏴‍☠️ __**Luffy's Gum-Gum Decree!**__ 🏴‍☠️\n> Shishishi! Listen up, crew!\n> **Keep spoilers out of the general chat,\n> or I'll use my Gear Fifth to bounce you outta here!** 🦹‍♂️",
+            
+            "# ⚓ __**Nami's Navigational Notice:**__ ⚓\n> The Pirate Code (server rules) is our map to treasure!\n> **Follow it, or you'll face my Thunderbolt Tempo! ⚡\n> Breaking rules costs 1,000,000 berries per offense!** 🗺️💰",
+            
+            "# 🗡️ __**Zoro's Three-Sword Style: Rule Slash!**__ 🗡️\n> Lost? The rules are that way! No, wait...\n> **Keep discussions on-topic or face my Onigiri ban technique!\n> And don't make me come find you!** 🌪️",
+            
+            "# 👨‍🍳 __**Sanji's Recipe for Respect:**__ 👨‍🍳\n> In this kitchen, we serve up equality for all!\n> **Discriminate, and you'll taste my Diable Jambe kick!\n> Treat everyone like they're the All Blue of nakama!** 🦵🔥",
+            
+            "# 🩺 __**Chopper's Medical Advisory:**__ 🩺\n> Doctor's orders: Be nice to each other!\n> **Bullying causes bad health conditions.\n> Don't make me use my Monster Point to enforce kindness!** 🦌",
+            
+            "# 🎸 __**Brook's Soul-ful Serenade:**__ 🎸\n> Yohohoho! Let's keep it melodious, shall we?\n> **No jarring language or discord in our crew's symphony.\n> Or I'll have to silence you with my Soul Solid!** 💀🎵",
+            
+            "# 🛠️ __**Franky's SUPER Server Upgrade:**__ 🛠️\n> Keep this server running SUPER smooth!\n> **Use the right channels or I'll Radical Beam you outta here!\n> It's not hard, bros! Channel organization is SUPER!** 🦾",
+            
+            "# 📚 __**Robin's Historical Perspective:**__ 📚\n> The past teaches us to respect each other.\n> **Treat every nakama with kindness, regardless of background.\n> Or I might just sprout some hands to show you out!** 🌸",
+            
+            "# 🎯 __**Usopp's 8000-Follower Challenge:**__ 🎯\n> The Great Captain Usopp decrees:\n> **Follow the rules or face my 5-Ton Hammer of Justice!\n> I once moderated a server of 8000 giants, you know!** 🐉",
+            
+            "# 🦈 __**Jinbe's Fishman Karate Discipline:**__ 🦈\n> Respect flows like water in our crew.\n> **Disrupt that flow, and you'll face my Vagabond Drill!\n> We sink or swim together, so play nice!** 🌊",
+            
+            "# 📜 __**Oden's Spoiler Scroll:**__ 📜\n> The secrets of Laugh Tale are less guarded than our spoilers!\n> **Keep new chapter talk in designated channels,\n> or you'll be boiled alive... in a ban!** 🍢🔥",
+            
+            "# 🕰️ __**Toki's Spoiler Time-Jump:**__ 🕰️\n> I've seen the future, and it's spoiler-free for 48 hours!\n> **No spoilers for 2 days after a new release,\n> or I'll send you 800 years into a ban!** ⏳",
+            
+            "# 👁️ __**Katakuri's Spoiler Mochi:**__ 👁️\n> My future sight predicts perfect spoiler etiquette.\n> **Use spoiler tags for manga content not in the anime,\n> or get stuck in my mochi and miss the next chapter!** 🍡",
+            
+            "# 📰 __**Morgans' Spoiler Scoop:**__ 📰\n> Wanna share the big news? Hold your News Coos!\n> **Chapter discussions stay in dedicated threads.\n> Spread spoilers elsewhere and you're Fake News!** 🐦",
+            
+            "# 🎨 __**Kanjuro's Spoiler Scroll:**__ 🎨\n> Your excitement is art, but don't betray our nakama!\n> **Be vague in titles and thumbnails about recent events.\n> Explicit spoilers will be erased like a bad drawing!** 🖌️",
+            
+            "# 🍖 __**Luffy's Meat Mandate:**__ 🍖\n> Sharing is caring, but not with spoilers!\n> **If Sanji won't give me meat for spoiling, neither will the mods!\n> Keep surprises as safe as my lunchbox!** 🥩",
+            
+            "# 🃏 __**Law's ROOM: Spoiler Swap:**__ 🃏\n> I can transplant anything, except your right to spoil.\n> **Use ROOM to keep spoilers contained.\n> Shambles them elsewhere and you'll lose your posting privileges!** ⚔️",
+            
+            "# 🦩 __**Bon Clay's Spoiler Face-Off:**__ 🦩\n> Un, Deux, Trois! Disguise those spoilers!\n> **Use the same care hiding spoilers as I do impersonating friends.\n> Reveal too much and face my Mane Mane No Mi punishment!** 💃",
+            
+            "# 🍩 __**Katakuri's Mochi Muzzle:**__ 🍩\n> I'll say this once, so listen up!\n> **Spoilers are like mochi - keep 'em wrapped up tight.\n> Let 'em loose, and I'll personally muzzle you!** 🤐",
+            
+            "# 🔥 __**Ace's Flame of Consideration:**__ 🔥\n> The fire of excitement burns bright, but don't let it burn others!\n> **Cool your jets and avoid spoiling for nakama still catching up.\n> Or you might find yourself in a Fire Fist timeout!** 🕯️",
+            
+            "# 🐉 __**Dragon's Revolutionary Spoiler Tactics:**__ 🐉\n> Even revolutionaries know some secrets must be kept.\n> **Contain your spoilers like we contain our plans.\n> Loose lips sink revolutionary ships... and get bans.** 🌪️",
+            
+            "# 🍜 __**Garp's Fist of Spoiler Love:**__ 🍜\n> Listen here, you cheeky sea pups!\n> **Keep your spoilers to yourself, or I'll give you a Fist of Love!\n> Grandpa's orders are absolute!** 👊💕",
+            
+            "# ☠️ __**Whitebeard's One Server Policy:**__ ☠️\n> In this era of ours, all spoilers should be marked!\n> **Fail to tag your spoilers, and you'll feel the tremors of a ban.\n> This server is my family, so play nice!** 🌋",
+        
+            "# 🎩 __**Sabo's Noble Spoiler Oath:**__ 🎩\n> I vow upon my restored memories:\n> **All users shall enjoy One Piece at their own pace!\n> Spoil for others and you'll taste revolutionary flames!** 🔥",
+        
+            # New rules start here
+            "# 🦁 __**Shanks' Conqueror's Warning:**__ 🦁\n> Let's keep this server as peaceful as the Red Force.\n> **Respect others or face the pressure of my Conqueror's Haki!\n> I didn't lose an arm teaching Luffy for nothing!** 👑",
+        
+            "# 🌺 __**Hancock's Love-Love Moderation:**__ 🌺\n> Breaking rules is utterly unbeautiful!\n> **Treat all members with respect, regardless of gender.\n> Or you'll be turned to stone and used as a server decoration!** 💘",
+        
+            "# 🦊 __**Carrot's Sulong Surveillance:**__ 🦊\n> Garchu! Let's keep this server hopping with positivity!\n> **No aggressive behavior when the full moon of conflict rises.\n> Or I'll use my Sulong form to bounce you out!** 🌕",
+        
+            "# 🍩 __**Aokiji's Chilly Chat Policy:**__ 🍩\n> Let's keep it cool, yeah?\n> **No heated arguments or flame wars in the chat.\n> Or I'll put you on ice for a bit. Ice Time!** ❄️",
+        
+            "# 🌋 __**Akainu's Absolute Justice Enforcement:**__ 🌋\n> The rules of this server are absolute justice!\n> **Break them, and you'll face the consequences.\n> My Magu Magu no Mi doesn't discriminate against rule-breakers.** 🔥",
+        
+            "# 🦜 __**Marco's Phoenix Moderation:**__ 🦜\n> Yoi, let's keep this server healthy and regenerating, eh?\n> **Spread positivity and help others.\n> My flames heal, but they can also ban if necessary.** 🔵🔥",
+        
+            "# 🐊 __**Crocodile's Desert Decree:**__ 🐊\n> This server should run as smoothly as desert sand.\n> **No gritty behavior or I'll use my Suna Suna no Mi.\n> I'll dry up your posting privileges faster than you can say Alabasta!** 🏜️",
+        
+            "# 🎭 __**Buggy's Flashy Rule Announcement:**__ 🎭\n> Listen up, you flashy bastards!\n> **Follow the rules or I'll separate you from the server!\n> Captain Buggy's orders are as absolute as they are flashy!** 🔪",
+        
+            "# 🦈 __**Arlong's Prejudice Prevention:**__ 🦈\n> In this crew, all races swim together!\n> **No species discrimination allowed, human or fishman.\n> Or I'll show you how a saw-shark deals with bigots!** 🔪",
+        
+            "# 🎋 __**Yamato's Inherited Will of Order:**__ 🎋\n> As Oden, I decree these rules for our server!\n> **Respect each other's freedom and dreams.\n> Break these rules and you'll face my Thunder Bagua!** ⚡",
+        
+            "# 🗡️ __**Mihawk's Keen-Eyed Moderation:**__ 🗡️\n> My eyes miss nothing in this server.\n> **Keep your behavior as sharp and disciplined as a black blade.\n> Or face the world's strongest ban.** 👁️",
+        
+            "# 🍭 __**Big Mom's Sweet Commandments:**__ 🍭\n> Welcome to our territory, but mind the rules!\n> **Life or Ban? Your choice.\n> Follow the rules or I'll take decades off your life span!** 👵",
+        
+            "# 🧑‍🏫 __**Rayleigh's Haki Training:**__ 🧑‍🏫\n> A true pirate knows how to control themselves.\n> **Train your Haki of self-control and respect.\n> Or this Dark King might just have to give you a lesson!** ⚔️",
+        
+            "# 🎆 __**Ivankov's Emporio Face-Lift Policy:**__ 🎆\n> Hee-haw! Candy-boys and girls, keep it fabulous!\n> **Express yourself freely, but respect others' boundaries.\n> Break the rules and face a hormonal attitude adjustment!** 💉",
+        
+            "# 🐘 __**Zunisha's Ancient Wisdom:**__ 🐘\n> I've carried the Minks for 1000 years; I'll guide you too.\n> **Respect the long history of our community.\n> Neglect it, and you might be washed away like Jack.** 🌊"
+        ]
+        return random.choice(reminder_messages)
         
     @commands.command()
     @commands.admin_or_permissions(administrator=True)
