@@ -12,7 +12,7 @@ import re
 import random
 import pytz
 import logging
-from typing import Optional, List, Union, Dict
+from typing import Optional, List, Union, Dict, TypedDict
 
 original_commands = {}
 
