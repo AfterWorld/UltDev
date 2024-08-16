@@ -123,7 +123,8 @@ class OnePieceMod(commands.Cog):
         """Handles banishing users to the Void Century"""
         ret = {"success": False, "reason": None}
     
-        mute_role = guild.get_role(self.mute_role_id)
+        mute_role_id = await self.config.guild(guild).mute_role()
+        mute_role = guild.get_role(mute_role_id)
         if not mute_role:
             ret["reason"] = "The Void Century role is missing! Have ye checked the Grand Line?"
             return ret
@@ -336,7 +337,8 @@ class OnePieceMod(commands.Cog):
         if ctx.author in users:
             return await ctx.send("You cannot banish yourself to the Void Century!")
     
-        mute_role = ctx.guild.get_role(self.mute_role_id)
+        mute_role_id = await self.config.guild(ctx.guild).mute_role()
+        mute_role = ctx.guild.get_role(mute_role_id)
         if not mute_role:
             return await ctx.send("Blimey! The Void Century role has vanished like a mirage! Alert the captain!")
     
@@ -765,7 +767,7 @@ class OnePieceMod(commands.Cog):
         """Re-apply mute if a muted user rejoins."""
         muted_users = await self.config.guild(member.guild).muted_users()
         mute_data = muted_users.get(str(member.id))
-
+    
         if mute_data:
             mute_role_id = await self.config.guild(member.guild).mute_role()
             if mute_role_id:
