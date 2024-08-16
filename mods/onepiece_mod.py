@@ -7,6 +7,7 @@ from redbot.core.utils.mod import get_audit_reason
 from redbot.core.utils.menus import start_adding_reactions
 from redbot.core.utils.predicates import ReactionPredicate
 from redbot.core.utils.chat_formatting import inline
+from redbot.core.i18n import Translator
 from redbot.core.bot import Red
 from datetime import timedelta, datetime, timezone
 from dataclasses import dataclass
@@ -16,6 +17,8 @@ import random
 import pytz
 import logging
 from typing import Optional, List, Union, Dict, TypedDict
+
+_ = Translator("OnePieceMod", __file__)
 
 original_commands = {}
 
