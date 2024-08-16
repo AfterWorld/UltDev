@@ -16,11 +16,16 @@ from typing import Optional, List, Union, Dict, TypedDict
 
 original_commands = {}
 
-@dataclass
 class MuteTime(TypedDict, total=False):
     duration: Optional[timedelta]
     until: Optional[datetime]
     reason: Optional[str]
+
+@dataclass
+class MuteResponse:
+    success: bool
+    reason: Optional[str]
+    user: discord.Member
 
 class OnePieceMod(commands.Cog):
     def __init__(self, bot: Red):
