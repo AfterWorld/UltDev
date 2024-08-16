@@ -138,31 +138,40 @@ class OnePieceMod(commands.Cog):
             ret["reason"] = f"{user.name} is already banished to the Void Century!"
             return ret
     
-        # Check if the bot can manage the user's roles
-        if not guild.me.top_role > user.top_role:
+        # Detailed permission checks
+        bot_member = guild.me
+        if not bot_member.guild_permissions.manage_roles:
+            ret["reason"] = "I don't have the 'Manage Roles' permission in this server!"
+            return ret
+    
+        if not bot_member.top_role > user.top_role:
             ret["reason"] = f"Arr! {user.name}'s role is too high in the crew hierarchy for me to manage!"
             return ret
     
-        if not guild.me.guild_permissions.manage_roles:
-            ret["reason"] = "I don't have permission to manage roles in this server!"
+        if not bot_member.top_role > mute_role:
+            ret["reason"] = "The Void Century role is above my highest role! I can't manage it!"
             return ret
     
         try:
             # Store current roles
             current_roles = [role for role in user.roles if role != guild.default_role and role != mute_role]
             
-            # Remove all roles except @everyone and add mute role
-            await user.edit(roles=[mute_role], reason=reason)
+            # First, try to add the mute role
+            await user.add_roles(mute_role, reason=reason)
+            
+            # If successful, remove other roles
+            for role in current_roles:
+                await user.remove_roles(role, reason=reason)
     
-            if guild.id not in self.mute_role_cache:
-                self.mute_role_cache[guild.id] = {}
-            self.mute_role_cache[guild.id][user.id] = {
-                "author": author.id,
-                "member": user.id,
-                "until": until.timestamp() if until else None,
-                "roles": [r.id for r in current_roles]
-            }
-            await self.config.guild(guild).muted_users.set(self.mute_role_cache[guild.id])
+            # Update muted_users in config
+            async with self.config.guild(guild).muted_users() as muted_users:
+                muted_users[str(user.id)] = {
+                    "author": author.id,
+                    "member": user.id,
+                    "until": until.isoformat() if until else None,
+                    "roles": [r.id for r in current_roles]
+                }
+            
             ret["success"] = True
         except discord.Forbidden as e:
             ret["reason"] = f"The Sea Kings prevent me from assigning the Void Century role! Error: {e}"
@@ -170,6 +179,7 @@ class OnePieceMod(commands.Cog):
             ret["reason"] = f"A mysterious force interferes with the mute! Error: {e}"
         except Exception as e:
             ret["reason"] = f"An unexpected tempest disrupts the mute! Error: {e}"
+        
         return ret
 
     async def unmute_user(
@@ -740,6 +750,36 @@ class OnePieceMod(commands.Cog):
             await self.send_themed_message(ctx.channel, member, "mute", f" for {humanize_timedelta(timedelta=duration)}")
         else:
             await ctx.send(f"Failed to mute {member.mention}: {error_message}")
+
+    @commands.command()
+    @checks.mod_or_permissions(manage_roles=True)
+    async def checkmutesystem(self, ctx):
+        """Check the mute system setup."""
+        mute_role_id = await self.config.guild(ctx.guild).mute_role()
+        mute_role = ctx.guild.get_role(mute_role_id)
+        
+        if not mute_role:
+            await ctx.send("The Void Century role is not set or no longer exists!")
+            return
+    
+        bot_member = ctx.guild.me
+        issues = []
+    
+        if not bot_member.guild_permissions.manage_roles:
+            issues.append("I don't have the 'Manage Roles' permission in this server!")
+    
+        if not bot_member.top_role > mute_role:
+            issues.append("The Void Century role is above my highest role! I can't manage it!")
+    
+        # Check mute role permissions
+        if mute_role.permissions.send_messages:
+            issues.append("The Void Century role can still send messages!")
+    
+        if not issues:
+            await ctx.send("Arr! The mute system seems to be set up correctly!")
+        else:
+            issues_text = "\n".join(f"- {issue}" for issue in issues)
+            await ctx.send(f"Avast! There be some issues with the mute system:\n{issues_text}")
 
     @commands.command()
     @checks.mod_or_permissions(manage_roles=True)
