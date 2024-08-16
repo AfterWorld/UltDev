@@ -33,10 +33,17 @@ class OnePieceMod(commands.Cog):
             "mute_role": None,
             "mod_log_channel": None,
             "general_channel": None,
+            "notification_channel": None,
+            "muted_users": {},
+            "default_time": 0,
+            "dm": False,
+            "show_mod": False,
         }
         self.config.register_guild(**default_guild)
         self.reminder_task = None
         self.start_tasks()
+        self._server_mutes = {}  # Add this line
+        self.bot.loop.create_task(self.initialize())
         self.mute_tasks = {}
         self.check_mutes.start()
         self.ban_messages = [
@@ -52,6 +59,12 @@ class OnePieceMod(commands.Cog):
             ("Big Mom's Soul-Soul Fruit has taken your lifespan... and your server access!", "https://tenor.com/view/%E5%A4%A7%E5%AA%BDauntie-aunt-granny-grandmom-gif-12576437"),
             ("Silence… Kidd Fan :LuffyTRUTH:","https://tenor.com/view/shanks-one-piece-divine-departure-kamusari-kid-gif-2484508146019442683")
         ]
+
+    async def initialize(self):
+        all_guilds = await self.config.all_guilds()
+        for guild_id, guild_data in all_guilds.items():
+            muted_users = guild_data.get("muted_users", {})
+            self._server_mutes[guild_id] = muted_users
 
     def cog_unload(self):
         self.check_mutes.cancel()
