@@ -64,23 +64,28 @@ class OnePieceMod(commands.Cog):
             self.reminder_task.cancel()
 
     @staticmethod
-    def parse_duration(duration_str: str) -> timedelta:
-        """Parse a duration string into a timedelta object."""
-        match = re.match(r"(\d+)([smhd])", duration_str.lower())
-        if not match:
-            raise ValueError("Invalid duration format. Use a number followed by s, m, h, or d.")
-        
-        amount, unit = match.groups()
-        amount = int(amount)
-        
-        if unit == 's':
-            return timedelta(seconds=amount)
-        elif unit == 'm':
-            return timedelta(minutes=amount)
-        elif unit == 'h':
-            return timedelta(hours=amount)
-        elif unit == 'd':
-            return timedelta(days=amount)
+    def parse_timedelta(time_string: str) -> timedelta:
+        """Parse a time string into a timedelta object."""
+        regex = re.compile(r'(\d+)([smhdw])')
+        matches = regex.findall(time_string.lower())
+        if not matches:
+            raise ValueError("Invalid time format. Use a number followed by s, m, h, d, or w.")
+
+        time_delta = timedelta()
+        for value, unit in matches:
+            value = int(value)
+            if unit == 's':
+                time_delta += timedelta(seconds=value)
+            elif unit == 'm':
+                time_delta += timedelta(minutes=value)
+            elif unit == 'h':
+                time_delta += timedelta(hours=value)
+            elif unit == 'd':
+                time_delta += timedelta(days=value)
+            elif unit == 'w':
+                time_delta += timedelta(weeks=value)
+
+        return time_delta
 
     async def send_periodic_reminder(self):
         await self.bot.wait_until_ready()
@@ -349,8 +354,8 @@ class OnePieceMod(commands.Cog):
                 try:
                     duration = self.parse_timedelta(time)
                     until = ctx.message.created_at + duration
-                except ValueError:
-                    return await ctx.send("Yarr! That be an invalid time format. Use something like '1d', '12h', or '30m', ye scurvy dog!")
+                except ValueError as e:
+                    return await ctx.send(str(e))
     
             if not duration:
                 default_duration = await self.config.guild(ctx.guild).default_time()
