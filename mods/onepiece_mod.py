@@ -138,6 +138,15 @@ class OnePieceMod(commands.Cog):
             ret["reason"] = f"{user.name} is already banished to the Void Century!"
             return ret
     
+        # Check if the bot can manage the user's roles
+        if not guild.me.top_role > user.top_role:
+            ret["reason"] = f"Arr! {user.name}'s role is too high in the crew hierarchy for me to manage!"
+            return ret
+    
+        if not guild.me.guild_permissions.manage_roles:
+            ret["reason"] = "I don't have permission to manage roles in this server!"
+            return ret
+    
         try:
             # Store current roles
             current_roles = [role for role in user.roles if role != guild.default_role and role != mute_role]
