@@ -124,6 +124,10 @@ class OnePieceMod(commands.Cog):
                     if user:
                         await self.unmute_user(guild, user, "Automatic unmute: mute duration expired")
 
+    async def is_allowed_by_hierarchy(self, guild: discord.Guild, mod: discord.Member, user: discord.Member):
+        is_special = mod == guild.owner or await self.bot.is_owner(mod)
+        return mod.top_role > user.top_role or is_special
+
     async def mute_user(
         self,
         guild: discord.Guild,
