@@ -82,6 +82,26 @@ class OnePieceMod(commands.Cog):
         elif unit == 'd':
             return timedelta(days=amount)
 
+    async def send_periodic_reminder(self):
+        await self.bot.wait_until_ready()
+        while not self.bot.is_closed():
+            try:
+                guild = self.bot.get_guild(374126802836258816)  # Replace with your guild ID
+                if not guild:
+                    continue
+
+                channel_id = await self.config.guild(guild).general_channel()
+                channel = guild.get_channel(channel_id)
+                if channel:
+                    reminder = self.get_random_reminder()
+                    await channel.send(reminder)
+
+                # Wait for 6 hours before sending the next reminder
+                await asyncio.sleep(6 * 60 * 60)  # 6 hours in seconds
+            except Exception as e:
+                print(f"Error in send_periodic_reminder: {e}")
+                await asyncio.sleep(300)  # Wait 5 minutes before trying again if there's an error
+
     @tasks.loop(minutes=5)
     async def check_mutes(self):
         for guild in self.bot.guilds:
