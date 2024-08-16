@@ -16,11 +16,6 @@ from typing import Optional, List, Union, Dict, TypedDict
 
 original_commands = {}
 
-class MuteTime(TypedDict, total=False):
-    duration: Optional[timedelta]
-    until: Optional[datetime]
-    reason: Optional[str]
-
 @dataclass
 class MuteResponse:
     success: bool
@@ -394,17 +389,27 @@ class OnePieceMod(commands.Cog):
         else:
             await ctx.send("Reminder channel not set or not found.")
 
-    @commands.command(usage="<users...> [time_and_reason]")
+    @commands.command(usage="<users...> [duration] [reason]")
     @commands.guild_only()
     @commands.mod_or_permissions(manage_roles=True)
     async def mute(
         self,
         ctx: commands.Context,
         users: commands.Greedy[discord.Member],
+        duration: Optional[str] = None,
         *,
-        time_and_reason: MuteTime = {},
+        reason: Optional[str] = None,
     ):
-        """Mute users."""
+        """Mute users.
+    
+        `<users...>` is a space separated list of usernames, ID's, or mentions.
+        `[duration]` is the amount of time to mute for. Time units are s(econds), m(inutes), h(ours), d(ays), w(eeks).
+        `[reason]` is the reason for the mute.
+    
+        Examples:
+        `[p]mute @member1 @member2 5h spam`
+        `[p]mute @member 3d`
+        """
         if not users:
             return await ctx.send_help()
         if ctx.me in users:
@@ -414,27 +419,19 @@ class OnePieceMod(commands.Cog):
     
         if not await self._check_for_mute_role(ctx):
             return
-        async with ctx.typing():
-            until = time_and_reason.get("until", None)
-            reason = time_and_reason.get("reason", None)
-            time = ""
-            duration = None
-            if until:
-                duration = time_and_reason.get("duration")
-                length = humanize_timedelta(timedelta=duration)
-                time = _(" for {length} until {duration}").format(
-                    length=length, duration=discord.utils.format_dt(until)
-                )
-            else:
-                default_duration = await self.config.guild(ctx.guild).default_time()
-                if default_duration:
-                    duration = timedelta(seconds=default_duration)
-                    until = ctx.message.created_at + duration
-                    length = humanize_timedelta(seconds=default_duration)
-                    time = _(" for {length} until {duration}").format(
-                        length=length, duration=discord.utils.format_dt(until)
-                    )
     
+        mute_time = None
+        if duration:
+            try:
+                mute_time = parse_time_amount(duration)
+            except ValueError:
+                return await ctx.send(_("Invalid time format. Try `5h` or `1d`."))
+        
+        until = None
+        if mute_time:
+            until = ctx.message.created_at + timedelta(seconds=mute_time)
+    
+        async with ctx.typing():
             author = ctx.message.author
             guild = ctx.guild
             audit_reason = get_audit_reason(author, reason, shorten=True)
@@ -456,13 +453,18 @@ class OnePieceMod(commands.Cog):
                         channel=None,
                     )
                     await self._send_dm_notification(
-                        user, author, guild, _("Server mute"), reason, duration
+                        user, author, guild, _("Server mute"), reason, mute_time
                     )
                 else:
                     issue_list.append(result)
+    
         if success_list:
             if ctx.guild.id not in self._server_mutes:
                 self._server_mutes[ctx.guild.id] = {}
+            if mute_time:
+                time = _(" for {duration}").format(duration=humanize_timedelta(seconds=mute_time))
+            else:
+                time = ""
             msg = _("{users} has been muted in this server{time}.")
             if len(success_list) > 1:
                 msg = _("{users} have been muted in this server{time}.")
