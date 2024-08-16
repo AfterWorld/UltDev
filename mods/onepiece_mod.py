@@ -548,7 +548,6 @@ class OnePieceMod(commands.Cog):
         success, error_message = await self.unmute_user(ctx.guild, member, reason)
         if success:
             await ctx.send(f"{member.mention} has been unmuted.")
-            await self.send_mod_log(ctx.guild, "unmute", member, ctx.author, reason)
             await self.send_themed_message(ctx.channel, member, "unmute")
         else:
             await ctx.send(f"Failed to unmute {member.mention}: {error_message}")
