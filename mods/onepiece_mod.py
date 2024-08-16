@@ -331,7 +331,7 @@ class OnePieceMod(commands.Cog):
         if success:
             duration_str = f" for {humanize_timedelta(timedelta=duration)}" if duration else ""
             await ctx.send(f"{member.mention} has been muted{duration_str}.")
-            await self.send_mod_log(ctx.guild, "mute", member, ctx.author, reason, duration)
+            await self.send_mod_log(ctx.guild, "mute", member, ctx.author, reason, duration, ctx)
             await self.send_themed_message(ctx.channel, member, "mute", duration_str)
         else:
             await ctx.send(f"Failed to mute {member.mention}: {error_message}")
@@ -386,29 +386,34 @@ class OnePieceMod(commands.Cog):
         except discord.HTTPException:
             await ctx.send("An error occurred while trying to ban the user.")
 
-    async def send_mod_log(self, guild: discord.Guild, action: str, target: discord.Member, moderator: discord.Member, reason: str = None, duration: timedelta = None):
+    async def send_mod_log(self, guild: discord.Guild, action: str, target: discord.Member, moderator: discord.Member, reason: str = None, duration: timedelta = None, ctx: commands.Context = None):
         log_channel_id = await self.config.guild(guild).mod_log_channel()
         if not log_channel_id:
             return
-
+    
         log_channel = guild.get_channel(log_channel_id)
         if not log_channel:
             return
-
+    
         action_str = f"{action.capitalize()}"
         if duration:
             action_str += f" for {humanize_timedelta(timedelta=duration)}"
-
+    
         log_message = (
             "🏴‍☠️ **Crew Log Entry** 🏴‍☠️\n\n"
             f"**Target Pirate:** {target.name} (ID: {target.id})\n"
             f"**Action Taken:** {action_str}\n"
             f"**Reason for Action:** {reason or 'No reason provided'}\n"
             f"**Enforcing Officer:** {moderator.name} (ID: {moderator.id})\n"
-            f"**Incident Report:** [View Incident Details]({moderator.jump_url})\n\n"
-            f"Logged at {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} | One Piece Moderation"
         )
-
+    
+        if ctx and ctx.message:
+            log_message += f"**Incident Report:** [View Incident Details]({ctx.message.jump_url})\n\n"
+        else:
+            log_message += "**Incident Report:** No details available\n\n"
+    
+        log_message += f"Logged at {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} | One Piece Moderation"
+    
         await log_channel.send(log_message)
 
     async def send_themed_message(self, channel: discord.TextChannel, user: discord.Member, action: str, duration: str = ""):
