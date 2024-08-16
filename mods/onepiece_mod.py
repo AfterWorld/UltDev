@@ -318,9 +318,8 @@ class OnePieceMod(commands.Cog):
         else:
             await ctx.send("Reminder channel not set or not found.")
 
-    @commands.command(usage="<users...> [time] [reason]")
-    @commands.guild_only()
-    @commands.check(is_mod_or_admin)
+    @commands.command()
+    @checks.mod_or_permissions(manage_roles=True)
     async def mute(
         self,
         ctx: commands.Context,
