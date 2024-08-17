@@ -6,7 +6,7 @@ from redbot.core.utils.chat_formatting import humanize_list, humanize_timedelta
 from redbot.core.utils.mod import get_audit_reason
 from redbot.core.utils.menus import start_adding_reactions
 from redbot.core.utils.predicates import ReactionPredicate
-from redbot.core.utils.chat_formatting import inline, Bold
+from redbot.core.utils.chat_formatting import inline, bold
 from redbot.core.i18n import Translator
 from redbot.core.bot import Red
 from datetime import timedelta, datetime, timezone
