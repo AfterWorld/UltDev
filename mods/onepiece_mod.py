@@ -556,8 +556,6 @@ class OnePieceMod(commands.Cog):
             await ctx.send(
                 msg.format(users=humanize_list([f"`{u}`" for u in success_list]), time=time)
             )
-        if issue_list:
-            await self.handle_issues(ctx, issue_list)
     
         if success_list:
             pirate_messages = [
