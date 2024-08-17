@@ -240,30 +240,30 @@ class OnePieceMod(commands.Cog):
         """
         Handles muting users
         """
-        permissions = user.guild_permissions
         ret: MuteResponse = MuteResponse(success=False, reason=None, user=user)
     
-        if permissions.administrator:
-            ret.reason = _(MUTE_UNMUTE_ISSUES["is_admin"])
+        if user.guild_permissions.administrator:
+            ret.reason = "Cannot mute an administrator."
             return ret
         if not await self.is_allowed_by_hierarchy(guild, author, user):
-            ret.reason = _(MUTE_UNMUTE_ISSUES["hierarchy_problem"])
+            ret.reason = "You are not higher than the user in the role hierarchy."
             return ret
+        
         mute_role_id = await self.config.guild(guild).mute_role()
         mute_role = guild.get_role(mute_role_id)
     
         if not mute_role:
-            ret.reason = _(MUTE_UNMUTE_ISSUES["role_missing"])
+            ret.reason = "Mute role not found."
             return ret
         
         if author != guild.owner and mute_role >= author.top_role:
-            ret.reason = _(MUTE_UNMUTE_ISSUES["assigned_role_hierarchy_problem"])
+            ret.reason = "The mute role is higher than your highest role."
             return ret
         if not guild.me.guild_permissions.manage_roles:
-            ret.reason = f"I don't have 'Manage Roles' permission. {_(MUTE_UNMUTE_ISSUES['permissions_issue_role'])}"
+            ret.reason = "I don't have 'Manage Roles' permission."
             return ret
         if mute_role >= guild.me.top_role:
-            ret.reason = f"The mute role is higher than my highest role. {_(MUTE_UNMUTE_ISSUES['permissions_issue_role'])}"
+            ret.reason = "The mute role is higher than my highest role."
             return ret
         
         # Store current roles
@@ -288,16 +288,16 @@ class OnePieceMod(commands.Cog):
                 try:
                     await user.move_to(user.voice.channel)
                 except discord.HTTPException:
-                    ret.reason = _(MUTE_UNMUTE_ISSUES["voice_mute_permission"])
+                    ret.reason = "Couldn't move user in voice channel."
             ret.success = True
-        except discord.errors.Forbidden as e:
+        except discord.errors.Forbidden:
             if guild.id in self._server_mutes and user.id in self._server_mutes[guild.id]:
                 del self._server_mutes[guild.id][user.id]
-            ret.reason = f"Forbidden error when adding role: {e}. {_(MUTE_UNMUTE_ISSUES['permissions_issue_role'])}"
+            ret.reason = "I don't have permission to edit this user's roles."
         except discord.errors.HTTPException as e:
             if guild.id in self._server_mutes and user.id in self._server_mutes[guild.id]:
                 del self._server_mutes[guild.id][user.id]
-            ret.reason = f"HTTP error when adding role: {e}. {_(MUTE_UNMUTE_ISSUES['permissions_issue_role'])}"
+            ret.reason = f"An HTTP error occurred: {str(e)}"
         
         return ret
 
