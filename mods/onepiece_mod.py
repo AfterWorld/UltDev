@@ -490,17 +490,23 @@ class OnePieceMod(commands.Cog):
         `[p]mute @member1 @member2 5h spam`
         `[p]mute @member 3d`
         """
+        print("Mute command called")  # Debug print
         if not users:
+            print("No users specified")  # Debug print
             return await ctx.send_help()
         if ctx.me in users:
             return await ctx.send(_("You cannot mute me."))
         if ctx.author in users:
             return await ctx.send(_("You cannot mute yourself."))
     
+        print(f"Attempting to mute users: {users}")  # Debug print
+    
         if not await self._check_for_mute_role(ctx):
+            print("Mute role check failed")  # Debug print
             return
     
-        mute_time = self.parse_timedelta(duration)  # Use self.parse_timedelta instead of parse_timedelta
+        mute_time = self.parse_timedelta(duration)
+        print(f"Parsed mute time: {mute_time}")  # Debug print
         if duration and not mute_time:
             return await ctx.send(_("Invalid time format. Try `5h` or `1d`."))
         
@@ -515,7 +521,9 @@ class OnePieceMod(commands.Cog):
             success_list = []
             issue_list = []
             for user in users:
+                print(f"Attempting to mute user: {user}")  # Debug print
                 result = await self.mute_user(guild, author, user, until, audit_reason)
+                print(f"Mute result for {user}: {result}")  # Debug print
                 if result.success:
                     success_list.append(user)
                     await modlog.create_case(
@@ -548,6 +556,10 @@ class OnePieceMod(commands.Cog):
             await ctx.send(
                 msg.format(users=humanize_list([f"`{u}`" for u in success_list]), time=time)
             )
+            print(f"Successfully muted users: {success_list}")  # Debug print
+        if issue_list:
+            print(f"Issues encountered: {issue_list}")  # Debug print
+            await self.handle_issues(ctx, issue_list)
     
         if success_list:
             pirate_messages = [
