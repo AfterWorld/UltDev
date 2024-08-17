@@ -6,7 +6,7 @@ from redbot.core.utils.chat_formatting import humanize_list, humanize_timedelta
 from redbot.core.utils.mod import get_audit_reason
 from redbot.core.utils.menus import start_adding_reactions
 from redbot.core.utils.predicates import ReactionPredicate
-from redbot.core.utils.chat_formatting import inline
+from redbot.core.utils.chat_formatting import inline, Bold
 from redbot.core.i18n import Translator
 from redbot.core.bot import Red
 from datetime import timedelta, datetime, timezone
@@ -16,7 +16,7 @@ import re
 import random
 import pytz
 import logging
-from typing import Optional, List, Union, Dict, TypedDict
+from typing import Optional, List, Union, Dict, TypedDict, Union
 
 _ = Translator("OnePieceMod", __file__)
 
@@ -143,6 +143,54 @@ class OnePieceMod(commands.Cog):
             except Exception as e:
                 print(f"Error in send_periodic_reminder: {e}")
                 await asyncio.sleep(300)  # Wait 5 minutes before trying again if there's an error
+
+    async def _send_dm_notification(
+        self,
+        user: Union[discord.User, discord.Member],
+        moderator: Optional[Union[discord.User, discord.Member]],
+        guild: discord.Guild,
+        mute_type: str,
+        reason: Optional[str],
+        duration: Optional[timedelta] = None,
+    ):
+        if user.bot:
+            return
+    
+        if not await self.config.guild(guild).dm():
+            return
+    
+        show_mod = await self.config.guild(guild).show_mod()
+        title = bold(mute_type)
+        if duration:
+            duration_str = humanize_timedelta(timedelta=duration)
+            until = datetime.now(timezone.utc) + duration
+            until_str = discord.utils.format_dt(until)
+    
+        if moderator is None:
+            moderator_str = _("Unknown")
+        else:
+            moderator_str = str(moderator)
+    
+        if not reason:
+            reason = _("No reason provided.")
+    
+        embed = discord.Embed(
+            title=title,
+            description=reason,
+            color=await self.bot.get_embed_color(user),
+        )
+        embed.timestamp = datetime.now(timezone.utc)
+        if duration:
+            embed.add_field(name=_("Until"), value=until_str)
+            embed.add_field(name=_("Duration"), value=duration_str)
+        embed.add_field(name=_("Guild"), value=guild.name, inline=False)
+        if show_mod:
+            embed.add_field(name=_("Moderator"), value=moderator_str)
+    
+        try:
+            await user.send(embed=embed)
+        except discord.Forbidden:
+            pass  # Can't send DM to the user
 
     @tasks.loop(minutes=5)
     async def check_mutes(self):
