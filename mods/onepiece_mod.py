@@ -460,7 +460,7 @@ class OnePieceMod(commands.Cog):
         if not await self._check_for_mute_role(ctx):
             return
     
-        mute_time = parse_timedelta(duration)
+        mute_time = self.parse_timedelta(duration)  # Use self.parse_timedelta instead of parse_timedelta
         if duration and not mute_time:
             return await ctx.send(_("Invalid time format. Try `5h` or `1d`."))
         
@@ -499,7 +499,7 @@ class OnePieceMod(commands.Cog):
             if ctx.guild.id not in self._server_mutes:
                 self._server_mutes[ctx.guild.id] = {}
             if mute_time:
-                time = _(" for {duration}").format(duration=humanize_timedelta(seconds=mute_time))
+                time = _(" for {duration}").format(duration=humanize_timedelta(timedelta=mute_time))
             else:
                 time = ""
             msg = _("{users} has been muted in this server{time}.")
