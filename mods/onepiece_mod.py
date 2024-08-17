@@ -558,8 +558,8 @@ class OnePieceMod(commands.Cog):
             )
             print(f"Successfully muted users: {success_list}")  # Debug print
         if issue_list:
-            print(f"Issues encountered: {issue_list}")  # Debug print
-            await self.handle_issues(ctx, issue_list)
+            issues_text = "\n".join(f"- {issue.user}: {issue.reason}" for issue in issue_list)
+            await ctx.send(f"The following issues occurred while trying to mute users:\n{issues_text}")
     
         if success_list:
             pirate_messages = [
