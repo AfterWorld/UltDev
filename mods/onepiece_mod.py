@@ -480,33 +480,25 @@ class OnePieceMod(commands.Cog):
         *,
         reason: Optional[str] = None,
     ):
-        """Mute users.
-    
-        `<users...>` is a space separated list of usernames, ID's, or mentions.
-        `[duration]` is the amount of time to mute for. Time units are s(econds), m(inutes), h(ours), d(ays), w(eeks).
-        `[reason]` is the reason for the mute.
-    
-        Examples:
-        `[p]mute @member1 @member2 5h spam`
-        `[p]mute @member 3d`
-        """
-        print("Mute command called")  # Debug print
+        """Mute users."""
         if not users:
-            print("No users specified")  # Debug print
             return await ctx.send_help()
         if ctx.me in users:
             return await ctx.send(_("You cannot mute me."))
         if ctx.author in users:
             return await ctx.send(_("You cannot mute yourself."))
     
-        print(f"Attempting to mute users: {users}")  # Debug print
-    
         if not await self._check_for_mute_role(ctx):
-            print("Mute role check failed")  # Debug print
             return
     
+        mute_role_id = await self.config.guild(ctx.guild).mute_role()
+        mute_role = ctx.guild.get_role(mute_role_id)
+        
+        # Debug information
+        await ctx.send(f"Bot's top role: {ctx.me.top_role.name}")
+        await ctx.send(f"Mute role: {mute_role.name}")
+        
         mute_time = self.parse_timedelta(duration)
-        print(f"Parsed mute time: {mute_time}")  # Debug print
         if duration and not mute_time:
             return await ctx.send(_("Invalid time format. Try `5h` or `1d`."))
         
@@ -521,27 +513,32 @@ class OnePieceMod(commands.Cog):
             success_list = []
             issue_list = []
             for user in users:
-                print(f"Attempting to mute user: {user}")  # Debug print
-                result = await self.mute_user(guild, author, user, until, audit_reason)
-                print(f"Mute result for {user}: {result}")  # Debug print
-                if result.success:
-                    success_list.append(user)
-                    await modlog.create_case(
-                        self.bot,
-                        guild,
-                        ctx.message.created_at,
-                        "smute",
-                        user,
-                        author,
-                        reason,
-                        until=until,
-                        channel=None,
-                    )
-                    await self._send_dm_notification(
-                        user, author, guild, _("Server mute"), reason, mute_time
-                    )
-                else:
-                    issue_list.append(result)
+                # Debug information
+                await ctx.send(f"Attempting to mute user: {user.name}")
+                await ctx.send(f"User's top role: {user.top_role.name}")
+                
+                try:
+                    result = await self.mute_user(guild, author, user, until, audit_reason)
+                    if result.success:
+                        success_list.append(user)
+                        await modlog.create_case(
+                            self.bot,
+                            guild,
+                            ctx.message.created_at,
+                            "smute",
+                            user,
+                            author,
+                            reason,
+                            until=until,
+                            channel=None,
+                        )
+                        await self._send_dm_notification(
+                            user, author, guild, _("Server mute"), reason, mute_time
+                        )
+                    else:
+                        issue_list.append(result)
+                except Exception as e:
+                    await ctx.send(f"An error occurred while muting {user.name}: {str(e)}")
     
         if success_list:
             if ctx.guild.id not in self._server_mutes:
@@ -556,7 +553,7 @@ class OnePieceMod(commands.Cog):
             await ctx.send(
                 msg.format(users=humanize_list([f"`{u}`" for u in success_list]), time=time)
             )
-            print(f"Successfully muted users: {success_list}")  # Debug print
+    
         if issue_list:
             issues_text = "\n".join(f"- {issue.user}: {issue.reason}" for issue in issue_list)
             await ctx.send(f"The following issues occurred while trying to mute users:\n{issues_text}")
