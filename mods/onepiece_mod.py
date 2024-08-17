@@ -197,10 +197,19 @@ class OnePieceMod(commands.Cog):
         for guild in self.bot.guilds:
             muted_users = await self.config.guild(guild).muted_users()
             for user_id, mute_data in list(muted_users.items()):
-                if mute_data["until"] and datetime.fromisoformat(mute_data["until"]) <= datetime.now(timezone.utc):
-                    user = guild.get_member(int(user_id))
-                    if user:
-                        await self.unmute_user(guild, user, "Automatic unmute: mute duration expired")
+                if mute_data["until"]:
+                    until = mute_data["until"]
+                    if isinstance(until, str):
+                        until = datetime.fromisoformat(until)
+                    elif isinstance(until, (int, float)):
+                        until = datetime.fromtimestamp(until, tz=timezone.utc)
+                    else:
+                        continue  # Skip if the format is unrecognized
+    
+                    if until <= datetime.now(timezone.utc):
+                        user = guild.get_member(int(user_id))
+                        if user:
+                            await self.unmute_user(guild, user, "Automatic unmute: mute duration expired")
 
     async def _check_for_mute_role(self, ctx: commands.Context) -> bool:
         """
