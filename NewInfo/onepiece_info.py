@@ -154,8 +154,8 @@ class OnePieceInfo(commands.Cog):
             
             island_pages.append(embed)
         
-        # Create a menu for navigating island pages
-        await menus.menu(ctx, island_pages, menus.DEFAULT_CONTROLS)
+        # Use the imported menu and controls
+        await menu(ctx, island_pages, DEFAULT_CONTROLS)
 
     @commands.command(name="islandinfo")
     @commands.is_owner()
