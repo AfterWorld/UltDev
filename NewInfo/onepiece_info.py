@@ -126,8 +126,10 @@ class OnePieceInfo(commands.Cog):
         List the islands (servers) the Straw Hat Pirates have visited.
         
         Use 'true' or 'details' as an argument to show server IDs.
+        Servers are sorted by member count in descending order.
         """
-        guilds = sorted(self.bot.guilds, key=lambda s: s.name.lower())
+        # Sort guilds by member count in descending order
+        guilds = sorted(self.bot.guilds, key=lambda s: s.member_count, reverse=True)
         
         # Create pages of islands with One Piece theming
         island_pages = []
@@ -135,7 +137,7 @@ class OnePieceInfo(commands.Cog):
             page_guilds = guilds[i:i+9]
             embed = discord.Embed(
                 title="🏴‍☠️ Grand Line Island Log 🌊", 
-                description="A record of every island visited by the Thousand Sunny",
+                description="A record of every island visited by the Thousand Sunny, sorted by crew size",
                 color=discord.Color.blue()
             )
             
