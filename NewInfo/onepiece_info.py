@@ -213,7 +213,12 @@ class OnePieceInfo(commands.Cog):
 
         embed.add_field(name="🌊 Island Designation", value=guild.name, inline=False)
         embed.add_field(name="🧭 Island ID", value=f"`{guild.id}`", inline=True)
-        embed.add_field(name="👑 Island Captain", value=guild.owner.mention, inline=True)
+        
+        # Change: Display owner as text with name and ID
+        embed.add_field(name="👑 Island Captain", 
+                        value=f"{guild.owner.name} (ID: {guild.owner.id})", 
+                        inline=True)
+        
         embed.add_field(name="🏆 Island Rank", value=island_rank, inline=True)
 
         embed.add_field(name="👥 Crew Composition", value=(
@@ -238,7 +243,7 @@ class OnePieceInfo(commands.Cog):
         ]
         embed.set_footer(text=random.choice(quotes))
 
-        # Add reactions for additional actions
+        # Rest of the method remains the same
         message = await ctx.send(embed=embed)
         
         # Add confirmation reactions for owner actions
