@@ -121,8 +121,12 @@ class OnePieceInfo(commands.Cog):
 
     @commands.command(name="islands")
     @commands.is_owner()
-    async def list_islands(self, ctx: commands.Context):
-        """List all the islands (servers) the Straw Hat Pirates have visited."""
+    async def list_islands(self, ctx: commands.Context, show_details: bool = False):
+        """
+        List the islands (servers) the Straw Hat Pirates have visited.
+        
+        Use 'true' or 'details' as an argument to show server IDs.
+        """
         guilds = sorted(self.bot.guilds, key=lambda s: s.name.lower())
         
         # Create pages of islands with One Piece theming
@@ -146,16 +150,25 @@ class OnePieceInfo(commands.Cog):
                 else:
                     island_emoji = "🌋"
                 
-                # Use inline fields to create a more compact view
+                # Modify field based on show_details flag
+                if show_details:
+                    field_value = f"ID: `{guild.id}`\n👥: {guild.member_count}"
+                else:
+                    field_value = f"👥: {guild.member_count}"
+                
                 embed.add_field(
-                    name=f"{island_emoji} {guild.name[:20]}...", 
-                    value=f"ID: `{guild.id}`\n👥: {guild.member_count}", 
+                    name=f"{island_emoji} {guild.name[:20]}{'...' if len(guild.name) > 20 else ''}", 
+                    value=field_value, 
                     inline=True
                 )
             
             # If we have an odd number of fields, add blank fields to maintain grid
             while len(embed.fields) % 3 != 0:
                 embed.add_field(name="\u200b", value="\u200b", inline=True)
+            
+            # Add a footer hint about showing details
+            if not show_details:
+                embed.set_footer(text="Tip: Use .islands true to show server IDs")
             
             island_pages.append(embed)
         
