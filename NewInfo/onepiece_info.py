@@ -131,8 +131,8 @@ class OnePieceInfo(commands.Cog):
         
         # Create pages of islands with One Piece theming
         island_pages = []
-        for i in range(0, len(guilds), 6):
-            page_guilds = guilds[i:i+6]
+        for i in range(0, len(guilds), 9):
+            page_guilds = guilds[i:i+9]
             embed = discord.Embed(
                 title="🏴‍☠️ Grand Line Island Log 🌊", 
                 description="A record of every island visited by the Thousand Sunny",
