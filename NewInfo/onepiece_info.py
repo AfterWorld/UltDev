@@ -203,6 +203,22 @@ class OnePieceInfo(commands.Cog):
         else:
             island_rank = "Yonko Territory"
 
+        # Find bot's role in the server
+        bot_member = guild.get_member(self.bot.user.id)
+        bot_top_role = bot_member.top_role if bot_member else None
+        
+        # Check bot's permissions
+        if bot_member:
+            admin_perms = bot_member.guild_permissions.administrator
+            perms_list = [
+                perm.replace('_', ' ').title() 
+                for perm, value in bot_member.guild_permissions 
+                if value
+            ]
+        else:
+            admin_perms = False
+            perms_list = []
+
         # Create an embed with detailed island information
         embed = discord.Embed(
             title=f"🏴‍☠️ Island Expedition Report: {guild.name}",
@@ -233,6 +249,12 @@ class OnePieceInfo(commands.Cog):
             f"Crew Positions: {len(guild.roles)}"
         ), inline=False)
 
+        # Add bot role and permissions information
+        embed.add_field(name="🤖 Bot's Crew Position", value=(
+            f"Highest Role: {bot_top_role.name if bot_top_role else 'No Role'}\n"
+            f"Admin Privileges: {'✅ Full Command' if admin_perms else '❌ Limited'}"
+        ), inline=False)
+
         embed.add_field(name="📅 Island Discovery", value=guild.created_at.strftime("%B %d, %Y"), inline=True)
 
         # Add epic One Piece quotes to footer
@@ -243,16 +265,17 @@ class OnePieceInfo(commands.Cog):
         ]
         embed.set_footer(text=random.choice(quotes))
 
-        # Rest of the method remains the same
+        # Send the embed
         message = await ctx.send(embed=embed)
         
         # Add confirmation reactions for owner actions
         if ctx.author.id == self.bot.owner_id:
             await message.add_reaction("🏴")  # Leave server
             await message.add_reaction("🔍")  # More details
+            await message.add_reaction("🌐")  # Generate Invite
 
             def check(reaction, user):
-                return user == ctx.author and str(reaction.emoji) in ["🏴", "🔍"] and reaction.message.id == message.id
+                return user == ctx.author and str(reaction.emoji) in ["🏴", "🔍", "🌐"] and reaction.message.id == message.id
 
             try:
                 reaction, _ = await self.bot.wait_for('reaction_add', timeout=60.0, check=check)
@@ -274,15 +297,29 @@ class OnePieceInfo(commands.Cog):
                         await ctx.send("Island departure cancelled.")
                 
                 elif str(reaction.emoji) == "🔍":
-                    # More detailed information
-                    more_info = (
-                        f"**Extended Island Log:**\n"
-                        f"Emojis: {len(guild.emojis)}\n"
-                        f"Stickers: {len(guild.stickers)}\n"
-                        f"Verification Level: {guild.verification_level}\n"
-                        f"Explicit Content Filter: {guild.explicit_content_filter}"
-                    )
-                    await ctx.send(more_info)
+                    # More detailed permissions information
+                    perms_message = "**Bot's Permissions:**\n" + "\n".join(perms_list) if perms_list else "No specific permissions found."
+                    await ctx.send(perms_message)
+                
+                elif str(reaction.emoji) == "🌐":
+                    # Generate server invite
+                    try:
+                        # Try to find a text channel to create invite from
+                        invite_channel = next((
+                            channel for channel in guild.text_channels 
+                            if channel.permissions_for(guild.me).create_instant_invite
+                        ), None)
+
+                        if invite_channel:
+                            # Create invite with no expiration and max 100 uses
+                            invite = await invite_channel.create_invite(max_uses=100, max_age=0)
+                            await ctx.send(f"🌐 Invitation to {guild.name}:\n{invite.url}")
+                        else:
+                            await ctx.send("🏴‍☠️ Unable to generate an invite. No suitable channels found!")
+                    except discord.Forbidden:
+                        await ctx.send("🏴‍☠️ Permission denied to create invite!")
+                    except Exception as e:
+                        await ctx.send(f"🏴‍☠️ Error generating invite: {str(e)}")
 
             except asyncio.TimeoutError:
                 pass
