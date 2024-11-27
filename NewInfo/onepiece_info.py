@@ -127,8 +127,8 @@ class OnePieceInfo(commands.Cog):
         
         # Create pages of islands with One Piece theming
         island_pages = []
-        for i in range(0, len(guilds), 10):
-            page_guilds = guilds[i:i+10]
+        for i in range(0, len(guilds), 6):
+            page_guilds = guilds[i:i+6]
             embed = discord.Embed(
                 title="🏴‍☠️ Grand Line Island Log 🌊", 
                 description="A record of every island visited by the Thousand Sunny",
@@ -146,15 +146,20 @@ class OnePieceInfo(commands.Cog):
                 else:
                     island_emoji = "🌋"
                 
+                # Use inline fields to create a more compact view
                 embed.add_field(
-                    name=f"{island_emoji} {guild.name}", 
-                    value=f"ID: `{guild.id}`\nCrew Size: {guild.member_count} pirates", 
-                    inline=False
+                    name=f"{island_emoji} {guild.name[:20]}...", 
+                    value=f"ID: `{guild.id}`\n👥: {guild.member_count}", 
+                    inline=True
                 )
+            
+            # If we have an odd number of fields, add blank fields to maintain grid
+            while len(embed.fields) % 3 != 0:
+                embed.add_field(name="\u200b", value="\u200b", inline=True)
             
             island_pages.append(embed)
         
-        # Use the imported menu and controls
+        # Use the menu for pagination
         await menu(ctx, island_pages, DEFAULT_CONTROLS)
 
     @commands.command(name="islandinfo")
