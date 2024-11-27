@@ -118,6 +118,149 @@ class OnePieceInfo(commands.Cog):
         
         await ctx.send(embed=embed)
 
+    @commands.command(name="islands")
+    @commands.is_owner()
+    async def list_islands(self, ctx: commands.Context):
+        """List all the islands (servers) the Straw Hat Pirates have visited."""
+        guilds = sorted(self.bot.guilds, key=lambda s: s.name.lower())
+        
+        # Create pages of islands with One Piece theming
+        island_pages = []
+        for i in range(0, len(guilds), 10):
+            page_guilds = guilds[i:i+10]
+            embed = discord.Embed(
+                title="🏴‍☠️ Grand Line Island Log 🌊", 
+                description="A record of every island visited by the Thousand Sunny",
+                color=discord.Color.blue()
+            )
+            
+            for guild in page_guilds:
+                # Determine island type based on member count
+                if guild.member_count < 50:
+                    island_emoji = "🏝️"
+                elif guild.member_count < 200:
+                    island_emoji = "🏙️"
+                elif guild.member_count < 1000:
+                    island_emoji = "🌴"
+                else:
+                    island_emoji = "🌋"
+                
+                embed.add_field(
+                    name=f"{island_emoji} {guild.name}", 
+                    value=f"ID: `{guild.id}`\nCrew Size: {guild.member_count} pirates", 
+                    inline=False
+                )
+            
+            island_pages.append(embed)
+        
+        # Create a menu for navigating island pages
+        await menus.menu(ctx, island_pages, menus.DEFAULT_CONTROLS)
+
+    @commands.command(name="islandinfo")
+    @commands.is_owner()
+    async def island_details(self, ctx, guild_id: int = None):
+        """Explore the details of a specific island (server)."""
+        # If no guild_id provided, use current guild
+        if guild_id is None:
+            guild = ctx.guild
+        else:
+            guild = self.bot.get_guild(guild_id)
+        
+        if not guild:
+            return await ctx.send("🏴‍☠️ Unable to find that island in the Log Pose!")
+
+        # Calculate online members
+        online_members = len([m for m in guild.members if m.status != discord.Status.offline])
+        
+        # Determine island rank
+        if guild.member_count < 50:
+            island_rank = "East Blue Village"
+        elif guild.member_count < 200:
+            island_rank = "Grand Line Port"
+        elif guild.member_count < 1000:
+            island_rank = "New World Island"
+        else:
+            island_rank = "Yonko Territory"
+
+        # Create an embed with detailed island information
+        embed = discord.Embed(
+            title=f"🏴‍☠️ Island Expedition Report: {guild.name}",
+            description="Detailed intelligence on a discovered territory",
+            color=discord.Color.gold()
+        )
+        embed.set_thumbnail(url=guild.icon.url if guild.icon else "https://example.com/default_map.png")
+
+        embed.add_field(name="🌊 Island Designation", value=guild.name, inline=False)
+        embed.add_field(name="🧭 Island ID", value=f"`{guild.id}`", inline=True)
+        embed.add_field(name="👑 Island Captain", value=guild.owner.mention, inline=True)
+        embed.add_field(name="🏆 Island Rank", value=island_rank, inline=True)
+
+        embed.add_field(name="👥 Crew Composition", value=(
+            f"Total Pirates: {guild.member_count}\n"
+            f"Active Pirates: {online_members}\n"
+            f"Den Den Mushi (Bots): {len([m for m in guild.members if m.bot])}"
+        ), inline=False)
+
+        embed.add_field(name="🏛️ Island Infrastructure", value=(
+            f"Text Taverns: {len([c for c in guild.channels if isinstance(c, discord.TextChannel)])}\n"
+            f"Voice Crow's Nests: {len([c for c in guild.channels if isinstance(c, discord.VoiceChannel)])}\n"
+            f"Crew Positions: {len(guild.roles)}"
+        ), inline=False)
+
+        embed.add_field(name="📅 Island Discovery", value=guild.created_at.strftime("%B %d, %Y"), inline=True)
+
+        # Add epic One Piece quotes to footer
+        quotes = [
+            "Every island has a story waiting to be discovered!",
+            "The sea is vast. Each island holds its own adventure!",
+            "Not all treasure is silver and gold...",
+        ]
+        embed.set_footer(text=random.choice(quotes))
+
+        # Add reactions for additional actions
+        message = await ctx.send(embed=embed)
+        
+        # Add confirmation reactions for owner actions
+        if ctx.author.id == self.bot.owner_id:
+            await message.add_reaction("🏴")  # Leave server
+            await message.add_reaction("🔍")  # More details
+
+            def check(reaction, user):
+                return user == ctx.author and str(reaction.emoji) in ["🏴", "🔍"] and reaction.message.id == message.id
+
+            try:
+                reaction, _ = await self.bot.wait_for('reaction_add', timeout=60.0, check=check)
+                
+                if str(reaction.emoji) == "🏴":
+                    # Confirmation for leaving server
+                    confirm_msg = await ctx.send("⚠️ Are you sure you want to abandon this island? React with ✅ to confirm.")
+                    await confirm_msg.add_reaction("✅")
+                    
+                    def confirm_check(reaction, user):
+                        return user == ctx.author and str(reaction.emoji) == "✅" and reaction.message.id == confirm_msg.id
+                    
+                    try:
+                        await self.bot.wait_for('reaction_add', timeout=30.0, check=confirm_check)
+                        await guild.leave()
+                        await ctx.send(f"🏴‍☠️ Successfully left the island: {guild.name}")
+                    except asyncio.TimeoutError:
+                        await confirm_msg.delete()
+                        await ctx.send("Island departure cancelled.")
+                
+                elif str(reaction.emoji) == "🔍":
+                    # More detailed information
+                    more_info = (
+                        f"**Extended Island Log:**\n"
+                        f"Emojis: {len(guild.emojis)}\n"
+                        f"Stickers: {len(guild.stickers)}\n"
+                        f"Verification Level: {guild.verification_level}\n"
+                        f"Explicit Content Filter: {guild.explicit_content_filter}"
+                    )
+                    await ctx.send(more_info)
+
+            except asyncio.TimeoutError:
+                pass
+
     @commands.command()
     async def ping(self, ctx):
         """Shows a battle between Aokiji and Akainu with ping information"""
