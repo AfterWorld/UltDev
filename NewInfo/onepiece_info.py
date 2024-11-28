@@ -486,9 +486,18 @@ class OnePieceInfo(commands.Cog):
 
 
 async def setup(bot: Red):
+    global original_commands
     cog = OnePieceInfo(bot)
+
+    # Store and replace original commands
+    command_names = ["info", "serverinfo", "userinfo", "ping"]
+    for cmd_name in command_names:
+        original_cmd = bot.get_command(cmd_name)
+        if original_cmd:
+            original_commands[cmd_name] = original_cmd
+            bot.remove_command(cmd_name)
+
     await bot.add_cog(cog)
-(cog)
 
 async def teardown(bot: Red):
     global original_commands
