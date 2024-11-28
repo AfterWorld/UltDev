@@ -119,12 +119,6 @@ class OnePieceInfo(commands.Cog):
         
         await ctx.send(embed=embed)
 
-    @commands.command(name="sendannouncement")
-    async def send_announcement(self, ctx):
-        """Send an announcement manually."""
-        await self.send_announcements()
-        await ctx.send("Announcement sent successfully!")
-
     @commands.command(name="islands")
     @commands.is_owner()
     async def list_islands(self, ctx: commands.Context, show_details: bool = False):
@@ -228,7 +222,10 @@ class OnePieceInfo(commands.Cog):
         # Create an embed with detailed island information
         embed = discord.Embed(
             title=f"🏴‍☠️ Island Expedition Report: {guild.name}",
-            description="Detailed intelligence on a discovered territory",
+            description="Detailed intelligence on a discovered territory\n\n"
+                        "🏴 Leave Server\n"
+                        "🔍 View Permissions\n"
+                        "🌐 Generate Invite",
             color=discord.Color.gold()
         )
         embed.set_thumbnail(url=guild.icon.url if guild.icon else "https://example.com/default_map.png")
@@ -236,7 +233,6 @@ class OnePieceInfo(commands.Cog):
         embed.add_field(name="🌊 Island Designation", value=guild.name, inline=False)
         embed.add_field(name="🧭 Island ID", value=f"`{guild.id}`", inline=True)
         
-        # Change: Display owner as text with name and ID
         embed.add_field(name="👑 Island Captain", 
                         value=f"{guild.owner.name} (ID: {guild.owner.id})", 
                         inline=True)
@@ -271,64 +267,78 @@ class OnePieceInfo(commands.Cog):
         ]
         embed.set_footer(text=random.choice(quotes))
 
-        # Send the embed
-        message = await ctx.send(embed=embed)
-        
-        # Add confirmation reactions for owner actions
+        # Send the embed and react only if the bot is the owner
         if ctx.author.id == self.bot.owner_id:
+            message = await ctx.send(embed=embed)
             await message.add_reaction("🏴")  # Leave server
             await message.add_reaction("🔍")  # More details
             await message.add_reaction("🌐")  # Generate Invite
 
-            def check(reaction, user):
-                return user == ctx.author and str(reaction.emoji) in ["🏴", "🔍", "🌐"] and reaction.message.id == message.id
+            def check(payload):
+                return (payload.message_id == message.id and 
+                        payload.user_id == ctx.author.id and 
+                        str(payload.emoji) in ["🏴", "🔍", "🌐"])
 
-            try:
-                reaction, _ = await self.bot.wait_for('reaction_add', timeout=60.0, check=check)
-                
-                if str(reaction.emoji) == "🏴":
-                    # Confirmation for leaving server
-                    confirm_msg = await ctx.send("⚠️ Are you sure you want to abandon this island? React with ✅ to confirm.")
-                    await confirm_msg.add_reaction("✅")
+            while True:
+                try:
+                    payload = await self.bot.wait_for('raw_reaction_add', 
+                                                      check=check, 
+                                                      timeout=60.0)
                     
-                    def confirm_check(reaction, user):
-                        return user == ctx.author and str(reaction.emoji) == "✅" and reaction.message.id == confirm_msg.id
+                    # Remove the reaction to allow multiple uses
+                    await message.remove_reaction(payload.emoji, payload.member)
+
+                    if str(payload.emoji) == "🏴":
+                        # Confirmation for leaving server
+                        confirm_msg = await ctx.send("⚠️ Are you sure you want to abandon this island? React with ✅ to confirm.")
+                        await confirm_msg.add_reaction("✅")
+                        
+                        def confirm_check(cpayload):
+                            return (cpayload.message_id == confirm_msg.id and 
+                                    cpayload.user_id == ctx.author.id and 
+                                    str(cpayload.emoji) == "✅")
+                        
+                        try:
+                            await self.bot.wait_for('raw_reaction_add', 
+                                                    check=confirm_check, 
+                                                    timeout=30.0)
+                            await guild.leave()
+                            await ctx.send(f"🏴‍☠️ Successfully left the island: {guild.name}")
+                            break
+                        except asyncio.TimeoutError:
+                            await confirm_msg.delete()
+                            await ctx.send("Island departure cancelled.")
                     
-                    try:
-                        await self.bot.wait_for('reaction_add', timeout=30.0, check=confirm_check)
-                        await guild.leave()
-                        await ctx.send(f"🏴‍☠️ Successfully left the island: {guild.name}")
-                    except asyncio.TimeoutError:
-                        await confirm_msg.delete()
-                        await ctx.send("Island departure cancelled.")
-                
-                elif str(reaction.emoji) == "🔍":
-                    # More detailed permissions information
-                    perms_message = "**Bot's Permissions:**\n" + "\n".join(perms_list) if perms_list else "No specific permissions found."
-                    await ctx.send(perms_message)
-                
-                elif str(reaction.emoji) == "🌐":
-                    # Generate server invite
-                    try:
-                        # Try to find a text channel to create invite from
-                        invite_channel = next((
-                            channel for channel in guild.text_channels 
-                            if channel.permissions_for(guild.me).create_instant_invite
-                        ), None)
+                    elif str(payload.emoji) == "🔍":
+                        # More detailed permissions information
+                        perms_message = "**Bot's Permissions:**\n" + "\n".join(perms_list) if perms_list else "No specific permissions found."
+                        await ctx.send(perms_message)
+                    
+                    elif str(payload.emoji) == "🌐":
+                        # Generate server invite
+                        try:
+                            # Try to find a text channel to create invite from
+                            invite_channel = next((
+                                channel for channel in guild.text_channels 
+                                if channel.permissions_for(guild.me).create_instant_invite
+                            ), None)
 
-                        if invite_channel:
-                            # Create invite with no expiration and max 100 uses
-                            invite = await invite_channel.create_invite(max_uses=100, max_age=0)
-                            await ctx.send(f"🌐 Invitation to {guild.name}:\n{invite.url}")
-                        else:
-                            await ctx.send("🏴‍☠️ Unable to generate an invite. No suitable channels found!")
-                    except discord.Forbidden:
-                        await ctx.send("🏴‍☠️ Permission denied to create invite!")
-                    except Exception as e:
-                        await ctx.send(f"🏴‍☠️ Error generating invite: {str(e)}")
+                            if invite_channel:
+                                # Create invite with no expiration and max 100 uses
+                                invite = await invite_channel.create_invite(max_uses=100, max_age=0)
+                                await ctx.send(f"🌐 Invitation to {guild.name}:\n{invite.url}")
+                            else:
+                                await ctx.send("🏴‍☠️ Unable to generate an invite. No suitable channels found!")
+                        except discord.Forbidden:
+                            await ctx.send("🏴‍☠️ Permission denied to create invite!")
+                        except Exception as e:
+                            await ctx.send(f"🏴‍☠️ Error generating invite: {str(e)}")
 
-            except asyncio.TimeoutError:
-                pass
+                except asyncio.TimeoutError:
+                    break
+        else:
+            # If not the bot owner, just send the embed without reactions
+            await ctx.send(embed=embed)
 
     @commands.command()
     async def ping(self, ctx):
@@ -489,7 +499,6 @@ class OnePieceInfo(commands.Cog):
         embed.set_footer(text=random.choice(quotes))
 
         await ctx.send(embed=embed)
-
 
 async def setup(bot: Red):
     global original_commands
