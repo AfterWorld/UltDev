@@ -324,6 +324,94 @@ class OnePieceInfo(commands.Cog):
             except asyncio.TimeoutError:
                 pass
 
+    @commands.command(name="global_message")
+    @commands.is_owner()
+    async def global_broadcast(self, ctx, *, message: str):
+        """
+        Send a global message to all servers the bot is on, 
+        themed like a Straw Hat Pirates Broadcast!
+        """
+        # Prepare the broadcast embed
+        broadcast_embed = discord.Embed(
+            title="🏴‍☠️ Straw Hat Global Broadcast 🌊", 
+            description=f"**Incoming Message from the Pirate King's Crew:**\n\n{message}",
+            color=discord.Color.gold()
+        )
+        
+        # Add some One Piece flair
+        broadcast_phrases = [
+            "By the power of the Gomu Gomu no Mi!",
+            "Transmitted through the Grand Line's Den Den Mushi Network!",
+            "Delivered by the Thousand Sunny's Eternal Pose!",
+            "Echoing through every sea and island!"
+        ]
+        broadcast_embed.set_footer(text=random.choice(broadcast_phrases))
+
+        # Track successful and failed broadcasts
+        successful_broadcasts = 0
+        failed_broadcasts = 0
+
+        # Send to the first text channel the bot can access in each guild
+        for guild in self.bot.guilds:
+            try:
+                # Find the first channel where bot can send messages
+                target_channel = next((
+                    channel for channel in guild.text_channels 
+                    if channel.permissions_for(guild.me).send_messages
+                ), None)
+
+                if target_channel:
+                    await target_channel.send(embed=broadcast_embed)
+                    successful_broadcasts += 1
+                else:
+                    failed_broadcasts += 1
+            except Exception:
+                failed_broadcasts += 1
+
+        # Send summary to the invoking context
+        await ctx.send(
+            f"🏴‍☠️ Broadcast Complete!\n"
+            f"✅ Successfully reached {successful_broadcasts} islands\n"
+            f"❌ Failed to reach {failed_broadcasts} territories"
+        )
+
+    @island_details.before_invoke
+    async def prepare_island_details_reactions(self, ctx):
+        """
+        Ensure bot has necessary permissions for reaction handling
+        This method will run before island_details command
+        """
+        if not ctx.guild.me.guild_permissions.add_reactions:
+            await ctx.send("⚠️ Warning: I lack permission to add reactions. Some interactive features may be limited.")
+
+    @commands.command(name="broadcast_permission_check")
+    @commands.is_owner()
+    async def check_broadcast_permissions(self, ctx):
+        """
+        Check broadcast permissions across all servers
+        """
+        permission_report = []
+        
+        for guild in self.bot.guilds:
+            # Find first text channel
+            channel = next((
+                c for c in guild.text_channels 
+                if c.permissions_for(guild.me).send_messages
+            ), None)
+            
+            if channel:
+                permissions = channel.permissions_for(guild.me)
+                status = "✅ Can Broadcast" if permissions.send_messages else "❌ Cannot Send Messages"
+                permission_report.append(f"{guild.name} ({guild.id}): {status}")
+            else:
+                permission_report.append(f"{guild.name} ({guild.id}): ❌ No Accessible Channels")
+        
+        # Split into chunks to avoid Discord message length limits
+        chunks = [permission_report[i:i+10] for i in range(0, len(permission_report), 10)]
+        
+        for chunk in chunks:
+            await ctx.send("\n".join(chunk))
+
     @commands.command()
     async def ping(self, ctx):
         """Shows a battle between Aokiji and Akainu with ping information"""
