@@ -119,7 +119,7 @@ class OnePieceInfo(commands.Cog):
         
         await ctx.send(embed=embed)
 
-    ef get_guild_by_index(self, index):
+    def get_guild_by_index(self, index):
         """
         Returns a guild based on a 1-indexed list sorted by member count.
         
