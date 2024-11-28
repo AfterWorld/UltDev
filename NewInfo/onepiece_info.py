@@ -214,7 +214,7 @@ class OnePieceInfo(commands.Cog):
         
         if not guild:
             return await ctx.send("🏴‍☠️ Unable to find that island in the Log Pose!")
-
+    
         # Reuse the island_details method's core logic
         return await self.island_details(ctx, guild.id)
         
