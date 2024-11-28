@@ -119,24 +119,9 @@ class OnePieceInfo(commands.Cog):
         
         await ctx.send(embed=embed)
 
-    def get_guild_by_index(self, index):
-        """
-        Returns a guild based on a 1-indexed list sorted by member count.
-        
-        :param index: 1-based index of the guild
-        :return: Discord Guild object or None
-        """
-        sorted_guilds = sorted(self.bot.guilds, key=lambda s: s.member_count, reverse=True)
-        
-        # Check if index is valid
-        if 1 <= index <= len(sorted_guilds):
-            return sorted_guilds[index - 1]
-        
-        return None
-
     @commands.command(name="islands")
     @commands.is_owner()
-    async def list_islands(self, ctx: commands.Context, page: int = 1, show_details: bool = False):
+    async def list_islands(self, ctx: commands.Context, show_details: bool = False):
         """
         List the islands (servers) the Straw Hat Pirates have visited.
         
@@ -151,12 +136,12 @@ class OnePieceInfo(commands.Cog):
         for i in range(0, len(guilds), 9):
             page_guilds = guilds[i:i+9]
             embed = discord.Embed(
-                title=f"🏴‍☠️ Grand Line Island Log 🌊 (Page {len(island_pages) + 1})", 
+                title="🏴‍☠️ Grand Line Island Log 🌊", 
                 description="A record of every island visited by the Thousand Sunny, sorted by crew size",
                 color=discord.Color.blue()
             )
             
-            for j, guild in enumerate(page_guilds, start=1):
+            for guild in page_guilds:
                 # Determine island type based on member count
                 if guild.member_count < 50:
                     island_emoji = "🏝️"
@@ -167,14 +152,11 @@ class OnePieceInfo(commands.Cog):
                 else:
                     island_emoji = "🌋"
                 
-                # Calculate global index for this guild
-                global_index = (len(island_pages) * 9) + j
-                
                 # Modify field based on show_details flag
                 if show_details:
-                    field_value = f"Num: `{global_index}`\nID: `{guild.id}`\n👥: {guild.member_count}"
+                    field_value = f"ID: `{guild.id}`\n👥: {guild.member_count}"
                 else:
-                    field_value = f"Num: `{global_index}`\n👥: {guild.member_count}"
+                    field_value = f"👥: {guild.member_count}"
                 
                 embed.add_field(
                     name=f"{island_emoji} {guild.name[:20]}{'...' if len(guild.name) > 20 else ''}", 
@@ -187,37 +169,14 @@ class OnePieceInfo(commands.Cog):
                 embed.add_field(name="\u200b", value="\u200b", inline=True)
             
             # Add a footer hint about showing details
-            embed.set_footer(text=f"Page {len(island_pages) + 1}/{(len(guilds) - 1) // 9 + 1}. Use .isinfo <number> to view details.")
+            if not show_details:
+                embed.set_footer(text="Tip: Use .islands true to show server IDs")
             
             island_pages.append(embed)
         
-        # Validate page number
-        max_pages = len(island_pages)
-        if page < 1 or page > max_pages:
-            return await ctx.send(f"🏴‍☠️ Invalid page number! Please choose a page between 1 and {max_pages}.")
-        
-        # Use the menu for pagination, starting at the specified page
-        await menu(ctx, island_pages, DEFAULT_CONTROLS, page=page-1)
+        # Use the menu for pagination
+        await menu(ctx, island_pages, DEFAULT_CONTROLS)
 
-    @commands.command(name="isinfo")
-    @commands.is_owner()
-    async def isinfo(self, ctx, island_number: int = None):
-        """
-        Explore details of a specific island by its order in the list.
-        
-        If no number is provided, shows current server details.
-        """
-        if island_number is None:
-            guild = ctx.guild
-        else:
-            guild = self.get_guild_by_index(island_number)
-        
-        if not guild:
-            return await ctx.send("🏴‍☠️ Unable to find that island in the Log Pose!")
-
-        # Reuse the island_details method's core logic
-        return await self.island_details(ctx, guild.id)
-        
     @commands.command(name="islandinfo")
     @commands.is_owner()
     async def island_details(self, ctx, guild_id: int = None):
@@ -263,10 +222,7 @@ class OnePieceInfo(commands.Cog):
         # Create an embed with detailed island information
         embed = discord.Embed(
             title=f"🏴‍☠️ Island Expedition Report: {guild.name}",
-            description="Detailed intelligence on a discovered territory\n\n"
-                        "🏴 Leave Server\n"
-                        "🔍 View Permissions\n"
-                        "🌐 Generate Invite",
+            description="Detailed intelligence on a discovered territory",
             color=discord.Color.gold()
         )
         embed.set_thumbnail(url=guild.icon.url if guild.icon else "https://example.com/default_map.png")
@@ -274,6 +230,7 @@ class OnePieceInfo(commands.Cog):
         embed.add_field(name="🌊 Island Designation", value=guild.name, inline=False)
         embed.add_field(name="🧭 Island ID", value=f"`{guild.id}`", inline=True)
         
+        # Change: Display owner as text with name and ID
         embed.add_field(name="👑 Island Captain", 
                         value=f"{guild.owner.name} (ID: {guild.owner.id})", 
                         inline=True)
@@ -308,54 +265,64 @@ class OnePieceInfo(commands.Cog):
         ]
         embed.set_footer(text=random.choice(quotes))
 
-        # Send the embed and react only if the bot is the owner
+        # Send the embed
+        message = await ctx.send(embed=embed)
+        
+        # Add confirmation reactions for owner actions
         if ctx.author.id == self.bot.owner_id:
-            message = await ctx.send(embed=embed)
             await message.add_reaction("🏴")  # Leave server
             await message.add_reaction("🔍")  # More details
             await message.add_reaction("🌐")  # Generate Invite
 
-            def check(payload):
-                return (payload.message_id == message.id and 
-                        payload.user_id == ctx.author.id and 
-                        str(payload.emoji) in ["🏴", "🔍", "🌐"])
+            def check(reaction, user):
+                return user == ctx.author and str(reaction.emoji) in ["🏴", "🔍", "🌐"] and reaction.message.id == message.id
 
-            while True:
-                try:
-                    payload = await self.bot.wait_for('raw_reaction_add', 
-                                                      check=check, 
-                                                      timeout=60.0)
+            try:
+                reaction, _ = await self.bot.wait_for('reaction_add', timeout=60.0, check=check)
+                
+                if str(reaction.emoji) == "🏴":
+                    # Confirmation for leaving server
+                    confirm_msg = await ctx.send("⚠️ Are you sure you want to abandon this island? React with ✅ to confirm.")
+                    await confirm_msg.add_reaction("✅")
                     
-                    # Remove the reaction to allow multiple uses
-                    await message.remove_reaction(payload.emoji, payload.member)
+                    def confirm_check(reaction, user):
+                        return user == ctx.author and str(reaction.emoji) == "✅" and reaction.message.id == confirm_msg.id
+                    
+                    try:
+                        await self.bot.wait_for('reaction_add', timeout=30.0, check=confirm_check)
+                        await guild.leave()
+                        await ctx.send(f"🏴‍☠️ Successfully left the island: {guild.name}")
+                    except asyncio.TimeoutError:
+                        await confirm_msg.delete()
+                        await ctx.send("Island departure cancelled.")
+                
+                elif str(reaction.emoji) == "🔍":
+                    # More detailed permissions information
+                    perms_message = "**Bot's Permissions:**\n" + "\n".join(perms_list) if perms_list else "No specific permissions found."
+                    await ctx.send(perms_message)
+                
+                elif str(reaction.emoji) == "🌐":
+                    # Generate server invite
+                    try:
+                        # Try to find a text channel to create invite from
+                        invite_channel = next((
+                            channel for channel in guild.text_channels 
+                            if channel.permissions_for(guild.me).create_instant_invite
+                        ), None)
 
-                    # [Previous code for other reactions remains the same]
-                    
-                    elif str(payload.emoji) == "🌐":
-                        # Generate server invite
-                        try:
-                            # Prioritize finding a text channel with invite permissions
-                            invite_channels = [
-                                channel for channel in guild.text_channels 
-                                if channel.permissions_for(guild.me).create_instant_invite
-                            ]
-                    
-                            if invite_channels:
-                                # Try each channel until an invite is successfully created
-                                for channel in invite_channels:
-                                    try:
-                                        # Create invite with no expiration and max 100 uses
-                                        invite = await channel.create_invite(max_uses=100, max_age=0)
-                                        await ctx.send(f"🌐 Invitation to {guild.name}:\n{invite.url}")
-                                        break
-                                    except discord.Forbidden:
-                                        continue
-                                else:
-                                    await ctx.send("🏴‍☠️ Unable to generate an invite. No suitable channels found!")
-                            else:
-                                await ctx.send("🏴‍☠️ Unable to generate an invite. No suitable channels found!")
-                        except Exception as e:
-                            await ctx.send(f"🏴‍☠️ Error generating invite: {str(e)}")
+                        if invite_channel:
+                            # Create invite with no expiration and max 100 uses
+                            invite = await invite_channel.create_invite(max_uses=100, max_age=0)
+                            await ctx.send(f"🌐 Invitation to {guild.name}:\n{invite.url}")
+                        else:
+                            await ctx.send("🏴‍☠️ Unable to generate an invite. No suitable channels found!")
+                    except discord.Forbidden:
+                        await ctx.send("🏴‍☠️ Permission denied to create invite!")
+                    except Exception as e:
+                        await ctx.send(f"🏴‍☠️ Error generating invite: {str(e)}")
+
+            except asyncio.TimeoutError:
+                pass
 
     @commands.command()
     async def ping(self, ctx):
@@ -517,19 +484,11 @@ class OnePieceInfo(commands.Cog):
 
         await ctx.send(embed=embed)
 
+
 async def setup(bot: Red):
-    global original_commands
     cog = OnePieceInfo(bot)
-
-    # Store and replace original commands
-    command_names = ["info", "serverinfo", "userinfo", "ping"]
-    for cmd_name in command_names:
-        original_cmd = bot.get_command(cmd_name)
-        if original_cmd:
-            original_commands[cmd_name] = original_cmd
-            bot.remove_command(cmd_name)
-
     await bot.add_cog(cog)
+(cog)
 
 async def teardown(bot: Red):
     global original_commands
