@@ -339,7 +339,7 @@ class OnePieceInfo(commands.Cog):
                                 channel for channel in guild.text_channels 
                                 if channel.permissions_for(guild.me).create_instant_invite
                             ]
-
+                    
                             if invite_channels:
                                 # Try each channel until an invite is successfully created
                                 for channel in invite_channels:
@@ -356,9 +356,6 @@ class OnePieceInfo(commands.Cog):
                                 await ctx.send("🏴‍☠️ Unable to generate an invite. No suitable channels found!")
                         except Exception as e:
                             await ctx.send(f"🏴‍☠️ Error generating invite: {str(e)}")
-
-                except asyncio.TimeoutError:
-                    break
 
     @commands.command()
     async def ping(self, ctx):
