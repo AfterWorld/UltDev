@@ -494,7 +494,6 @@ class OnePieceInfo(commands.Cog):
 async def setup(bot: Red):
     cog = OnePieceInfo(bot)
     await bot.add_cog(cog)
-(cog)
 
 async def teardown(bot: Red):
     global original_commands
