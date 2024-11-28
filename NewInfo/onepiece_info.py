@@ -119,6 +119,12 @@ class OnePieceInfo(commands.Cog):
         
         await ctx.send(embed=embed)
 
+    @commands.command(name="sendannouncement")
+    async def send_announcement(self, ctx):
+        """Send an announcement manually."""
+        await self.send_announcements()
+        await ctx.send("Announcement sent successfully!")
+
     @commands.command(name="islands")
     @commands.is_owner()
     async def list_islands(self, ctx: commands.Context, show_details: bool = False):
