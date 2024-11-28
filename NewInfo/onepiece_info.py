@@ -121,7 +121,7 @@ class OnePieceInfo(commands.Cog):
 
     @commands.command(name="islands")
     @commands.is_owner()
-    async def list_islands(self, ctx: commands.Context, show_details: bool = False):
+    async def list_islands(self, ctx: commands.Context, page: int = 1, show_details: bool = False):
         """
         List the islands (servers) the Straw Hat Pirates have visited.
         
@@ -136,7 +136,7 @@ class OnePieceInfo(commands.Cog):
         for i in range(0, len(guilds), 9):
             page_guilds = guilds[i:i+9]
             embed = discord.Embed(
-                title="🏴‍☠️ Grand Line Island Log 🌊", 
+                title=f"🏴‍☠️ Grand Line Island Log 🌊 (Page {len(island_pages) + 1})", 
                 description="A record of every island visited by the Thousand Sunny, sorted by crew size",
                 color=discord.Color.blue()
             )
@@ -170,13 +170,18 @@ class OnePieceInfo(commands.Cog):
             
             # Add a footer hint about showing details
             if not show_details:
-                embed.set_footer(text="Tip: Use .islands true to show server IDs")
+                embed.set_footer(text=f"Page {len(island_pages) + 1}/{(len(guilds) - 1) // 9 + 1}. Tip: Use .islands page_number true to show server IDs")
             
             island_pages.append(embed)
         
-        # Use the menu for pagination
-        await menu(ctx, island_pages, DEFAULT_CONTROLS)
-
+        # Validate page number
+        max_pages = len(island_pages)
+        if page < 1 or page > max_pages:
+            return await ctx.send(f"🏴‍☠️ Invalid page number! Please choose a page between 1 and {max_pages}.")
+        
+        # Use the menu for pagination, starting at the specified page
+        await menu(ctx, island_pages, DEFAULT_CONTROLS, page=page-1)
+        
     @commands.command(name="islandinfo")
     @commands.is_owner()
     async def island_details(self, ctx, guild_id: int = None):
