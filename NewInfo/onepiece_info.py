@@ -15,6 +15,47 @@ import textwrap
 original_commands = {}
 
 class OnePieceInfo(commands.Cog):
+# New method to integrate announcements
+async def send_announcements(self):
+        messages = await self._get_msgs()
+        images = await self.config.images()
+
+        total = len(messages) + len(images)
+        if total < 1:
+            return
+
+        x = random.randint(0, total - 1)
+
+        if x >= len(messages):
+            x -= len(messages)
+            choice = images[x]
+            choice = open(self.image_path + choice, "rb")
+            is_image = True
+        else:
+            choice = messages[x]
+            is_image = False
+
+        for guild in self.bot.guilds:
+            channel = await self.config.guild(guild).channelid()
+            if channel is None:
+                continue
+            channel = guild.get_channel(channel)
+            if channel is None:
+                continue
+
+            if is_image:
+                await channel.send(file=discord.File(choice))
+            else:
+                await channel.send(choice)
+
+    
+
+    @commands.command(name="sendannouncement")
+    async def send_announcement(self, ctx):
+        """Send an World Economy News Paper manually."""
+        await self.send_announcements()
+        await ctx.send("World Economy News Paper sent successfully!")
+
     """Provides One Piece themed info and ping commands."""
 
     def __init__(self, bot: Red):
