@@ -179,6 +179,7 @@ class Trivia(commands.Cog):
         """Fetch questions for the selected genre."""
         github_url = f"{await self.config.guild(guild).github_url()}{genre}.txt"
     
+        log.debug(f"Fetching questions from: {github_url}")
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(github_url) as response:
@@ -187,9 +188,10 @@ class Trivia(commands.Cog):
                         return []
     
                     content = await response.text()
+                    log.debug(f"File content for {genre}: {content}")
     
+            # Parse questions
             questions = []
-            current_hints = []
             for line in content.strip().split("\n"):
                 if ":" in line:
                     question, answers = line.split(":", 1)
@@ -202,10 +204,13 @@ class Trivia(commands.Cog):
     
                 if question and answers:
                     questions.append((question.strip(), answers, current_hints))
+    
+            log.debug(f"Parsed questions for {genre}: {questions}")
             return questions
         except Exception as e:
             log.exception(f"Error while fetching questions for genre '{genre}'")
             return []
+
 
 def setup(bot):
     bot.add_cog(Trivia(bot))
