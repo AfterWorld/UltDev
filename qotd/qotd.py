@@ -11,13 +11,14 @@ class QOTD(commands.Cog):
         self.bot = bot
         self.config = Config.get_conf(self, identifier=9876543210)
         default_guild = {
-            "channel_id": None,  # Channel to post QOTD
-            "theme": "general",  # Default theme
-            "used_questions": {},  # Dict to track used questions by theme
-            "submissions": {},  # User-submitted questions by theme
+            "channel_id": None,
+            "theme": "general",
+            "used_questions": {},
+            "submissions": {},
         }
         self.config.register_guild(**default_guild)
         self.github_base_url = "https://raw.githubusercontent.com/AfterWorld/UltDev/main/qotd/themes/"
+        self.qotd_started = False  # Tracks whether QOTD has begun
         self.bg_task = self.bot.loop.create_task(self.qotd_task())
 
     async def red_delete_data_for_user(self, **kwargs):
@@ -35,9 +36,10 @@ class QOTD(commands.Cog):
         """Automatically post a QOTD every 12 hours."""
         await self.bot.wait_until_ready()
         while True:
-            for guild in self.bot.guilds:
-                await self.post_qotd(guild)
-            await asyncio.sleep(43200)  # Wait 12 hours (43200 seconds)
+            if self.qotd_started:  # Only run if QOTD has begun
+                for guild in self.bot.guilds:
+                    await self.post_qotd(guild)
+            await asyncio.sleep(43200)  # Wait 12 hours
 
     async def post_qotd(self, guild):
         """Post a QOTD in the configured channel for the guild."""
@@ -140,6 +142,19 @@ class QOTD(commands.Cog):
         """Manage QOTD settings."""
         pass
 
+    @qotd.command()
+    async def begin(self, ctx):
+        """Start the QOTD cycle."""
+        if self.qotd_started:
+            await ctx.send("QOTD has already begun!")
+            return
+
+        self.qotd_started = True
+        await ctx.send("QOTD cycle has started! Posting the first question now...")
+
+        # Post the first QOTD immediately
+        await self.post_qotd(ctx.guild)
+    
     @qotd.command()
     async def setchannel(self, ctx, channel: discord.TextChannel):
         """Set the channel for QOTD."""
