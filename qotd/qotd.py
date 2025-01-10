@@ -4,6 +4,7 @@ import random
 import aiohttp
 import asyncio
 import json
+import base64
 
 class QOTD(commands.Cog):
     """A Question of the Day system with themes, GitHub integration, restricted reactions, and user submissions."""
@@ -215,13 +216,13 @@ class QOTD(commands.Cog):
         if not token:
             await ctx.send("GitHub API token is not set. Use `.qotd setapikey` to set it.")
             return
-
+    
         url = f"{self.github_api_url}{theme}.txt"
         headers = {
             "Authorization": f"token {token}",
             "Accept": "application/vnd.github.v3+json",
         }
-
+    
         async with aiohttp.ClientSession() as session:
             # Fetch the current file content and sha
             async with session.get(url, headers=headers) as response:
@@ -229,26 +230,26 @@ class QOTD(commands.Cog):
                     await ctx.send(f"Error: Could not fetch the `{theme}` theme file.")
                     return
                 file_data = await response.json()
-                content = file_data["content"]
+                content = base64.b64decode(file_data["content"]).decode("utf-8")
                 sha = file_data["sha"]
-                current_questions = content.encode("ascii").decode("base64").split("\n")
-
+                current_questions = content.split("\n")
+    
             # Check for duplicates
             if question in current_questions:
                 await ctx.send(f"The question already exists in the `{theme}` theme.")
                 return
-
+    
             # Add the new question and encode content
             current_questions.append(question)
-            updated_content = "\n".join(current_questions).encode("utf-8").decode("base64")
-
+            updated_content = base64.b64encode("\n".join(current_questions).encode("utf-8")).decode("utf-8")
+    
             # Push the updated file back to GitHub
             data = {
                 "message": f"Add new question to {theme}",
                 "content": updated_content,
                 "sha": sha,
             }
-
+    
             async with session.put(url, headers=headers, data=json.dumps(data)) as response:
                 if response.status == 200:
                     await ctx.send(f"The question has been successfully added to `{theme}`.")
