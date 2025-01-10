@@ -7,6 +7,9 @@ import json
 import base64
 from typing import List, Tuple
 
+import logging
+log = logging.getLogger("red.trivia")
+
 
 class Trivia(commands.Cog):
     """A Trivia cog with GitHub integration and genre-based questions."""
@@ -144,9 +147,8 @@ class Trivia(commands.Cog):
                     if response.status != 200:
                         log.error(f"Failed to fetch genres: {response.status} - {response.reason}")
                         return []
-    
+
                     content = await response.text()
-                    # Extract genres by checking for .txt files
                     return [line.strip().replace(".txt", "") for line in content.split("\n") if line.endswith(".txt")]
         except Exception as e:
             log.exception("Error while fetching genres")
