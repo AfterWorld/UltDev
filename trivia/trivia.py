@@ -6,7 +6,7 @@ import asyncio
 from typing import List, Tuple
 
 class Trivia(commands.Cog):
-    """A Trivia system with GitHub integration and natural interaction."""
+    """A Trivia system with GitHub integration and genre-based questions."""
 
     def __init__(self, bot):
         self.bot = bot
@@ -14,7 +14,8 @@ class Trivia(commands.Cog):
         default_guild = {
             "channel_id": None,  # Channel where trivia is hosted
             "leaderboard": {},  # Points per user
-            "github_url": "https://raw.githubusercontent.com/AfterWorld/UltDev/main/trivia/questions/questions.txt",
+            "github_url": "https://raw.githubusercontent.com/AfterWorld/UltDev/main/trivia/questions/",  # Base folder
+            "selected_genre": "one-piece",  # Default genre
         }
         self.config.register_guild(**default_guild)
         self.current_question = None  # Active question
@@ -70,6 +71,22 @@ class Trivia(commands.Cog):
 
         await ctx.send(embed=embed)
 
+    @trivia.command()
+    async def genre(self, ctx, genre: str):
+        """Select a trivia genre."""
+        genres = await self.fetch_genres()
+        if genre not in genres:
+            return await ctx.send(f"Invalid genre! Available genres: {', '.join(genres)}")
+
+        await self.config.guild(ctx.guild).selected_genre.set(genre)
+        await ctx.send(f"Trivia genre set to `{genre}`!")
+
+    @trivia.command()
+    async def genres(self, ctx):
+        """List available trivia genres."""
+        genres = await self.fetch_genres()
+        await ctx.send(f"Available genres: {', '.join(genres)}")
+
     # ==============================
     # BACKGROUND TASK
     # ==============================
@@ -80,7 +97,7 @@ class Trivia(commands.Cog):
             channel_id = self.trivia_channel.id  # Default to the starting channel
         channel = guild.get_channel(channel_id)
 
-        questions = await self.fetch_questions()
+        questions = await self.fetch_questions(guild)
         while self.trivia_active:
             question, answers, hints = random.choice(questions)
             self.current_question = question
@@ -130,13 +147,24 @@ class Trivia(commands.Cog):
     # ==============================
     # GITHUB INTEGRATION
     # ==============================
-    async def fetch_questions(self) -> List[Tuple[str, List[str], List[str]]]:
-        """Fetch trivia questions from GitHub."""
+    async def fetch_genres(self) -> List[str]:
+        """Fetch available genres from the GitHub folder."""
         github_url = await self.config.guild(self.bot.guilds[0]).github_url()
         async with aiohttp.ClientSession() as session:
             async with session.get(github_url) as response:
                 if response.status != 200:
-                    raise ValueError("Failed to fetch trivia questions.")
+                    raise ValueError("Failed to fetch trivia genres.")
+                content = await response.text()
+                return [line.strip() for line in content.split("\n") if line.endswith(".txt")]
+
+    async def fetch_questions(self, guild) -> List[Tuple[str, List[str], List[str]]]:
+        """Fetch trivia questions for the selected genre."""
+        genre = await self.config.guild(guild).selected_genre()
+        github_url = f"{await self.config.guild(guild).github_url()}{genre}.txt"
+        async with aiohttp.ClientSession() as session:
+            async with session.get(github_url) as response:
+                if response.status != 200:
+                    raise ValueError(f"Failed to fetch questions for genre '{genre}'.")
                 content = await response.text()
 
         questions = []
@@ -150,3 +178,7 @@ class Trivia(commands.Cog):
                     [h.strip() for h in hints.split(",")]
                 ))
         return questions
+
+
+def setup(bot):
+    bot.add_cog(Trivia(bot))
