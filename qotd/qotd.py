@@ -5,7 +5,7 @@ import aiohttp
 
 
 class QOTD(commands.Cog):
-    """A Question of the Day system with themes, GitHub integration, and restricted reactions."""
+    """A Question of the Day system with themes, GitHub integration, restricted reactions, and user submissions."""
 
     def __init__(self, bot):
         self.bot = bot
@@ -14,7 +14,7 @@ class QOTD(commands.Cog):
             "channel_id": None,
             "theme": "general",
             "used_questions": {},
-            "submissions": {},
+            "submissions": {},  # User submissions by theme
         }
         self.config.register_guild(**default_guild)
         self.github_base_url = "https://raw.githubusercontent.com/AfterWorld/UltDev/main/qotd/themes/"
@@ -148,13 +148,6 @@ class QOTD(commands.Cog):
             except discord.Forbidden:
                 print(f"Could not remove reaction {reaction.emoji} by {user}.")
 
-    @commands.Cog.listener()
-    async def on_reaction_remove(self, reaction, user):
-        """Ensure users cannot re-add removed unauthorized reactions."""
-        # This method ensures unauthorized reactions don't reappear after removal.
-        if user.bot:
-            return
-
     # ==============================
     # ADMIN COMMANDS
     # ==============================
@@ -200,6 +193,30 @@ class QOTD(commands.Cog):
         themes = ["general", "onepiece", "anime"]
         theme_list = "\n".join([f"- {theme}" for theme in themes])
         await ctx.send(f"Available themes:\n{theme_list}")
+
+    # ==============================
+    # USER SUBMISSIONS
+    # ==============================
+    @qotd.command()
+    async def submit(self, ctx, theme: str, *, question: str):
+        """Submit a question for approval."""
+        submissions = await self.config.guild(ctx.guild).submissions()
+        if theme not in submissions:
+            submissions[theme] = []
+        submissions[theme].append({"user": ctx.author.id, "question": question})
+        await self.config.guild(ctx.guild).submissions.set(submissions)
+        await ctx.send(f"Your question has been submitted for the `{theme}` theme.")
+
+    @qotd.command()
+    async def review(self, ctx, theme: str):
+        """Review submitted questions for a theme."""
+        submissions = await self.config.guild(ctx.guild).submissions()
+        if theme not in submissions or not submissions[theme]:
+            await ctx.send(f"No submissions for the `{theme}` theme.")
+            return
+
+        review_list = "\n".join([f"- {q['question']} (Submitted by <@{q['user']}>)" for q in submissions[theme]])
+        await ctx.send(f"Submitted questions for `{theme}`:\n{review_list}")
 
 
 def setup(bot):
