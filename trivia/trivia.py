@@ -101,37 +101,54 @@ class Trivia(commands.Cog):
         channel = self.trivia_channel
         genre = await self.config.guild(guild).selected_genre()
         questions = await self.fetch_questions(guild, genre)
-
+    
         while self.trivia_active:
-            question, answers = random.choice(questions)
+            question, answers, hints = random.choice(questions)
             self.current_question = question
             self.current_answers = answers
-
+    
             await channel.send(f"**Trivia Question:**\n{question}")
-            await asyncio.sleep(30)
-
+            for i in range(30, 0, -5):  # Countdown in 5-second intervals
+                await asyncio.sleep(5)
+                if not self.current_question:  # Stop if answered
+                    break
+    
+                if i == 15 and hints:
+                    await channel.send(f"**Hint 1:** {hints[0]}")
+                elif i == 10 and len(hints) > 1:
+                    await channel.send(f"**Hint 2:** {hints[1]}")
+    
             if self.current_question:  # Time's up
                 await channel.send(f"Time's up! The correct answers were: {', '.join(answers)}.")
                 self.current_question = None
                 self.current_answers = []
-
-            await asyncio.sleep(10)
-
+    
+            await asyncio.sleep(5)  # Short pause before next question
+        
     # ==============================
     # EVENT LISTENER
     # ==============================
     @commands.Cog.listener()
     async def on_message(self, message):
         """Check for correct answers."""
-        if not self.trivia_active or not self.current_question or message.channel != self.trivia_channel or message.author.bot:
+        if (
+            not self.trivia_active
+            or not self.current_question
+            or message.channel != self.trivia_channel
+            or message.author.bot
+        ):
             return
-
-        if message.content.lower() in [a.lower() for a in self.current_answers]:
+    
+        # Normalize the user's answer and the correct answers for comparison
+        user_answer = message.content.strip().lower()
+        correct_answers = [ans.strip().lower() for ans in self.current_answers]
+    
+        if user_answer in correct_answers:
             points = 10
             async with self.config.guild(message.guild).leaderboard() as leaderboard:
                 leaderboard[message.author.id] = leaderboard.get(message.author.id, 0) + points
-
-            self.current_question = None
+    
+            self.current_question = None  # Clear current question
             self.current_answers = []
             await message.channel.send(f"Correct! {message.author.mention} earns {points} points!")
 
@@ -158,9 +175,9 @@ class Trivia(commands.Cog):
             log.exception("Error while fetching genres")
             return []
 
-    async def fetch_questions(self, guild, genre: str) -> List[Tuple[str, List[str]]]:
-        """Fetch questions for the selected genre from the GitHub API."""
-        github_url = f"https://raw.githubusercontent.com/AfterWorld/UltDev/main/trivia/questions/{genre}.txt"
+    async def fetch_questions(self, guild, genre: str) -> List[Tuple[str, List[str], List[str]]]:
+        """Fetch questions for the selected genre."""
+        github_url = f"{await self.config.guild(guild).github_url()}{genre}.txt"
     
         try:
             async with aiohttp.ClientSession() as session:
@@ -172,11 +189,19 @@ class Trivia(commands.Cog):
                     content = await response.text()
     
             questions = []
+            current_hints = []
             for line in content.strip().split("\n"):
                 if ":" in line:
                     question, answers = line.split(":", 1)
+                    current_hints = []  # Reset hints for new question
                     answers = [a.strip() for a in answers.split("\n") if a.startswith("-")]
-                    questions.append((question.strip(), answers))
+                elif line.startswith("Hints:"):
+                    current_hints.append(line[6:].strip())
+                elif current_hints and not line.startswith("-"):
+                    current_hints.append(line.strip())
+    
+                if question and answers:
+                    questions.append((question.strip(), answers, current_hints))
             return questions
         except Exception as e:
             log.exception(f"Error while fetching questions for genre '{genre}'")
