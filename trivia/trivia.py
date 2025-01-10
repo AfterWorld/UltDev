@@ -138,7 +138,7 @@ class Trivia(commands.Cog):
     # ==============================
     # GITHUB INTEGRATION
     # ==============================
-    sync def fetch_genres(self, guild) -> List[str]:
+    async def fetch_genres(self, guild) -> List[str]:
         """Fetch available genres from the GitHub folder using the GitHub API."""
         github_url = "https://api.github.com/repos/AfterWorld/UltDev/contents/trivia/questions"
         token = await self.config.guild(guild).github_token()
