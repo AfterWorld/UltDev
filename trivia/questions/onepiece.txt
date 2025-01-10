@@ -1,1 +1,184 @@
+AUTHOR: Red
+DESCRIPTION: A One Piece-themed trivia quiz to test your knowledge of the series.
+
+What is the name of Luffy's ship?:
+- Thousand Sunny
+- Going Merry
+- The Sunny
+
+Who is the first crewmate Luffy recruits?:
+- Zoro
+- Roronoa Zoro
+
+What fruit did Luffy eat to gain his powers?:
+- Gum-Gum Fruit
+- Gomu Gomu no Mi
+
+What is Sanji's dream?:
+- To find the All Blue
+- All Blue
+
+Who is the doctor of the Straw Hat Pirates?:
+- Chopper
+- Tony Tony Chopper
+
+What does Nami specialize in?:
+- Navigation
+- Cartography
+
+What is Zoro's ultimate goal?:
+- To become the world's greatest swordsman
+- Greatest swordsman
+
+Who is the "Strongest Creature in the World"?:
+- Kaido
+- Kaidou
+
+What is the name of Luffy's father?:
+- Monkey D. Dragon
+- Dragon
+
+What does the "D" in Luffy's name stand for?:
+- Will of D
+- D clan
+
+Who is the Fleet Admiral of the Marines after the Marineford War?:
+- Akainu
+- Sakazuki
+
+What is Usopp's alias in Dressrosa?:
+- God Usopp
+- Sogeking
+
+What is Brook's signature phrase?:
+- Yohohoho
+- Skull Joke
+
+What is Nico Robin's epithet?:
+- Devil Child
+- Miss All Sunday
+
+What is Franky's real name?:
+- Cutty Flam
+- Franky
+
+What is the name of Luffy's grandfather?:
+- Monkey D. Garp
+- Garp
+
+What is the name of the sea surrounding the Grand Line?:
+- Calm Belt
+
+What island is Luffy from?:
+- Foosha Village
+- Dawn Island
+
+What is Luffy's bounty after Dressrosa?:
+- 500,000,000 berries
+- 500 million
+
+Who is the leader of the Revolutionary Army?:
+- Monkey D. Dragon
+- Dragon
+
+What is the treasure everyone seeks in One Piece?:
+- One Piece
+- Raftel's Treasure
+
+What is the name of the world's greatest swordsman?:
+- Dracule Mihawk
+- Mihawk
+
+What is the name of the giant elephant island?:
+- Zou
+- Zunesha
+
+Who gave Luffy his iconic straw hat?:
+- Shanks
+- Red-Haired Shanks
+
+What is the name of the island in the sky?:
+- Skypiea
+
+What is Enel's Devil Fruit?:
+- Rumble-Rumble Fruit
+- Goro Goro no Mi
+
+What is the name of Ace's ship?:
+- Striker
+
+What does the "Poneglyph" contain?:
+- Ancient history
+- Void Century
+
+What is Robin's dream?:
+- To find the True History
+- True History
+
+What is the name of the prison under the sea?:
+- Impel Down
+
+Who are the "Worst Generation"?:
+- Supernovas
+- Worst Generation Pirates
+
+What is the name of the first Admiral introduced in the series?:
+- Aokiji
+- Kuzan
+
+What is the technique Luffy uses to inflate his body?:
+- Gear Third
+- Third Gear
+
+Who is the navigator of the Going Merry?:
+- Nami
+
+What is the name of the whale at Reverse Mountain?:
+- Laboon
+
+What is the name of the powerful pirates who work for the government?:
+- Warlords
+- Shichibukai
+
+What is the name of Whitebeard's ship?:
+- Moby Dick
+
+What is the name of Luffy's ultimate technique in Gear Fourth?:
+- King Kong Gun
+
+What is the name of Big Mom's island?:
+- Whole Cake Island
+
+What is the name of the scientist who created the Pacifista?:
+- Dr. Vegapunk
+
+What is the name of the island where Roger was executed?:
+- Loguetown
+
+What is the name of the swords Zoro wields?:
+- Wado Ichimonji
+- Sandai Kitetsu
+- Enma
+
+What is Jinbe's epithet?:
+- Knight of the Sea
+
+What is the name of Luffy's signature attack?:
+- Gum-Gum Pistol
+- Gomu Gomu no Pistol
+
+What is Buggy's Devil Fruit?:
+- Chop-Chop Fruit
+- Bara Bara no Mi
+
+What is the name of the capital of Dressrosa?:
+- Dressrosa City
+
+Who is known as "Surgeon of Death"?:
+- Trafalgar Law
+- Trafalgar D. Water Law
+
+What is the name of the treasure map Usopp lies about?:
+- Elbaf
+- Golden City
 
