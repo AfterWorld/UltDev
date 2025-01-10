@@ -3,6 +3,7 @@ from redbot.core import commands, Config
 import random
 import aiohttp
 
+
 class QOTD(commands.Cog):
     """A Question of the Day system with themes, GitHub integration, and reactions."""
 
@@ -16,7 +17,7 @@ class QOTD(commands.Cog):
             "submissions": {},  # User-submitted questions by theme
         }
         self.config.register_guild(**default_guild)
-        self.github_base_url = "https://raw.githubusercontent.com/<username>/<repo>/main/qotd/"  # Update with your GitHub repo
+        self.github_base_url = "https://raw.githubusercontent.com/AfterWorld/UltDev/main/qotd/themes/"
         self.bg_task = self.bot.loop.create_task(self.qotd_task())
 
     async def red_delete_data_for_user(self, **kwargs):
@@ -75,6 +76,7 @@ class QOTD(commands.Cog):
             async with aiohttp.ClientSession() as session:
                 async with session.get(url) as response:
                     if response.status != 200:
+                        print(f"Error: Could not fetch questions for theme '{theme}' from {url} (Status {response.status}).")
                         return [], used_questions
                     content = await response.text()
                     questions = [line.strip() for line in content.split("\n") if line.strip()]
