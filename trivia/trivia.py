@@ -3,7 +3,10 @@ from redbot.core import commands, Config
 import aiohttp
 import random
 import asyncio
-from typing import List, Tuple, Dict
+import logging
+from typing import List, Tuple
+
+log = logging.getLogger("red.trivia")
 
 class Trivia(commands.Cog):
     """A Trivia system with GitHub integration and custom quizzes."""
@@ -16,6 +19,7 @@ class Trivia(commands.Cog):
             "leaderboard": {},  # Points per user
             "github_url": "https://raw.githubusercontent.com/AfterWorld/UltDev/main/trivia/questions/",  # Base folder
             "selected_file": None,  # Selected quiz file
+            "github_token": None,  # Optional GitHub token for private repositories
         }
         self.config.register_guild(**default_guild)
         self.current_question = None  # Active question
@@ -35,7 +39,7 @@ class Trivia(commands.Cog):
     @trivia.command(name="list")
     async def list_quizzes(self, ctx):
         """List available trivia quizzes."""
-        quizzes = await self.fetch_quiz_files()
+        quizzes = await self.fetch_quiz_files(ctx.guild)
         if not quizzes:
             return await ctx.send("No trivia quizzes are currently available.")
         await ctx.send(f"Available quizzes: {', '.join(quizzes)}")
@@ -43,7 +47,7 @@ class Trivia(commands.Cog):
     @trivia.command(name="start")
     async def start_trivia(self, ctx, quiz_name: str):
         """Start a trivia session with the selected quiz."""
-        quizzes = await self.fetch_quiz_files()
+        quizzes = await self.fetch_quiz_files(ctx.guild)
         if quiz_name not in quizzes:
             return await ctx.send(f"Invalid quiz name. Use `.trivia list` to see available quizzes.")
 
@@ -138,33 +142,43 @@ class Trivia(commands.Cog):
     # ==============================
     # GITHUB INTEGRATION
     # ==============================
-    async def fetch_quiz_files(self) -> List[str]:
+    async def fetch_quiz_files(self, guild) -> List[str]:
         """Fetch available quiz files from the GitHub folder."""
-        github_url = await self.config.guild(self.bot.guilds[0]).github_url()
+        github_url = await self.config.guild(guild).github_url()
         async with aiohttp.ClientSession() as session:
-            async with session.get(github_url) as response:
-                if response.status != 200:
-                    raise ValueError("Failed to fetch trivia quizzes.")
-                content = await response.text()
-                return [line.strip().replace(".txt", "") for line in content.split("\n") if line.endswith(".txt")]
+            try:
+                async with session.get(github_url) as response:
+                    if response.status != 200:
+                        log.error(f"Failed to fetch quizzes: {response.status} - {response.reason}")
+                        return []
+                    content = await response.text()
+                    return [line.strip().replace(".txt", "") for line in content.split("\n") if line.endswith(".txt")]
+            except Exception as e:
+                log.exception("Error while fetching quiz files")
+                return []
 
     async def fetch_questions(self, guild) -> List[Tuple[str, List[str]]]:
         """Fetch trivia questions for the selected quiz."""
         selected_file = await self.config.guild(guild).selected_file()
         github_url = f"{await self.config.guild(guild).github_url()}{selected_file}.txt"
         async with aiohttp.ClientSession() as session:
-            async with session.get(github_url) as response:
-                if response.status != 200:
-                    raise ValueError(f"Failed to fetch questions for quiz '{selected_file}'.")
-                content = await response.text()
+            try:
+                async with session.get(github_url) as response:
+                    if response.status != 200:
+                        log.error(f"Failed to fetch questions for quiz '{selected_file}': {response.status} - {response.reason}")
+                        return []
+                    content = await response.text()
 
-        questions = []
-        for line in content.strip().split("\n"):
-            if ":" in line and line.startswith("-"):
-                question, answers = line.split(":", 1)
-                answers = [ans.strip() for ans in answers.strip().split("\n") if ans.startswith("-")]
-                questions.append((question.strip(), answers))
-        return questions
+                questions = []
+                for line in content.strip().split("\n"):
+                    if ":" in line and line.startswith("-"):
+                        question, answers = line.split(":", 1)
+                        answers = [ans.strip() for ans in answers.strip().split("\n") if ans.startswith("-")]
+                        questions.append((question.strip(), answers))
+                return questions
+            except Exception as e:
+                log.exception("Error while fetching questions")
+                return []
 
 
 def setup(bot):
