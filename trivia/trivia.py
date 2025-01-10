@@ -21,6 +21,7 @@ class Trivia(commands.Cog):
             "selected_file": None,  # Selected quiz file
             "github_token": None,  # Optional GitHub token for private repositories
         }
+        self.github_api_url = "https://api.github.com/repos/AfterWorld/UltDev/contents/trivia/questions/"
         self.config.register_guild(**default_guild)
         self.current_question = None  # Active question
         self.current_answers = []  # Correct answers
