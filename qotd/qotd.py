@@ -14,17 +14,19 @@ class QOTD(commands.Cog):
         self.bot = bot
         self.config = Config.get_conf(self, identifier=9876543210)
         default_guild = {
-            "channel_id": None,
-            "theme": "general",
-            "used_questions": {},
+            "channel_id": None,  # Where QOTD is posted
+            "review_channel_id": None,  # Where admin reviews are done
+            "theme": "general",  # Default theme
+            "used_questions": {},  # Used questions for each theme
             "submissions": {},  # User submissions by theme
-            "github_token": None,  # Store GitHub API token
+            "github_token": None,  # GitHub API token for writing to repo
+            "ping_role": None,  # Role to ping when posting QOTD
         }
         self.config.register_guild(**default_guild)
         self.github_base_url = "https://raw.githubusercontent.com/AfterWorld/UltDev/main/qotd/themes/"
         self.github_api_url = "https://api.github.com/repos/AfterWorld/UltDev/contents/qotd/themes/"
         self.qotd_started = False  # Tracks whether QOTD has begun
-        self.allowed_reactions = ["👍", "👎"]  # Allowed reactions for approval/denial
+        self.allowed_reactions = ["👍", "👎"]  # Allowed reactions for admin review
         self.bg_task = self.bot.loop.create_task(self.qotd_task())
 
     async def red_delete_data_for_user(self, **kwargs):
@@ -58,6 +60,9 @@ class QOTD(commands.Cog):
             return  # Channel not found
 
         theme = await self.config.guild(guild).theme()
+        ping_role_id = await self.config.guild(guild).ping_role()
+        role_mention = f"<@&{ping_role_id}>" if ping_role_id else ""
+
         questions, used_questions = await self.load_questions(guild, theme)
         if not questions:
             await channel.send(f"No more questions available for the `{theme}` theme.")
@@ -65,11 +70,7 @@ class QOTD(commands.Cog):
 
         question = random.choice(questions)
         embed = self.create_embed(question, theme)
-        message = await channel.send(embed=embed)
-
-        # Add allowed reactions
-        for reaction in self.allowed_reactions:
-            await message.add_reaction(reaction)
+        await channel.send(content=role_mention, embed=embed)
 
         await self.mark_question_used(guild, theme, question)
 
@@ -154,6 +155,68 @@ class QOTD(commands.Cog):
         await ctx.send("GitHub API token has been set.")
 
     @qotd.command()
+    async def setchannel(self, ctx, channel: discord.TextChannel):
+        """Set the channel for QOTD posts."""
+        await self.config.guild(ctx.guild).channel_id.set(channel.id)
+        await ctx.send(f"QOTD channel set to {channel.mention}.")
+
+    @qotd.command()
+    async def setreviewchannel(self, ctx, channel: discord.TextChannel):
+        """Set the channel for reviewing submitted questions."""
+        await self.config.guild(ctx.guild).review_channel_id.set(channel.id)
+        await ctx.send(f"Review channel set to {channel.mention}.")
+
+    @qotd.command()
+    async def setrole(self, ctx, role: discord.Role):
+        """Set a role to be pinged when a QOTD is posted."""
+        await self.config.guild(ctx.guild).ping_role.set(role.id)
+        await ctx.send(f"Ping role set to {role.mention}.")
+
+    @qotd.command()
+    async def settheme(self, ctx, theme: str):
+        """Set the theme for QOTD."""
+        available_themes = ["general", "onepiece", "anime"]
+        if theme not in available_themes:
+            await ctx.send(f"Invalid theme. Available themes: {', '.join(available_themes)}")
+            return
+
+        await self.config.guild(ctx.guild).theme.set(theme)
+        await ctx.send(f"QOTD theme set to `{theme}`.")
+
+    @qotd.command()
+    async def themes(self, ctx):
+        """List all available themes for QOTD."""
+        themes = ["general", "onepiece", "anime"]
+        theme_list = "\n".join([f"- {theme}" for theme in themes])
+        await ctx.send(f"Available themes:\n{theme_list}")
+
+    @qotd.command()
+    async def begin(self, ctx):
+        """Start the QOTD cycle."""
+        if self.qotd_started:
+            await ctx.send("QOTD has already begun!")
+            return
+
+        self.qotd_started = True
+        await ctx.send("QOTD cycle has started! Posting the first question now...")
+
+        # Post the first QOTD immediately
+        await self.post_qotd(ctx.guild)
+
+    # ==============================
+    # USER SUBMISSIONS
+    # ==============================
+    @qotd.command(aliases=["suggest"])
+    async def submit(self, ctx, theme: str, *, question: str):
+        """Submit a question for admin approval."""
+        submissions = await self.config.guild(ctx.guild).submissions()
+        if theme not in submissions:
+            submissions[theme] = []
+        submissions[theme].append({"user": ctx.author.id, "question": question})
+        await self.config.guild(ctx.guild).submissions.set(submissions)
+        await ctx.send(f"Your question has been submitted for the `{theme}` theme.")
+
+    @qotd.command()
     async def review(self, ctx, theme: str):
         """Review submitted questions for a theme."""
         submissions = await self.config.guild(ctx.guild).submissions()
@@ -172,7 +235,9 @@ class QOTD(commands.Cog):
             )
             embed.set_footer(text="React with 👍 to approve or 👎 to deny.")
 
-            message = await ctx.send(embed=embed)
+            review_channel_id = await self.config.guild(ctx.guild).review_channel_id()
+            review_channel = self.bot.get_channel(review_channel_id) or ctx.channel
+            message = await review_channel.send(embed=embed)
             await message.add_reaction("👍")
             await message.add_reaction("👎")
 
