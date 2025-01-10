@@ -136,32 +136,46 @@ class Trivia(commands.Cog):
     # GITHUB INTEGRATION
     # ==============================
     async def fetch_genres(self, guild) -> List[str]:
-        """Fetch available genres."""
+        """Fetch available genres from the GitHub folder."""
         github_url = await self.config.guild(guild).github_url()
-        async with aiohttp.ClientSession() as session:
-            async with session.get(github_url) as response:
-                if response.status != 200:
-                    return []
-                content = await response.text()
-                return [line.strip().replace(".txt", "") for line in content.split("\n") if line.endswith(".txt")]
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(github_url) as response:
+                    if response.status != 200:
+                        log.error(f"Failed to fetch genres: {response.status} - {response.reason}")
+                        return []
+    
+                    content = await response.text()
+                    # Extract genres by checking for .txt files
+                    return [line.strip().replace(".txt", "") for line in content.split("\n") if line.endswith(".txt")]
+        except Exception as e:
+            log.exception("Error while fetching genres")
+            return []
 
     async def fetch_questions(self, guild, genre: str) -> List[Tuple[str, List[str]]]:
         """Fetch questions for the selected genre."""
         github_url = f"{await self.config.guild(guild).github_url()}{genre}.txt"
-        async with aiohttp.ClientSession() as session:
-            async with session.get(github_url) as response:
-                if response.status != 200:
-                    return []
-                content = await response.text()
-
-        questions = []
-        for line in content.strip().split("\n"):
-            if ":" in line and line.startswith("-"):
-                question, answers = line.split(":", 1)
-                answers = [a.strip() for a in answers.strip().split("\n") if a.startswith("-")]
-                questions.append((question.strip(), answers))
-        return questions
-
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(github_url) as response:
+                    if response.status != 200:
+                        log.error(f"Failed to fetch questions for genre '{genre}': {response.status} - {response.reason}")
+                        return []
+    
+                    content = await response.text()
+    
+            # Parse questions
+            questions = []
+            for line in content.strip().split("\n"):
+                if ":" in line:
+                    question, answers = line.split(":", 1)
+                    answers = [a.strip() for a in answers.split("\n") if a.startswith("-")]
+                    questions.append((question.strip(), answers))
+    
+            return questions
+        except Exception as e:
+            log.exception(f"Error while fetching questions for genre '{genre}'")
+            return []
 
 def setup(bot):
     bot.add_cog(Trivia(bot))
