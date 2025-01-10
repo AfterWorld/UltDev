@@ -2,7 +2,8 @@ import discord
 from redbot.core import commands, Config
 import random
 import aiohttp
-
+import asyncio
+import json
 
 class QOTD(commands.Cog):
     """A Question of the Day system with themes, GitHub integration, restricted reactions, and user submissions."""
@@ -15,11 +16,13 @@ class QOTD(commands.Cog):
             "theme": "general",
             "used_questions": {},
             "submissions": {},  # User submissions by theme
+            "github_token": None,  # Store GitHub API token
         }
         self.config.register_guild(**default_guild)
         self.github_base_url = "https://raw.githubusercontent.com/AfterWorld/UltDev/main/qotd/themes/"
+        self.github_api_url = "https://api.github.com/repos/AfterWorld/UltDev/contents/qotd/themes/"
         self.qotd_started = False  # Tracks whether QOTD has begun
-        self.allowed_reactions = ["👍", "👎", "🤔"]  # Predefined allowed reactions
+        self.allowed_reactions = ["👍", "👎"]  # Allowed reactions for approval/denial
         self.bg_task = self.bot.loop.create_task(self.qotd_task())
 
     async def red_delete_data_for_user(self, **kwargs):
@@ -134,21 +137,6 @@ class QOTD(commands.Cog):
         return embed
 
     # ==============================
-    # EVENT LISTENERS
-    # ==============================
-    @commands.Cog.listener()
-    async def on_reaction_add(self, reaction, user):
-        """Restrict reactions to allowed ones only."""
-        if user.bot:
-            return  # Ignore bot reactions
-
-        if str(reaction.emoji) not in self.allowed_reactions:
-            try:
-                await reaction.remove(user)
-            except discord.Forbidden:
-                print(f"Could not remove reaction {reaction.emoji} by {user}.")
-
-    # ==============================
     # ADMIN COMMANDS
     # ==============================
     @commands.group()
@@ -158,54 +146,10 @@ class QOTD(commands.Cog):
         pass
 
     @qotd.command()
-    async def begin(self, ctx):
-        """Start the QOTD cycle."""
-        if self.qotd_started:
-            await ctx.send("QOTD has already begun!")
-            return
-
-        self.qotd_started = True
-        await ctx.send("QOTD cycle has started! Posting the first question now...")
-
-        # Post the first QOTD immediately
-        await self.post_qotd(ctx.guild)
-
-    @qotd.command()
-    async def setchannel(self, ctx, channel: discord.TextChannel):
-        """Set the channel for QOTD."""
-        await self.config.guild(ctx.guild).channel_id.set(channel.id)
-        await ctx.send(f"QOTD channel set to {channel.mention}.")
-
-    @qotd.command()
-    async def settheme(self, ctx, theme: str):
-        """Set the theme for QOTD."""
-        available_themes = ["general", "onepiece", "anime"]
-        if theme not in available_themes:
-            await ctx.send(f"Invalid theme. Available themes: {', '.join(available_themes)}")
-            return
-
-        await self.config.guild(ctx.guild).theme.set(theme)
-        await ctx.send(f"QOTD theme set to `{theme}`.")
-
-    @qotd.command()
-    async def themes(self, ctx):
-        """List all available themes for QOTD."""
-        themes = ["general", "onepiece", "anime"]
-        theme_list = "\n".join([f"- {theme}" for theme in themes])
-        await ctx.send(f"Available themes:\n{theme_list}")
-
-    # ==============================
-    # USER SUBMISSIONS
-    # ==============================
-    @qotd.command()
-    async def submit(self, ctx, theme: str, *, question: str):
-        """Submit a question for approval."""
-        submissions = await self.config.guild(ctx.guild).submissions()
-        if theme not in submissions:
-            submissions[theme] = []
-        submissions[theme].append({"user": ctx.author.id, "question": question})
-        await self.config.guild(ctx.guild).submissions.set(submissions)
-        await ctx.send(f"Your question has been submitted for the `{theme}` theme.")
+    async def setapikey(self, ctx, token: str):
+        """Set the GitHub API token for updating files."""
+        await self.config.guild(ctx.guild).github_token.set(token)
+        await ctx.send("GitHub API token has been set.")
 
     @qotd.command()
     async def review(self, ctx, theme: str):
@@ -215,8 +159,101 @@ class QOTD(commands.Cog):
             await ctx.send(f"No submissions for the `{theme}` theme.")
             return
 
-        review_list = "\n".join([f"- {q['question']} (Submitted by <@{q['user']}>)" for q in submissions[theme]])
-        await ctx.send(f"Submitted questions for `{theme}`:\n{review_list}")
+        for submission in submissions[theme]:
+            user_id = submission["user"]
+            question = submission["question"]
+
+            embed = discord.Embed(
+                title=f"Review Submission for `{theme}`",
+                description=question,
+                color=discord.Color.gold(),
+            )
+            embed.set_footer(text="React with 👍 to approve or 👎 to deny.")
+
+            message = await ctx.send(embed=embed)
+            await message.add_reaction("👍")
+            await message.add_reaction("👎")
+
+            def check(reaction, user):
+                return (
+                    user == ctx.author
+                    and str(reaction.emoji) in ["👍", "👎"]
+                    and reaction.message.id == message.id
+                )
+
+            try:
+                reaction, _ = await self.bot.wait_for("reaction_add", timeout=60.0, check=check)
+                if str(reaction.emoji) == "👍":
+                    await self.add_question_to_github(ctx, theme, question)
+                    await ctx.send(f"The question has been added to the `{theme}` theme!")
+                elif str(reaction.emoji) == "👎":
+                    reason_message = await ctx.send("Please provide a reason for rejecting this question.")
+
+                    def message_check(m):
+                        return m.author == ctx.author and m.channel == ctx.channel
+
+                    try:
+                        reason = await self.bot.wait_for("message", timeout=60.0, check=message_check)
+                        user = self.bot.get_user(user_id)
+                        if user:
+                            await user.send(
+                                f"Your question for the `{theme}` theme was denied by an admin.\nReason: {reason.content}"
+                            )
+                        await ctx.send("The user has been notified about the denial.")
+                    except asyncio.TimeoutError:
+                        await ctx.send("You didn't provide a reason in time. Skipping notification.")
+            except asyncio.TimeoutError:
+                await ctx.send("You didn't react in time. Moving to the next submission.")
+
+        # Clear reviewed submissions
+        submissions[theme] = []
+        await self.config.guild(ctx.guild).submissions.set(submissions)
+
+    async def add_question_to_github(self, ctx, theme, question):
+        """Add a question to the GitHub .txt file."""
+        token = await self.config.guild(ctx.guild).github_token()
+        if not token:
+            await ctx.send("GitHub API token is not set. Use `.qotd setapikey` to set it.")
+            return
+
+        url = f"{self.github_api_url}{theme}.txt"
+        headers = {
+            "Authorization": f"token {token}",
+            "Accept": "application/vnd.github.v3+json",
+        }
+
+        async with aiohttp.ClientSession() as session:
+            # Fetch the current file content and sha
+            async with session.get(url, headers=headers) as response:
+                if response.status != 200:
+                    await ctx.send(f"Error: Could not fetch the `{theme}` theme file.")
+                    return
+                file_data = await response.json()
+                content = file_data["content"]
+                sha = file_data["sha"]
+                current_questions = content.encode("ascii").decode("base64").split("\n")
+
+            # Check for duplicates
+            if question in current_questions:
+                await ctx.send(f"The question already exists in the `{theme}` theme.")
+                return
+
+            # Add the new question and encode content
+            current_questions.append(question)
+            updated_content = "\n".join(current_questions).encode("utf-8").decode("base64")
+
+            # Push the updated file back to GitHub
+            data = {
+                "message": f"Add new question to {theme}",
+                "content": updated_content,
+                "sha": sha,
+            }
+
+            async with session.put(url, headers=headers, data=json.dumps(data)) as response:
+                if response.status == 200:
+                    await ctx.send(f"The question has been successfully added to `{theme}`.")
+                else:
+                    await ctx.send("Error: Could not update the GitHub repository.")
 
 
 def setup(bot):
