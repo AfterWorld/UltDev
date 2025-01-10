@@ -1,0 +1,12 @@
+{
+    "author": ["UltPanda"],
+    "install_msg": "Thank you for installing QOTD! Configure the channel using `[p]qotd setchannel` and select a theme with `[p]qotd settheme`. Enjoy engaging your community with thought-provoking questions!",
+    "name": "QOTD",
+    "short": "A themed Question of the Day cog.",
+    "description": "Automatically posts themed questions of the day to keep your community engaged. Includes GitHub integration and reaction-based engagement.",
+    "version": "1.0.0",
+    "required_cogs": {},
+    "requirements": ["aiohttp"],
+    "tags": ["qotd", "engagement", "themes", "community"],
+    "type": "COG"
+}
