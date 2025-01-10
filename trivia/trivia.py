@@ -1,160 +1,152 @@
 import discord
-from discord.ext import tasks
-from redbot.core import commands, Config, checks
-from typing import Optional, List, Tuple
-import aiohttp
+from redbot.core import commands, Config
 import random
+import aiohttp
 import asyncio
-from datetime import datetime
+from typing import List, Tuple
 
 class Trivia(commands.Cog):
-    """A Trivia Cog with QOTD, leaderboards, and more!"""
+    """A Trivia system with GitHub integration and natural interaction."""
 
     def __init__(self, bot):
         self.bot = bot
-        self.config = Config.get_conf(self, identifier=1234567890, force_registration=True)
-
+        self.config = Config.get_conf(self, identifier=1234567891)
         default_guild = {
-            "questions": {},  # Questions from the GitHub repository
-            "leaderboard": {},  # User points
-            "current_question": None,  # Current question being asked
-            "current_hints": None,  # Hints for the current question
+            "channel_id": None,  # Channel where trivia is hosted
+            "leaderboard": {},  # Points per user
+            "github_url": "https://raw.githubusercontent.com/AfterWorld/UltDev/main/trivia/questions/questions.txt",
         }
         self.config.register_guild(**default_guild)
+        self.current_question = None  # Active question
+        self.current_answers = []  # Correct answers
+        self.trivia_active = False  # Trivia session status
+        self.trivia_channel = None  # Channel object for trivia
 
-        self.trivia_task = None
-        self.fetch_questions_task.start()
-
-    def cog_unload(self):
-        if self.trivia_task:
-            self.trivia_task.cancel()
-        self.fetch_questions_task.cancel()
-
-    async def fetch_github_questions(self) -> dict:
-        """Fetch questions from a GitHub file."""
-        github_url = "https://raw.githubusercontent.com/yourusername/yourrepo/main/questions.txt"
-        async with aiohttp.ClientSession() as session:
-            async with session.get(github_url) as response:
-                if response.status != 200:
-                    raise ValueError("Failed to fetch questions from GitHub.")
-                content = await response.text()
-
-        questions = {}
-        for line in content.strip().split("\n"):
-            if line.startswith("Q:") and "| A:" in line:
-                question, answers = line.split("| A:")
-                question = question[2:].strip()
-                answers = [a.strip() for a in answers.split(",")]
-                if question and answers:
-                    questions[question] = answers
-        return questions
-
-    @tasks.loop(hours=1)
-    async def fetch_questions_task(self):
-        """Fetch and update questions from GitHub every hour."""
-        for guild in self.bot.guilds:
-            try:
-                questions = await self.fetch_github_questions()
-                async with self.config.guild(guild).questions() as questions_dict:
-                    questions_dict.update(questions)
-            except Exception as e:
-                print(f"Failed to update questions for guild {guild.id}: {e}")
-
+    # ==============================
+    # USER COMMANDS
+    # ==============================
     @commands.group()
     @commands.guild_only()
     async def trivia(self, ctx):
-        """Trivia commands."""
+        """User commands for trivia."""
         pass
 
     @trivia.command()
-    @checks.admin_or_permissions(manage_guild=True)
     async def start(self, ctx):
-        """Start a trivia game."""
-        if self.trivia_task:
-            return await ctx.send("Trivia is already running!")
-
-        self.trivia_task = self.bot.loop.create_task(self.run_trivia(ctx))
+        """Start a trivia session."""
+        if self.trivia_active:
+            return await ctx.send("Trivia is already active!")
+        
+        self.trivia_active = True
+        self.trivia_channel = ctx.channel
+        await ctx.send("Starting trivia! Get ready to answer.")
+        await self.run_trivia(ctx.guild)
 
     @trivia.command()
-    @checks.admin_or_permissions(manage_guild=True)
     async def stop(self, ctx):
-        """Stop the trivia game."""
-        if self.trivia_task:
-            self.trivia_task.cancel()
-            self.trivia_task = None
-            await ctx.send("Trivia game stopped!")
-        else:
-            await ctx.send("No trivia game is currently running.")
-
-    async def run_trivia(self, ctx):
-        """Main trivia game loop."""
-        while True:
-            questions = await self.config.guild(ctx.guild).questions()
-            if not questions:
-                await ctx.send("No questions available. Please update the GitHub file.")
-                return
-
-            question, answers = random.choice(list(questions.items()))
-            hints = [answer[:len(answer) // 2] for answer in answers]
-
-            await ctx.send(f"**Trivia Time!**\n\n{question}")
-            await self.config.guild(ctx.guild).current_question.set({"question": question, "answers": answers})
-            await self.config.guild(ctx.guild).current_hints.set(hints)
-
-            answered = False
-
-            for i in range(30, 0, -5):  # Countdown in steps of 5 seconds
-                if i in {15, 10, 5}:
-                    hint = random.choice(hints)
-                    await ctx.send(f"Hint: {hint}")
-                await asyncio.sleep(5)
-
-                current_data = await self.config.guild(ctx.guild).current_question()
-                if not current_data:  # Someone already answered correctly
-                    answered = True
-                    break
-
-            if not answered:
-                await ctx.send(f"Time's up! The correct answer was: {', '.join(answers)}.")
-
-            await self.config.guild(ctx.guild).current_question.clear()
-            await self.config.guild(ctx.guild).current_hints.clear()
-            await asyncio.sleep(5)  # Short delay before next question
-
-    @trivia.command()
-    async def answer(self, ctx, *, answer: str):
-        """Answer the current trivia question."""
-        current_data = await self.config.guild(ctx.guild).current_question()
-        if not current_data:
-            return await ctx.send("There is no active trivia question!")
-
-        question = current_data["question"]
-        correct_answers = current_data["answers"]
-
-        if answer.lower() in [a.lower() for a in correct_answers]:
-            points = 10
-            async with self.config.guild(ctx.guild).leaderboard() as leaderboard:
-                leaderboard[ctx.author.id] = leaderboard.get(ctx.author.id, 0) + points
-
-            await ctx.send(f"Correct! You earned {points} points.")
-            await self.config.guild(ctx.guild).current_question.clear()  # Stop the timer
-        else:
-            await ctx.send("Incorrect! Try again.")
+        """Stop the trivia session."""
+        if not self.trivia_active:
+            return await ctx.send("No active trivia session to stop.")
+        
+        self.trivia_active = False
+        self.current_question = None
+        self.current_answers = []
+        self.trivia_channel = None
+        await ctx.send("Trivia session stopped!")
 
     @trivia.command()
     async def leaderboard(self, ctx):
-        """Display the trivia leaderboard."""
+        """View the trivia leaderboard."""
         leaderboard = await self.config.guild(ctx.guild).leaderboard()
         if not leaderboard:
-            return await ctx.send("No one has earned any points yet!")
+            return await ctx.send("No one has scored any points yet!")
 
         sorted_leaderboard = sorted(leaderboard.items(), key=lambda x: x[1], reverse=True)
-        top_ten = sorted_leaderboard[:10]
-
         embed = discord.Embed(title="Trivia Leaderboard", color=discord.Color.blue())
-        for i, (user_id, points) in enumerate(top_ten, start=1):
+        for i, (user_id, points) in enumerate(sorted_leaderboard[:10], start=1):
             user = ctx.guild.get_member(user_id)
             username = user.display_name if user else f"Unknown User ({user_id})"
             embed.add_field(name=f"{i}. {username}", value=f"{points} points", inline=False)
 
         await ctx.send(embed=embed)
+
+    # ==============================
+    # BACKGROUND TASK
+    # ==============================
+    async def run_trivia(self, guild):
+        """Main trivia loop."""
+        channel_id = await self.config.guild(guild).channel_id()
+        if not channel_id:
+            channel_id = self.trivia_channel.id  # Default to the starting channel
+        channel = guild.get_channel(channel_id)
+
+        questions = await self.fetch_questions()
+        while self.trivia_active:
+            question, answers, hints = random.choice(questions)
+            self.current_question = question
+            self.current_answers = answers
+
+            await channel.send(f"**Trivia Question:**\n{question}")
+            await asyncio.sleep(15)
+
+            if self.current_question:
+                await channel.send(f"**Hint 1:** {hints[0]}")
+            await asyncio.sleep(10)
+
+            if self.current_question:
+                await channel.send(f"**Hint 2:** {hints[1]}")
+            await asyncio.sleep(5)
+
+            if self.current_question:
+                await channel.send(f"Time's up! The correct answer was: {', '.join(answers)}.")
+                self.current_question = None
+                self.current_answers = []
+
+            await asyncio.sleep(10)  # Short pause before the next question
+
+    # ==============================
+    # EVENT LISTENER
+    # ==============================
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        """Listen for correct answers in the trivia channel."""
+        if (
+            not self.trivia_active or
+            not self.current_question or
+            message.channel != self.trivia_channel or
+            message.author.bot
+        ):
+            return
+
+        if message.content.lower() in [answer.lower() for answer in self.current_answers]:
+            points = 10
+            async with self.config.guild(message.guild).leaderboard() as leaderboard:
+                leaderboard[message.author.id] = leaderboard.get(message.author.id, 0) + points
+
+            self.current_question = None  # Clear current question
+            self.current_answers = []
+            await message.channel.send(f"Correct! {message.author.mention} earns {points} points!")
+
+    # ==============================
+    # GITHUB INTEGRATION
+    # ==============================
+    async def fetch_questions(self) -> List[Tuple[str, List[str], List[str]]]:
+        """Fetch trivia questions from GitHub."""
+        github_url = await self.config.guild(self.bot.guilds[0]).github_url()
+        async with aiohttp.ClientSession() as session:
+            async with session.get(github_url) as response:
+                if response.status != 200:
+                    raise ValueError("Failed to fetch trivia questions.")
+                content = await response.text()
+
+        questions = []
+        for line in content.strip().split("\n"):
+            if "| A:" in line and "| H:" in line:
+                question, rest = line.split("| A:")
+                answers, hints = rest.split("| H:")
+                questions.append((
+                    question.strip(),
+                    [a.strip() for a in answers.split(",")],
+                    [h.strip() for h in hints.split(",")]
+                ))
+        return questions
