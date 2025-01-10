@@ -1,4 +1,4 @@
 from .trivia import Trivia
 
-def setup(bot):
-    bot.add_cog(Trivia(bot))
+async def setup(bot):
+    await bot.add_cog(Trivia(bot))
