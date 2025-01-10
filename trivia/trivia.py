@@ -138,25 +138,30 @@ class Trivia(commands.Cog):
     # ==============================
     # GITHUB INTEGRATION
     # ==============================
-    async def fetch_genres(self, guild) -> List[str]:
-        """Fetch available genres from the GitHub folder."""
-        github_url = await self.config.guild(guild).github_url()
+    sync def fetch_genres(self, guild) -> List[str]:
+        """Fetch available genres from the GitHub folder using the GitHub API."""
+        github_url = "https://api.github.com/repos/AfterWorld/UltDev/contents/trivia/questions"
+        token = await self.config.guild(guild).github_token()
+        headers = {"Authorization": f"token {token}"} if token else {}
+    
         try:
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(headers=headers) as session:
                 async with session.get(github_url) as response:
                     if response.status != 200:
                         log.error(f"Failed to fetch genres: {response.status} - {response.reason}")
                         return []
-
-                    content = await response.text()
-                    return [line.strip().replace(".txt", "") for line in content.split("\n") if line.endswith(".txt")]
+    
+                    data = await response.json()
+                    # Extract `.txt` filenames
+                    return [item["name"].replace(".txt", "") for item in data if item["name"].endswith(".txt")]
         except Exception as e:
             log.exception("Error while fetching genres")
             return []
 
     async def fetch_questions(self, guild, genre: str) -> List[Tuple[str, List[str]]]:
-        """Fetch questions for the selected genre."""
-        github_url = f"{await self.config.guild(guild).github_url()}{genre}.txt"
+        """Fetch questions for the selected genre from the GitHub API."""
+        github_url = f"https://raw.githubusercontent.com/AfterWorld/UltDev/main/trivia/questions/{genre}.txt"
+    
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(github_url) as response:
@@ -166,14 +171,12 @@ class Trivia(commands.Cog):
     
                     content = await response.text()
     
-            # Parse questions
             questions = []
             for line in content.strip().split("\n"):
                 if ":" in line:
                     question, answers = line.split(":", 1)
                     answers = [a.strip() for a in answers.split("\n") if a.startswith("-")]
                     questions.append((question.strip(), answers))
-    
             return questions
         except Exception as e:
             log.exception(f"Error while fetching questions for genre '{genre}'")
