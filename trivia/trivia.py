@@ -85,6 +85,13 @@ class Trivia(commands.Cog):
 
         await ctx.send(embed=embed)
 
+    @commands.admin_or_permissions(manage_guild=True)
+    @trivia.command(name="settoken")
+    async def set_github_token(self, ctx, token: str):
+        """Set the GitHub API token for accessing private repositories."""
+        await self.config.guild(ctx.guild).github_token.set(token)
+        await ctx.send("GitHub API token has been saved.")
+    
     # ==============================
     # BACKGROUND TASK
     # ==============================
@@ -145,7 +152,10 @@ class Trivia(commands.Cog):
     async def fetch_quiz_files(self, guild) -> List[str]:
         """Fetch available quiz files from the GitHub folder."""
         github_url = await self.config.guild(guild).github_url()
-        async with aiohttp.ClientSession() as session:
+        token = await self.config.guild(guild).github_token()
+        headers = {"Authorization": f"token {token}"} if token else {}
+    
+        async with aiohttp.ClientSession(headers=headers) as session:
             try:
                 async with session.get(github_url) as response:
                     if response.status != 200:
@@ -156,29 +166,32 @@ class Trivia(commands.Cog):
             except Exception as e:
                 log.exception("Error while fetching quiz files")
                 return []
-
-    async def fetch_questions(self, guild) -> List[Tuple[str, List[str]]]:
-        """Fetch trivia questions for the selected quiz."""
-        selected_file = await self.config.guild(guild).selected_file()
-        github_url = f"{await self.config.guild(guild).github_url()}{selected_file}.txt"
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.get(github_url) as response:
-                    if response.status != 200:
-                        log.error(f"Failed to fetch questions for quiz '{selected_file}': {response.status} - {response.reason}")
-                        return []
-                    content = await response.text()
-
-                questions = []
-                for line in content.strip().split("\n"):
-                    if ":" in line and line.startswith("-"):
-                        question, answers = line.split(":", 1)
-                        answers = [ans.strip() for ans in answers.strip().split("\n") if ans.startswith("-")]
-                        questions.append((question.strip(), answers))
-                return questions
-            except Exception as e:
-                log.exception("Error while fetching questions")
-                return []
+    
+        async def fetch_questions(self, guild) -> List[Tuple[str, List[str]]]:
+            """Fetch trivia questions for the selected quiz."""
+            selected_file = await self.config.guild(guild).selected_file()
+            github_url = f"{await self.config.guild(guild).github_url()}{selected_file}.txt"
+            token = await self.config.guild(guild).github_token()
+            headers = {"Authorization": f"token {token}"} if token else {}
+        
+            async with aiohttp.ClientSession(headers=headers) as session:
+                try:
+                    async with session.get(github_url) as response:
+                        if response.status != 200:
+                            log.error(f"Failed to fetch questions for quiz '{selected_file}': {response.status} - {response.reason}")
+                            return []
+                        content = await response.text()
+        
+                    questions = []
+                    for line in content.strip().split("\n"):
+                        if ":" in line and line.startswith("-"):
+                            question, answers = line.split(":", 1)
+                            answers = [ans.strip() for ans in answers.strip().split("\n") if ans.startswith("-")]
+                            questions.append((question.strip(), answers))
+                    return questions
+                except Exception as e:
+                    log.exception("Error while fetching questions")
+                    return []
 
 
 def setup(bot):
