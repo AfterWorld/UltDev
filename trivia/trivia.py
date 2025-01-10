@@ -102,6 +102,11 @@ class Trivia(commands.Cog):
         genre = await self.config.guild(guild).selected_genre()
         questions = await self.fetch_questions(guild, genre)
     
+        if not questions:
+            await channel.send(f"No questions found for the genre '{genre}'. Please check the file or format.")
+            self.trivia_active = False
+            return
+    
         while self.trivia_active:
             question, answers, hints = random.choice(questions)
             self.current_question = question
