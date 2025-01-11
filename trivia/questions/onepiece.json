@@ -24,19 +24,81 @@
             "question": "Who is the doctor of the Straw Hat Pirates?",
             "answers": ["Chopper", "Tony Tony Chopper"],
             "hints": ["A reindeer with the ability to talk.", "Uses the Human-Human Fruit."]
-        }
-        // Add the remaining questions here in the same format
-    ],
-    "general": [
-        {
-            "question": "How many days are there in a regular year?",
-            "answers": ["365", "three hundred and sixty five"],
-            "hints": ["It's less than 400 days.", "It does not account for leap years."]
         },
         {
-            "question": "Who is the #1 followed user on Twitter?",
-            "answers": ["Barack Obama", "Obama"],
-            "hints": ["Former President of the United States.", "His first name starts with 'B'."]
+            "question": "What does Nami specialize in?",
+            "answers": ["Navigation", "Cartography"],
+            "hints": ["Nami creates maps and navigates the ship.", "Her weapon is the Clima-Tact."]
+        },
+        {
+            "question": "What is Zoro's ultimate goal?",
+            "answers": ["To become the world's greatest swordsman", "Greatest swordsman"],
+            "hints": ["A goal inspired by his childhood rival.", "He wants to defeat Dracule Mihawk."]
+        },
+        {
+            "question": "Who is the 'Strongest Creature in the World'?",
+            "answers": ["Kaido", "Kaidou"],
+            "hints": ["A Yonko with a reputation for indestructibility.", "Known as the King of Beasts."]
+        },
+        {
+            "question": "What is the name of Luffy's father?",
+            "answers": ["Monkey D. Dragon", "Dragon"],
+            "hints": ["Leader of the Revolutionary Army.", "Known as the world's most wanted man."]
+        },
+        {
+            "question": "What does the 'D' in Luffy's name stand for?",
+            "answers": ["Will of D", "D clan"],
+            "hints": ["A mysterious middle initial.", "Associated with a 'storm' or 'rebellion'."]
+        },
+        {
+            "question": "Who is the Fleet Admiral of the Marines after the Marineford War?",
+            "answers": ["Akainu", "Sakazuki"],
+            "hints": ["Known for his Magma-Magma Fruit.", "Defeated Aokiji in a duel."]
+        },
+        {
+            "question": "What is Usopp's alias in Dressrosa?",
+            "answers": ["God Usopp", "Sogeking"],
+            "hints": ["He is worshiped for knocking out Sugar.", "He used a long-distance sniper shot."]
+        },
+        {
+            "question": "What is Brook's signature phrase?",
+            "answers": ["Yohohoho", "Skull Joke"],
+            "hints": ["Often followed by a joke about his bones.", "Laughs like a skeleton."]
+        },
+        {
+            "question": "What is Nico Robin's epithet?",
+            "answers": ["Devil Child", "Miss All Sunday"],
+            "hints": ["Her nickname from the World Government.", "She worked for Crocodile in Baroque Works."]
+        },
+        {
+            "question": "What is Franky's real name?",
+            "answers": ["Cutty Flam", "Franky"],
+            "hints": ["A shipwright with a mechanical body.", "His real name is rarely used."]
+        },
+        {
+            "question": "What is the name of Luffy's grandfather?",
+            "answers": ["Monkey D. Garp", "Garp"],
+            "hints": ["A Marine hero who fought Gol D. Roger.", "Known as the Fist of Love."]
+        },
+        {
+            "question": "What is the name of the sea surrounding the Grand Line?",
+            "answers": ["Calm Belt"],
+            "hints": ["Known for its lack of wind and sea kings.", "Acts as a barrier to the Grand Line."]
+        },
+        {
+            "question": "What island is Luffy from?",
+            "answers": ["Foosha Village", "Dawn Island"],
+            "hints": ["A small village where Shanks inspired Luffy.", "Home to Dadan and the mountain bandits."]
+        },
+        {
+            "question": "What is Luffy's bounty after Dressrosa?",
+            "answers": ["500,000,000 berries", "500 million"],
+            "hints": ["Increased significantly after defeating Doflamingo.", "Half a billion."]
+        },
+        {
+            "question": "Who is the leader of the Revolutionary Army?",
+            "answers": ["Monkey D. Dragon", "Dragon"],
+            "hints": ["Luffy's father.", "A mysterious figure fighting against the World Government."]
         }
     ]
 }
