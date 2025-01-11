@@ -19,7 +19,7 @@ class Trivia(commands.Cog):
         self.config = Config.get_conf(self, identifier=9876543211, force_registration=True)
         default_guild = {
             "channel_id": None,  # Channel for trivia
-            "github_url": "https://raw.githubusercontent.com/AfterWorld/UltDev/main/trivia/questions/",
+            "github_url": "https://api.github.com/repos/AfterWorld/UltDev/contents/trivia/questions/",
             "github_token": None,  # GitHub API token
             "selected_genre": None,  # Active genre
             "leaderboard": {},  # Leaderboard data
@@ -170,8 +170,9 @@ class Trivia(commands.Cog):
                         log.error(f"Failed to fetch genres: {response.status} - {response.reason}")
                         return []
     
+                    # Parse JSON response from GitHub API
                     data = await response.json()
-                    # Extract filenames ending with .json and strip the extension
+                    # Extract .json filenames and strip the extension
                     return [item["name"].replace(".json", "") for item in data if item["name"].endswith(".json")]
         except Exception as e:
             log.exception("Error while fetching genres")
@@ -187,6 +188,7 @@ class Trivia(commands.Cog):
                         log.error(f"Failed to fetch questions for genre '{genre}': {response.status} - {response.reason}")
                         return []
     
+                    # Parse the JSON content of the file
                     data = await response.json()
                     # Extract questions, answers, and hints
                     return [(q["question"], q["answers"], q["hints"]) for q in data]
