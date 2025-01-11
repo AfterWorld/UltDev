@@ -1,4 +1,4 @@
 from .ai_character import AICharacter
 
-await def setup(bot):
+async def setup(bot):
     bot.add_cog(AICharacter(bot))
