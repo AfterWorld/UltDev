@@ -31,7 +31,7 @@ class AICharacter(commands.Cog):
         await ctx.send("The OpenAI API key has been successfully set!")
 
     @commands.command()
-    async def character(self, ctx, character: str, *, question: str):
+    async def char(self, ctx, character: str, *, question: str):
         """Ask a fictional character a question."""
         api_key = await self.config.api_key()
         if not api_key:
