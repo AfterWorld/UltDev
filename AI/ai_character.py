@@ -2,6 +2,7 @@ import discord
 from redbot.core import commands, Config
 import openai
 
+
 class AICharacter(commands.Cog):
     """Interact with fictional characters using OpenAI API."""
 
@@ -22,7 +23,8 @@ class AICharacter(commands.Cog):
     @commands.is_owner()
     async def ai(self, ctx):
         """AI Character Interaction settings."""
-        pass
+        if ctx.invoked_subcommand is None:
+            await ctx.send_help(ctx.command)
 
     @ai.command()
     async def setapikey(self, ctx, api_key: str):
@@ -31,7 +33,7 @@ class AICharacter(commands.Cog):
         await ctx.send("The OpenAI API key has been successfully set!")
 
     @commands.command()
-    async def char(self, ctx, character: str, *, question: str):
+    async def character(self, ctx, character: str, *, question: str):
         """Ask a fictional character a question."""
         api_key = await self.config.api_key()
         if not api_key:
