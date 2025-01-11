@@ -1,5 +1,5 @@
 {
-    "author": ["Your Name"],
+    "author": ["Ult"],
     "description": "Interact with fictional characters using OpenAI's GPT-based API.",
     "install_msg": "Thank you for installing the AI Character cog! Use `[p]ai setapikey` to configure your OpenAI API key.",
     "short": "AI Character Interaction",
