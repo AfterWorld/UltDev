@@ -161,30 +161,24 @@ class Trivia(commands.Cog):
     # GITHUB INTEGRATION
     # ==============================
     async def fetch_genres(self, guild) -> List[str]:
-        """Fetch available genres from the GitHub folder using the GitHub API."""
-        github_url = "https://api.github.com/repos/AfterWorld/UltDev/contents/trivia/questions"
-        token = await self.config.guild(guild).github_token()
-        headers = {"Authorization": f"token {token}"} if token else {}
-    
+        """Fetch available genres from the JSON file."""
+        github_url = f"{await self.config.guild(guild).github_url()}questions.json"
         try:
-            async with aiohttp.ClientSession(headers=headers) as session:
+            async with aiohttp.ClientSession() as session:
                 async with session.get(github_url) as response:
                     if response.status != 200:
                         log.error(f"Failed to fetch genres: {response.status} - {response.reason}")
                         return []
     
                     data = await response.json()
-                    # Extract `.txt` filenames
-                    return [item["name"].replace(".txt", "") for item in data if item["name"].endswith(".txt")]
+                    return list(data.keys())  # Extract genres as keys in the JSON
         except Exception as e:
             log.exception("Error while fetching genres")
             return []
 
     async def fetch_questions(self, guild, genre: str) -> List[Tuple[str, List[str], List[str]]]:
-        """Fetch questions for the selected genre."""
-        github_url = f"{await self.config.guild(guild).github_url()}{genre}.txt"
-    
-        log.debug(f"Fetching questions from: {github_url}")
+        """Fetch questions for the selected genre from the JSON file."""
+        github_url = f"{await self.config.guild(guild).github_url()}questions.json"
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(github_url) as response:
@@ -192,26 +186,13 @@ class Trivia(commands.Cog):
                         log.error(f"Failed to fetch questions for genre '{genre}': {response.status} - {response.reason}")
                         return []
     
-                    content = await response.text()
-                    log.debug(f"File content for {genre}: {content}")
+                    data = await response.json()
+                    if genre not in data:
+                        log.error(f"Genre '{genre}' not found in the JSON file.")
+                        return []
     
-            # Parse questions
-            questions = []
-            for line in content.strip().split("\n"):
-                if ":" in line:
-                    question, answers = line.split(":", 1)
-                    current_hints = []  # Reset hints for new question
-                    answers = [a.strip() for a in answers.split("\n") if a.startswith("-")]
-                elif line.startswith("Hints:"):
-                    current_hints.append(line[6:].strip())
-                elif current_hints and not line.startswith("-"):
-                    current_hints.append(line.strip())
-    
-                if question and answers:
-                    questions.append((question.strip(), answers, current_hints))
-    
-            log.debug(f"Parsed questions for {genre}: {questions}")
-            return questions
+                    # Extract questions, answers, and hints for the genre
+                    return [(q["question"], q["answers"], q["hints"]) for q in data[genre]]
         except Exception as e:
             log.exception(f"Error while fetching questions for genre '{genre}'")
             return []
