@@ -181,6 +181,7 @@ class Trivia(commands.Cog):
     async def fetch_questions(self, guild, genre: str) -> List[Tuple[str, List[str], List[str]]]:
         """Fetch questions for the selected genre from its JSON file."""
         github_url = f"{await self.config.guild(guild).github_url()}{genre}.json"
+        log.debug(f"Fetching questions from: {github_url}")  # Log URL
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(github_url) as response:
@@ -188,10 +189,14 @@ class Trivia(commands.Cog):
                         log.error(f"Failed to fetch questions for genre '{genre}': {response.status} - {response.reason}")
                         return []
     
-                    # Parse the JSON content of the file
+                    # Fetch and log the raw data
                     data = await response.json()
-                    # Extract questions, answers, and hints
-                    return [(q["question"], q["answers"], q["hints"]) for q in data]
+                    log.debug(f"Fetched data for genre '{genre}': {data}")
+    
+                    # Parse and return the questions
+                    questions = [(q["question"], q["answers"], q["hints"]) for q in data]
+                    log.debug(f"Parsed questions for genre '{genre}': {questions}")
+                    return questions
         except Exception as e:
             log.exception(f"Error while fetching questions for genre '{genre}'")
             return []
