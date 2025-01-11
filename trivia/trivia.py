@@ -19,7 +19,7 @@ class Trivia(commands.Cog):
         self.config = Config.get_conf(self, identifier=9876543211, force_registration=True)
         default_guild = {
             "channel_id": None,  # Channel for trivia
-            "github_url": "https://api.github.com/repos/AfterWorld/UltDev/contents/trivia/questions/",
+            "github_url": "https://raw.githubusercontent.com/AfterWorld/UltDev/main/trivia/questions/",
             "github_token": None,  # GitHub API token
             "selected_genre": None,  # Active genre
             "leaderboard": {},  # Leaderboard data
@@ -181,7 +181,7 @@ class Trivia(commands.Cog):
     async def fetch_questions(self, guild, genre: str) -> List[Tuple[str, List[str], List[str]]]:
         """Fetch questions for the selected genre from its JSON file."""
         github_url = f"{await self.config.guild(guild).github_url()}{genre}.json"
-        log.debug(f"Fetching questions from: {github_url}")  # Log URL
+        log.debug(f"Fetching questions from: {github_url}")
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(github_url) as response:
@@ -189,17 +189,25 @@ class Trivia(commands.Cog):
                         log.error(f"Failed to fetch questions for genre '{genre}': {response.status} - {response.reason}")
                         return []
     
-                    # Fetch and log the raw data
-                    data = await response.json()
-                    log.debug(f"Fetched data for genre '{genre}': {data}")
+                    # Log raw response for debugging
+                    content = await response.text()
+                    log.debug(f"Raw response content: {content}")
     
-                    # Parse and return the questions
+                    # Attempt to parse the JSON
+                    try:
+                        data = json.loads(content)  # Parse the JSON content
+                    except json.JSONDecodeError as e:
+                        log.error(f"Failed to parse JSON for genre '{genre}': {e}")
+                        return []
+    
+                    # Extract questions, answers, and hints
                     questions = [(q["question"], q["answers"], q["hints"]) for q in data]
                     log.debug(f"Parsed questions for genre '{genre}': {questions}")
                     return questions
         except Exception as e:
             log.exception(f"Error while fetching questions for genre '{genre}'")
             return []
+
 
 def setup(bot):
     bot.add_cog(Trivia(bot))
