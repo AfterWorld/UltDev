@@ -1,0 +1,42 @@
+{
+    "onepiece": [
+        {
+            "question": "What is the name of Luffy's ship?",
+            "answers": ["Thousand Sunny", "Going Merry", "The Sunny"],
+            "hints": ["It is the second ship of the Straw Hat Pirates.", "Built by Franky using Adam Wood."]
+        },
+        {
+            "question": "Who is the first crewmate Luffy recruits?",
+            "answers": ["Zoro", "Roronoa Zoro"],
+            "hints": ["A swordsman with three swords.", "Known as the Pirate Hunter."]
+        },
+        {
+            "question": "What fruit did Luffy eat to gain his powers?",
+            "answers": ["Gum-Gum Fruit", "Gomu Gomu no Mi"],
+            "hints": ["A rubber-based Devil Fruit.", "Its Japanese name starts with 'Gomu'."]
+        },
+        {
+            "question": "What is Sanji's dream?",
+            "answers": ["To find the All Blue", "All Blue"],
+            "hints": ["A legendary sea that connects all four seas.", "Sanji is a chef with this goal."]
+        },
+        {
+            "question": "Who is the doctor of the Straw Hat Pirates?",
+            "answers": ["Chopper", "Tony Tony Chopper"],
+            "hints": ["A reindeer with the ability to talk.", "Uses the Human-Human Fruit."]
+        }
+        // Add the remaining questions here in the same format
+    ],
+    "general": [
+        {
+            "question": "How many days are there in a regular year?",
+            "answers": ["365", "three hundred and sixty five"],
+            "hints": ["It's less than 400 days.", "It does not account for leap years."]
+        },
+        {
+            "question": "Who is the #1 followed user on Twitter?",
+            "answers": ["Barack Obama", "Obama"],
+            "hints": ["Former President of the United States.", "His first name starts with 'B'."]
+        }
+    ]
+}
