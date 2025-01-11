@@ -2,7 +2,6 @@ import discord
 from redbot.core import commands, Config
 import openai
 
-
 class AICharacter(commands.Cog):
     """Interact with fictional characters using OpenAI API."""
 
@@ -15,12 +14,9 @@ class AICharacter(commands.Cog):
             "luffy": "Monkey D. Luffy, a cheerful, courageous, and determined pirate who wants to become the Pirate King. He is adventurous and loves his crew.",
             "zoro": "Roronoa Zoro, a skilled swordsman and loyal pirate. He is serious, focused, and determined to become the world's greatest swordsman.",
             "nami": "Nami, a clever and resourceful navigator. She is practical, intelligent, and values treasure but deeply cares for her friends.",
-            "sanji": "Sanji, the Straw Hat Pirates' cook. He is chivalrous, loves cooking, and is infatuated with women but always protects his friends.",
-            "usopp": "Usopp, the crew's sniper and a talented inventor. He is humorous, creative, and dreams of becoming a brave warrior of the sea.",
         }
 
     @commands.group()
-    @commands.is_owner()
     async def ai(self, ctx):
         """AI Character Interaction settings."""
         if ctx.invoked_subcommand is None:
