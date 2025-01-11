@@ -161,8 +161,8 @@ class Trivia(commands.Cog):
     # GITHUB INTEGRATION
     # ==============================
     async def fetch_genres(self, guild) -> List[str]:
-        """Fetch available genres from the JSON file."""
-        github_url = f"{await self.config.guild(guild).github_url()}questions.json"
+        """Fetch available genres from the GitHub folder."""
+        github_url = f"{await self.config.guild(guild).github_url()}"
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(github_url) as response:
@@ -171,14 +171,15 @@ class Trivia(commands.Cog):
                         return []
     
                     data = await response.json()
-                    return list(data.keys())  # Extract genres as keys in the JSON
+                    # Extract filenames ending with .json and strip the extension
+                    return [item["name"].replace(".json", "") for item in data if item["name"].endswith(".json")]
         except Exception as e:
             log.exception("Error while fetching genres")
             return []
 
     async def fetch_questions(self, guild, genre: str) -> List[Tuple[str, List[str], List[str]]]:
-        """Fetch questions for the selected genre from the JSON file."""
-        github_url = f"{await self.config.guild(guild).github_url()}questions.json"
+        """Fetch questions for the selected genre from its JSON file."""
+        github_url = f"{await self.config.guild(guild).github_url()}{genre}.json"
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(github_url) as response:
@@ -187,16 +188,11 @@ class Trivia(commands.Cog):
                         return []
     
                     data = await response.json()
-                    if genre not in data:
-                        log.error(f"Genre '{genre}' not found in the JSON file.")
-                        return []
-    
-                    # Extract questions, answers, and hints for the genre
-                    return [(q["question"], q["answers"], q["hints"]) for q in data[genre]]
+                    # Extract questions, answers, and hints
+                    return [(q["question"], q["answers"], q["hints"]) for q in data]
         except Exception as e:
             log.exception(f"Error while fetching questions for genre '{genre}'")
             return []
-
 
 def setup(bot):
     bot.add_cog(Trivia(bot))
