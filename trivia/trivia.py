@@ -119,6 +119,46 @@ class Trivia(commands.Cog):
 
         state.reset()
         await ctx.send("Trivia session stopped.")
+        
+    @trivia.command()
+    async def leaderboard(self, ctx):
+        """Show the all-time trivia leaderboard."""
+        try:
+            total_scores = await self.config.guild(ctx.guild).total_scores()
+            if not total_scores:
+                await ctx.send("No scores recorded yet!")
+                return
+    
+            # Sort scores in descending order and get the top 10 players
+            sorted_scores = sorted(total_scores.items(), key=lambda x: x[1], reverse=True)
+            top_players = sorted_scores[:10]
+    
+            embed = discord.Embed(
+                title="🏆 All-Time Trivia Leaderboard 🏆",
+                description="Top 10 Players",
+                color=discord.Color.gold()
+            )
+    
+            # Add medals for the top 3 positions
+            medals = {0: "🥇", 1: "🥈", 2: "🥉"}
+            for idx, (player_id, score) in enumerate(top_players):
+                medal = medals.get(idx, "")
+                try:
+                    player = await self.bot.fetch_user(int(player_id))
+                    player_name = player.name if player else "Unknown Player"
+                except:
+                    player_name = "Unknown Player"
+                embed.add_field(
+                    name=f"{medal} #{idx + 1}",
+                    value=f"{player_name}: {score} points",
+                    inline=False
+                )
+    
+            await ctx.send(embed=embed)
+    
+        except Exception as e:
+            log.error(f"Error showing leaderboard: {e}")
+            await ctx.send("An error occurred while showing the leaderboard.")
 
     async def run_trivia(self, guild, channel):
         """Main trivia loop for a specific channel."""
@@ -221,108 +261,6 @@ class Trivia(commands.Cog):
             await self.channel_states[guild.id].channel.send(
                 f"🏆 {user.mention} reached **{total_points} points**! Keep it up!"
             )
-        
-    @trivia.command()
-    async def leaderboard(self, ctx):
-        """Show the all-time trivia leaderboard."""
-        try:
-            total_scores = await self.config.guild(ctx.guild).total_scores()
-            if not total_scores:
-                await ctx.send("No scores recorded yet!")
-                return
-    
-            # Sort scores in descending order and get the top 10 players
-            sorted_scores = sorted(total_scores.items(), key=lambda x: x[1], reverse=True)
-            top_players = sorted_scores[:10]
-    
-            embed = discord.Embed(
-                title="🏆 All-Time Trivia Leaderboard 🏆",
-                description="Top 10 Players",
-                color=discord.Color.gold()
-            )
-    
-            # Add medals for the top 3 positions
-            medals = {0: "🥇", 1: "🥈", 2: "🥉"}
-            for idx, (player_id, score) in enumerate(top_players):
-                medal = medals.get(idx, "")
-                try:
-                    player = await self.bot.fetch_user(int(player_id))
-                    player_name = player.name if player else "Unknown Player"
-                except:
-                    player_name = "Unknown Player"
-                embed.add_field(
-                    name=f"{medal} #{idx + 1}",
-                    value=f"{player_name}: {score} points",
-                    inline=False
-                )
-    
-            await ctx.send(embed=embed)
-    
-        except Exception as e:
-            log.error(f"Error showing leaderboard: {e}")
-            await ctx.send("An error occurred while showing the leaderboard.")
-
-    async def run_trivia(self, guild, channel):
-        """Main trivia loop for a specific channel."""
-        state = self.get_channel_state(channel)
-        try:
-            genre = await self.config.guild(guild).selected_genre()
-            questions = await self.fetch_questions(guild, genre)
-
-            if not questions:
-                await channel.send(f"No questions found for the genre '{genre}'.")
-                state.reset()
-                return
-
-            # Filter unused questions
-            while state.active:
-                available_questions = [q for q in questions if q["question"] not in state.used_questions]
-                if not available_questions:
-                    await channel.send("All questions have been used! Reshuffling the question pool...")
-                    state.used_questions.clear()
-                    available_questions = questions
-
-                question_data = random.choice(available_questions)
-                state.question = question_data["question"]
-                state.answers = question_data["answers"]
-                state.hints = question_data.get("hints", [])
-                state.used_questions.add(state.question)
-
-                await self._handle_question_round(channel, guild, state)
-
-        except asyncio.CancelledError:
-            log.info("Trivia task cancelled.")
-        except Exception as e:
-            log.error(f"Error in trivia loop: {e}")
-        finally:
-            state.reset()
-
-    async def _handle_question_round(self, channel, guild, state):
-        """Handle a single question round."""
-        await channel.send(f"**Trivia Question:** {state.question}\nType your answer below!")
-
-        for i in range(30, 0, -5):  # 30 seconds timer
-            if not state.active:
-                return
-            await asyncio.sleep(5)
-            if not state.question:
-                break
-
-            # Provide hints at 15 and 10 seconds
-            if i in (15, 10):
-                partial_answer = self.get_partial_answer(
-                    state.answers[0],
-                    0.66 if i == 10 else 0.33
-                )
-                await channel.send(f"**{i} seconds left!** Hint: {partial_answer}")
-
-        if state.question and state.active:
-            await channel.send(f"Time's up! The correct answer was: {state.answers[0]}")
-            state.question = None
-            state.answers = []
-            state.hints = []
-
-        await asyncio.sleep(5)
 
     async def fetch_genres(self, guild) -> List[str]:
         """Fetch available genres."""
