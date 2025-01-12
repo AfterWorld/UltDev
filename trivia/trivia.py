@@ -95,6 +95,7 @@ class Trivia(commands.Cog):
         default_guild = {
             "github_url": "https://api.github.com/repos/AfterWorld/UltDev/contents/trivia/questions/",
             "selected_genre": None,
+            "selected_difficulty": None,  # Add this field for difficulty
             "scores": {},
             "total_scores": {},
             "games_played": 0,
