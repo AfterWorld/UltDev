@@ -373,6 +373,7 @@ class Trivia(commands.Cog):
                 return
     
             while state.active:
+                # Shuffle questions and pick one that hasn't been used
                 available_questions = [q for q in questions if q["question"] not in state.used_questions]
                 if not available_questions:
                     await channel.send("All questions have been used! Reshuffling the question pool...")
@@ -547,26 +548,37 @@ class Trivia(commands.Cog):
             log.error(f"Error fetching genres: {e}")
             return []
 
-    async def fetch_questions(self, guild, genre: str) -> List[dict]:
-        """Fetch questions for the selected genre and optional difficulty."""
+    async def fetch_questions(self, guild, genre: str):
+        """Fetch questions for the selected genre from GitHub."""
         try:
-            url = f"{await self.config.guild(guild).github_url()}{genre}.yaml"
+            # GitHub URL to fetch the file
+            github_url = f"https://api.github.com/repos/AfterWorld/UltDev/contents/trivia/questions/{genre}.yaml"
+    
             async with aiohttp.ClientSession() as session:
-                async with session.get(url) as response:
+                async with session.get(github_url) as response:
                     if response.status != 200:
+                        log.error(f"Failed to fetch questions from GitHub. Status: {response.status}")
                         return []
+    
+                    # GitHub returns file content in base64 encoding
                     data = await response.json()
-                    content = base64.b64decode(data["content"]).decode("utf-8")
-                    questions = yaml.safe_load(content)
+                    file_content = base64.b64decode(data["content"]).decode("utf-8")
     
-                    # Get the selected difficulty
-                    selected_difficulty = await self.config.guild(guild).selected_difficulty()
+                    # Parse the YAML content
+                    questions = yaml.safe_load(file_content)
     
-                    # If difficulty is specified, filter questions; otherwise, return all
-                    if selected_difficulty:
-                        questions = [q for q in questions if q.get("difficulty") == selected_difficulty]
+                    # Validate questions structure
+                    valid_questions = [
+                        q for q in questions
+                        if "question" in q and "answers" in q and isinstance(q["answers"], list)
+                    ]
     
-                    return questions
+                    if not valid_questions:
+                        log.error(f"No valid questions found in {genre}.yaml on GitHub.")
+                        return []
+    
+                    return valid_questions
+    
         except Exception as e:
             log.error(f"Error fetching questions: {e}")
             return []
