@@ -49,22 +49,13 @@ class Trivia(commands.Cog):
             "last_active": None
         }
         self.config.register_guild(**default_guild)
-        self.state = TriviaState()
-        self._cleanup_task = asyncio.create_task(self._cleanup_stale_games())
+        self.channel_states = {}  # State per channel
 
-    async def _cleanup_stale_games(self):
-        """Clean up stale games."""
-        while True:
-            try:
-                if self.state.active and self.state.channel:
-                    last_active = await self.config.guild(self.state.channel.guild).last_active()
-                    if last_active and (discord.utils.utcnow().timestamp() - last_active) > 1800:
-                        log.info("Resetting stale trivia state due to inactivity.")
-                        await self.state.channel.send("Trivia game automatically stopped due to inactivity.")
-                        self.state.reset()
-            except Exception as e:
-                log.error(f"Error in cleanup task: {e}")
-            await asyncio.sleep(300)
+    def get_channel_state(self, channel: discord.TextChannel):
+        """Get or initialize the trivia state for a specific channel."""
+        if channel.id not in self.channel_states:
+            self.channel_states[channel.id] = TriviaState()
+        return self.channel_states[channel.id]
 
     @commands.group()
     async def trivia(self, ctx):
@@ -73,74 +64,105 @@ class Trivia(commands.Cog):
 
     @trivia.command()
     async def start(self, ctx, genre: str):
-        """Start a trivia session with the selected genre."""
-        try:
-            if self.state.active:
-                await ctx.send("A trivia session is already running!")
-                return
-    
-            genres = await self.fetch_genres(ctx.guild)
-            if genre not in genres:
-                await ctx.send(f"Invalid genre. Available genres: {', '.join(genres)}")
-                return
-    
-            log.info(f"Starting trivia with genre: {genre}")
-            self.state.reset()  # Ensure a clean state before starting
-            self.state.active = True
-            self.state.channel = ctx.channel
-            await self.config.guild(ctx.guild).selected_genre.set(genre)
-            await self.config.guild(ctx.guild).last_active.set(discord.utils.utcnow().timestamp())
-    
-            # Increment games played
-            games_played = await self.config.guild(ctx.guild).games_played()
-            await self.config.guild(ctx.guild).games_played.set(games_played + 1)
-    
-            await ctx.send(f"Starting trivia for the **{genre}** genre. Get ready!")
-            self.state.task = asyncio.create_task(self.run_trivia(ctx.guild))
-    
-        except Exception as e:
-            log.error(f"Error starting trivia: {e}")
-            await ctx.send("An error occurred while starting the trivia game.")
-            self.state.reset()
+        """Start a trivia session in this channel."""
+        state = self.get_channel_state(ctx.channel)
 
+        if state.active:
+            await ctx.send("A trivia session is already running in this channel!")
+            return
+
+        genres = await self.fetch_genres(ctx.guild)
+        if genre not in genres:
+            await ctx.send(f"Invalid genre. Available genres: {', '.join(genres)}")
+            return
+
+        log.info(f"Starting trivia with genre: {genre} in channel: {ctx.channel.id}")
+        state.reset()  # Ensure a clean state before starting
+        state.active = True
+        state.channel = ctx.channel
+        await self.config.guild(ctx.guild).selected_genre.set(genre)
+        await self.config.guild(ctx.guild).last_active.set(discord.utils.utcnow().timestamp())
+
+        # Increment games played
+        games_played = await self.config.guild(ctx.guild).games_played()
+        await self.config.guild(ctx.guild).games_played.set(games_played + 1)
+
+        await ctx.send(f"Starting trivia for the **{genre}** genre. Get ready!")
+        state.task = asyncio.create_task(self.run_trivia(ctx.guild, ctx.channel))
 
     @trivia.command()
     async def stop(self, ctx):
-        """Stop the current trivia session."""
-        if not self.state.active:
-            await ctx.send("No trivia session is currently running.")
+        """Stop the trivia session in this channel."""
+        state = self.get_channel_state(ctx.channel)
+
+        if not state.active:
+            await ctx.send("No trivia session is currently running in this channel.")
             return
-        self.state.reset()
+
+        state.reset()
         await ctx.send("Trivia session stopped.")
 
-    async def run_trivia(self, guild):
-        """Main trivia loop."""
+    async def run_trivia(self, guild, channel):
+        """Main trivia loop for a specific channel."""
+        state = self.get_channel_state(channel)
         try:
             genre = await self.config.guild(guild).selected_genre()
             questions = await self.fetch_questions(guild, genre)
+
             if not questions:
-                await self.state.channel.send(f"No questions found for the genre '{genre}'.")
-                self.state.reset()
+                await channel.send(f"No questions found for the genre '{genre}'.")
+                state.reset()
                 return
 
-            while self.state.active:
-                question_data = random.choice(questions)
-                self.state.question = question_data["question"]
-                self.state.answers = question_data["answers"]
-                self.state.hints = question_data.get("hints", [])
-                await self._ask_question()
-                await asyncio.sleep(5)
+            # Filter unused questions
+            while state.active:
+                available_questions = [q for q in questions if q["question"] not in state.used_questions]
+                if not available_questions:
+                    await channel.send("All questions have been used! Reshuffling the question pool...")
+                    state.used_questions.clear()
+                    available_questions = questions
+
+                question_data = random.choice(available_questions)
+                state.question = question_data["question"]
+                state.answers = question_data["answers"]
+                state.hints = question_data.get("hints", [])
+                state.used_questions.add(state.question)
+
+                await self._handle_question_round(channel, guild, state)
 
         except asyncio.CancelledError:
             log.info("Trivia task cancelled.")
         except Exception as e:
             log.error(f"Error in trivia loop: {e}")
         finally:
-            self.state.reset()
+            state.reset()
 
-    async def _ask_question(self):
-        """Send the question to the channel."""
-        await self.state.channel.send(f"**Trivia Question:** {self.state.question}")
+    async def _handle_question_round(self, channel, guild, state):
+        """Handle a single question round."""
+        await channel.send(f"**Trivia Question:** {state.question}\nType your answer below!")
+
+        for i in range(30, 0, -5):  # 30 seconds timer
+            if not state.active:
+                return
+            await asyncio.sleep(5)
+            if not state.question:
+                break
+
+            # Provide hints at 15 and 10 seconds
+            if i in (15, 10):
+                partial_answer = self.get_partial_answer(
+                    state.answers[0],
+                    0.66 if i == 10 else 0.33
+                )
+                await channel.send(f"**{i} seconds left!** Hint: {partial_answer}")
+
+        if state.question and state.active:
+            await channel.send(f"Time's up! The correct answer was: {state.answers[0]}")
+            state.question = None
+            state.answers = []
+            state.hints = []
+
+        await asyncio.sleep(5)
 
     async def fetch_genres(self, guild) -> List[str]:
         """Fetch available genres."""
@@ -171,5 +193,33 @@ class Trivia(commands.Cog):
             log.error(f"Error fetching questions: {e}")
             return []
 
+    async def add_score(self, guild, user_id: int, points: int):
+        """Add points to both current and total scores."""
+        async with self.config.guild(guild).scores() as scores:
+            scores[str(user_id)] = scores.get(str(user_id), 0) + points
+        async with self.config.guild(guild).total_scores() as total_scores:
+            total_scores[str(user_id)] = total_scores.get(str(user_id), 0) + points
+
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        """Check messages for trivia answers."""
+        if message.author.bot:
+            return
+
+        state = self.channel_states.get(message.channel.id)
+        if not state or not state.active or not state.question:
+            return
+
+        correct_answers = [ans.lower().strip() for ans in state.answers]
+        if message.content.lower().strip() in correct_answers:
+            points = 10
+            await self.add_score(message.guild, message.author.id, points)
+            await message.add_reaction("✅")
+            await state.channel.send(
+                f"🎉 Correct, {message.author.mention}! (+{points} points)\n"
+                f"The answer was: {state.answers[0]}"
+            )
+            state.question = None  # Clear the question for the next round
+            
 def setup(bot):
     bot.add_cog(Trivia(bot))
