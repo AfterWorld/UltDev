@@ -132,14 +132,13 @@ class Trivia(commands.Cog):
             await ctx.send(f"Invalid genre. Available genres: {', '.join(genres)}")
             return
     
-        # Validate the optional difficulty argument
         if difficulty and difficulty not in ["easy", "medium", "hard"]:
             await ctx.send("Invalid difficulty. Choose from: easy, medium, hard.")
             return
     
         state.reset()  # Reset the trivia state
         state.active = True
-        state.channel = ctx.channel
+        state.channel = ctx.channel  # Set the channel here
     
         await self.config.guild(ctx.guild).selected_genre.set(genre)
         await self.config.guild(ctx.guild).selected_difficulty.set(difficulty)  # Can be None
@@ -404,11 +403,16 @@ class Trivia(commands.Cog):
         
     async def _handle_question_round(self, channel, guild, state):
         """Handle a single question round."""
-        await channel.send(f"**Trivia Question:** {state.question}\nType your answer below!")
+        if not state.channel:  # Safety check to ensure the channel is set
+            log.error("No channel set for the trivia session. Aborting round.")
+            state.reset()
+            return
+    
+        await state.channel.send(f"**Trivia Question:** {state.question}\nType your answer below!")
     
         def check_answer(message):
             return (
-                message.channel == channel
+                message.channel == state.channel
                 and message.author != self.bot.user
                 and message.content.lower().strip() in [ans.lower().strip() for ans in state.answers]
             )
@@ -426,7 +430,7 @@ class Trivia(commands.Cog):
             await self.add_score(guild, response.author.id, points)
     
             await response.add_reaction("✅")
-            await channel.send(
+            await state.channel.send(
                 f"🎉 Correct, {response.author.mention}! (+{points} points)\n"
                 f"The answer was: **{state.answers[0]}**"
             )
@@ -438,7 +442,7 @@ class Trivia(commands.Cog):
             await asyncio.sleep(1)  # Brief delay before next question
     
         except asyncio.TimeoutError:
-            await channel.send(f"⏰ Time's up! The answer was: **{state.answers[0]}**.")
+            await state.channel.send(f"⏰ Time's up! The answer was: **{state.answers[0]}**.")
             state.question = None
             state.answers = []
             state.hints = []
