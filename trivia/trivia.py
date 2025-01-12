@@ -373,11 +373,6 @@ class Trivia(commands.Cog):
                 return
     
             while state.active:
-                if not state.channel:
-                    log.error("No channel set for the trivia session. Aborting.")
-                    state.reset()
-                    return
-    
                 available_questions = [q for q in questions if q["question"] not in state.used_questions]
                 if not available_questions:
                     await channel.send("All questions have been used! Reshuffling the question pool...")
@@ -428,6 +423,7 @@ class Trivia(commands.Cog):
         except asyncio.TimeoutError:
             await state.channel.send(f"⏰ Time's up! The answer was: **{state.answers[0]}**.")
     
+        # Reset the question for the next round
         state.question = None
         state.answers = []
     
