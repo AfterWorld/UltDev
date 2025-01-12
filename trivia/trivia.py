@@ -23,6 +23,7 @@ class TriviaState:
         self.channel: Optional[discord.TextChannel] = None
         self.task: Optional[asyncio.Task] = None
         self.used_questions: set = set()
+        self.current_question: Optional[dict] = None  # Add this attribute
 
     def reset(self):
         """Reset all state variables."""
@@ -35,6 +36,7 @@ class TriviaState:
             self.task.cancel()
         self.task = None
         self.used_questions.clear()
+        self.current_question = None  # Reset the current question
 
 
 class Trivia(commands.Cog):
@@ -379,7 +381,9 @@ class Trivia(commands.Cog):
                     state.used_questions.clear()
                     available_questions = questions
     
+                # Select a random question
                 question_data = random.choice(available_questions)
+                state.current_question = question_data  # Assign the current question
                 state.question = question_data["question"]
                 state.answers = question_data["answers"]
                 state.hints = question_data.get("hints", [])
@@ -396,8 +400,8 @@ class Trivia(commands.Cog):
             session_scores = await self.config.guild(guild).scores()
             await self.display_session_recap(guild, channel, session_scores)
             await self.config.guild(guild).scores.set({})  # Clear session scores
-        state.reset()
-
+            state.reset()
+        
     async def _handle_question_round(self, channel, guild, state):
         """Handle a single question round."""
         await channel.send(f"**Trivia Question:** {state.question}\nType your answer below!")
@@ -427,17 +431,19 @@ class Trivia(commands.Cog):
                 f"The answer was: **{state.answers[0]}**"
             )
     
-            state.question = None  # Reset the current question
+            state.question = None  # Reset question for the next round
             state.answers = []
             state.hints = []
-            await asyncio.sleep(1)  # Brief delay
-            await self._handle_question_round(channel, guild, state)
+            state.current_question = None
+            await asyncio.sleep(1)  # Brief delay before next question
     
         except asyncio.TimeoutError:
             await channel.send(f"⏰ Time's up! The answer was: **{state.answers[0]}**.")
             state.question = None
             state.answers = []
             state.hints = []
+            state.current_question = None
+            await asyncio.sleep(1)
     
         def get_partial_answer(self, answer: str, reveal_percentage: float) -> str:
             """
