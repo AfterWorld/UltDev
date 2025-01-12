@@ -115,26 +115,26 @@ class Trivia(commands.Cog):
     async def start(self, ctx, genre: str):
         """Start a trivia session in this channel."""
         state = self.get_channel_state(ctx.channel)
-
+    
         if state.active:
             await ctx.send("A trivia session is already running in this channel!")
             return
-
+    
         genres = await self.fetch_genres(ctx.guild)
         if genre not in genres:
             await ctx.send(f"Invalid genre. Available genres: {', '.join(genres)}")
             return
-
+    
         log.info(f"Starting trivia with genre: {genre} in channel: {ctx.channel.id}")
         state.reset()  # Ensure a clean state before starting
         state.active = True
-        state.channel = ctx.channel
+        state.channel = ctx.channel  # Set the channel where the game is running
         await self.config.guild(ctx.guild).selected_genre.set(genre)
         await self.config.guild(ctx.guild).last_active.set(discord.utils.utcnow().timestamp())
-
+    
         games_played = await self.config.guild(ctx.guild).games_played()
         await self.config.guild(ctx.guild).games_played.set(games_played + 1)
-
+    
         await ctx.send(f"Starting trivia for the **{genre}** genre. Get ready!")
         state.task = asyncio.create_task(self.run_trivia(ctx.guild, ctx.channel))
 
@@ -574,6 +574,10 @@ class Trivia(commands.Cog):
         if not state or not state.active or not state.question:
             return
     
+        if not state.channel:  # Safety check for state.channel
+            log.error("State channel is None when processing a message.")
+            return
+    
         correct_answers = [ans.lower().strip() for ans in state.answers]
         user_answer = message.content.lower().strip()
     
@@ -585,18 +589,7 @@ class Trivia(commands.Cog):
                 f"🎉 Correct, {message.author.mention}! (+{points} points)\n"
                 f"The answer was: **{state.answers[0]}**"
             )
-    
-            # Praise for streaks
-            if hasattr(message.author, "streak"):
-                message.author.streak += 1
-            else:
-                message.author.streak = 1
-    
-            if message.author.streak >= 3:
-                await state.channel.send(f"🔥 {message.author.mention}, you're on fire with {message.author.streak} correct answers in a row!")
-    
             state.question = None  # Clear the question for the next round
-    
         else:
             await message.add_reaction("❌")
             encouraging_responses = [
@@ -605,7 +598,6 @@ class Trivia(commands.Cog):
                 "Good guess, but it's not correct. Try again!",
             ]
             await state.channel.send(random.choice(encouraging_responses))
-            
-            
+               
 def setup(bot):
     bot.add_cog(Trivia(bot))
