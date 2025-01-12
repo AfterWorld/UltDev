@@ -5,7 +5,6 @@
   hints:
     - "A natural disaster at Water 7"
     - "An annual storm phenomenon"
-  difficulty: "medium"
 
 - question: "Who trained Luffy during the two-year timeskip?"
   answers:
@@ -14,15 +13,13 @@
   hints:
     - "Former first mate of the Roger Pirates"
     - "Known as the Dark King"
-  difficulty: "easy"
-What is the name of Zoro's dojo
+
 - question: "What is the name of Zoro's black sword?"
   answers:
     - "Shusui"
   hints:
     - "A legendary blade from Wano"
     - "Previously owned by Ryuma"
-  difficulty: "medium"
 
 - question: "Which member of CP9 had the power of the Cat-Cat Fruit, Leopard Model?"
   answers:
@@ -30,7 +27,6 @@ What is the name of Zoro's dojo
   hints:
     - "The strongest member of CP9"
     - "Leader of the assassination squad"
-  difficulty: "medium"
 
 - question: "What is the name of the island where the Straw Hats met Brook?"
   answers:
@@ -38,7 +34,6 @@ What is the name of Zoro's dojo
   hints:
     - "A floating island in the Florian Triangle"
     - "Ruled by Gecko Moria"
-  difficulty: "easy"
 
 - question: "What is the name of Nami's adopted mother?"
   answers:
@@ -47,7 +42,6 @@ What is the name of Zoro's dojo
   hints:
     - "A former Marine"
     - "Raised Nami and Nojiko"
-  difficulty: "medium"
 
 - question: "Which Celestial Dragon did Luffy punch at Sabaody Archipelago?"
   answers:
@@ -56,7 +50,6 @@ What is the name of Zoro's dojo
   hints:
     - "He tried to buy Keimi"
     - "Wore a bubble helmet"
-  difficulty: "easy"
 
 - question: "What is the name of Ace's devil fruit?"
   answers:
@@ -65,7 +58,6 @@ What is the name of Zoro's dojo
   hints:
     - "Allows the user to create and control fire"
     - "Later eaten by Sabo"
-  difficulty: "easy"
 
 - question: "Who is known as 'The Surgeon of Death'?"
   answers:
@@ -74,7 +66,6 @@ What is the name of Zoro's dojo
   hints:
     - "Captain of the Heart Pirates"
     - "Has the Op-Op Fruit powers"
-  difficulty: "easy"
 
 - question: "What is the name of Zoro's dojo?"
   answers:
@@ -83,7 +74,6 @@ What is the name of Zoro's dojo
   hints:
     - "Where he trained with Kuina"
     - "Located in Shimotsuki Village"
-  difficulty: "medium"
 
 - question: "What is the name of Shanks' sword?"
   answers:
@@ -91,7 +81,6 @@ What is the name of Zoro's dojo
   hints:
     - "A named blade wielded by a Yonko"
     - "Used in his duels with Mihawk"
-  difficulty: "medium"
 
 - question: "What is the name of the Revolutionary Army's base?"
   answers:
@@ -100,7 +89,6 @@ What is the name of Zoro's dojo
   hints:
     - "Located on a winter island"
     - "Destroyed by the Blackbeard Pirates"
-  difficulty: "hard"
 
 - question: "What is the name of Sanji's genetic enhancement?"
   answers:
@@ -109,7 +97,6 @@ What is the name of Zoro's dojo
   hints:
     - "Given by his family"
     - "Grants invisibility powers"
-  difficulty: "medium"
 
 - question: "What is the name of Robin's signature attack?"
   answers:
@@ -118,7 +105,6 @@ What is the name of Zoro's dojo
   hints:
     - "Uses her Devil Fruit powers to break enemies' backs"
     - "Often preceded by sprouting arms"
-  difficulty: "easy"
 
 - question: "What is the name of Usopp's first weapon?"
   answers:
@@ -127,7 +113,6 @@ What is the name of Zoro's dojo
   hints:
     - "A simple slingshot from Syrup Village"
     - "Used before the Kabuto"
-  difficulty: "easy"
 
 - question: "What is the name of Chopper's home island?"
   answers:
@@ -136,7 +121,6 @@ What is the name of Zoro's dojo
   hints:
     - "Known for its medical expertise"
     - "Ruled by Wapol before his defeat"
-  difficulty: "medium"
 
 - question: "What is the name of Franky's mentor?"
   answers:
@@ -145,7 +129,6 @@ What is the name of Zoro's dojo
   hints:
     - "Built the Oro Jackson"
     - "A legendary shipwright"
-  difficulty: "medium"
 
 - question: "What is the name of Brook's former pirate crew?"
   answers:
@@ -153,7 +136,6 @@ What is the name of Zoro's dojo
   hints:
     - "Led by Yorki"
     - "Known for their musical performances"
-  difficulty: "medium"
 
 - question: "What is the official name of Marineford?"
   answers:
@@ -162,7 +144,6 @@ What is the name of Zoro's dojo
   hints:
     - "Center of Marine operations"
     - "Location of the paramount war"
-  difficulty: "easy"
 
 - question: "What is the name of the island where Roger was executed?"
   answers:
@@ -171,7 +152,6 @@ What is the name of Zoro's dojo
   hints:
     - "Where the Great Pirate Era began"
     - "Located in East Blue"
-  difficulty: "easy"
 
 - question: "What is Blackbeard's real name?"
   answers:
@@ -180,7 +160,6 @@ What is the name of Zoro's dojo
   hints:
     - "Former member of Whitebeard's crew"
     - "Current Emperor of the Sea"
-  difficulty: "medium"
 
 - question: "What is the name of Luffy's signature attack?"
   answers:
@@ -189,7 +168,6 @@ What is the name of Zoro's dojo
   hints:
     - "His basic stretching punch"
     - "First attack he mastered"
-  difficulty: "easy"
 
 - question: "What is the name of the Sea Train that connects Water 7 to other islands?"
   answers:
@@ -197,7 +175,6 @@ What is the name of Zoro's dojo
   hints:
     - "Built by Tom"
     - "Runs on sea tracks"
-  difficulty: "medium"
 
 - question: "Who is the captain of the Red Hair Pirates?"
   answers:
@@ -206,7 +183,6 @@ What is the name of Zoro's dojo
   hints:
     - "Gave Luffy his straw hat"
     - "One of the Four Emperors"
-  difficulty: "easy"
 
 - question: "What is the name of Zoro's village?"
   answers:
@@ -214,15 +190,12 @@ What is the name of Zoro's dojo
   hints:
     - "Located in East Blue"
     - "Home to his childhood dojo"
-  difficulty: "easy"
-
 - question: "What is the name of Law's crew?"
   answers:
     - "Heart Pirates"
   hints:
     - "Named after Corazon"
     - "Their Jolly Roger features a smiley face"
-  difficulty: "easy"
 
 - question: "What is the name of Doflamingo's devil fruit?"
   answers:
@@ -231,7 +204,6 @@ What is the name of Zoro's dojo
   hints:
     - "Allows manipulation of strings"
     - "Used to control people like puppets"
-  difficulty: "medium"
 
 - question: "Who is known as the 'Knight of the Sea'?"
   answers:
@@ -240,7 +212,6 @@ What is the name of Zoro's dojo
   hints:
     - "Former Warlord of the Sea"
     - "Expert in Fish-Man Karate"
-  difficulty: "easy"
 
 - question: "What is the name of Big Mom's main homie?"
   answers:
@@ -249,7 +220,6 @@ What is the name of Zoro's dojo
   hints:
     - "A sword with a soul"
     - "Can transform into different weapons"
-  difficulty: "medium"
 
 - question: "What is the name of Whitebeard's ship?"
   answers:
@@ -257,7 +227,6 @@ What is the name of Zoro's dojo
   hints:
     - "Named after a famous whale"
     - "Flagship of the Whitebeard Pirates"
-  difficulty: "easy"
 
 - question: "What is the name of Robin's hometown?"
   answers:
@@ -265,7 +234,6 @@ What is the name of Zoro's dojo
   hints:
     - "Known for its great library"
     - "Destroyed by a Buster Call"
-  difficulty: "medium"
 
 - question: "What is the name of Usopp's crew in his village?"
   answers:
@@ -274,7 +242,6 @@ What is the name of Zoro's dojo
   hints:
     - "Consisted of three children"
     - "Protected Syrup Village"
-  difficulty: "easy"
 
 - question: "What is the name of Sanji's restaurant in Baratie?"
   answers:
@@ -283,7 +250,6 @@ What is the name of Zoro's dojo
   hints:
     - "His section of the Baratie"
     - "Known for quick meals"
-  difficulty: "medium"
 
 - question: "What is the name of Nami's tangerine grove?"
   answers:
@@ -292,7 +258,6 @@ What is the name of Zoro's dojo
   hints:
     - "Grown on the Thousand Sunny"
     - "Originally from her hometown"
-  difficulty: "easy"
 
 - question: "What is the name of Chopper's mentor?"
   answers:
@@ -301,7 +266,6 @@ What is the name of Zoro's dojo
   hints:
     - "A quack doctor"
     - "Inspired Chopper to become a doctor"
-  difficulty: "medium"
 
 - question: "What is the name of Franky's special cola-powered attack?"
   answers:
@@ -310,7 +274,6 @@ What is the name of Zoro's dojo
   hints:
     - "Fired from his palm"
     - "Requires cola to function"
-  difficulty: "medium"
 
 - question: "What is the name of Brook's sword?"
   answers:
@@ -318,7 +281,6 @@ What is the name of Zoro's dojo
   hints:
     - "Can channel his soul powers"
     - "Creates ice effects"
-  difficulty: "medium"
 
 - question: "What is the name of the revolutionary army's second-in-command?"
   answers:
@@ -326,7 +288,6 @@ What is the name of Zoro's dojo
   hints:
     - "Luffy's sworn brother"
     - "Current user of the Flame-Flame Fruit"
-  difficulty: "easy"
 
 - question: "What is the name of the island where the Straw Hats separated?"
   answers:
@@ -335,7 +296,6 @@ What is the name of Zoro's dojo
   hints:
     - "Known for its bubble trees"
     - "Where Kuma scattered the crew"
-  difficulty: "medium"
 
 - question: "What is the name of Zoro's childhood friend?"
   answers:
@@ -343,7 +303,6 @@ What is the name of Zoro's dojo
   hints:
     - "Daughter of his dojo master"
     - "Owner of Wado Ichimonji"
-  difficulty: "medium"
 
 - question: "What is the name of Luffy's attack that defeated Rob Lucci?"
   answers:
@@ -352,7 +311,6 @@ What is the name of Zoro's dojo
   hints:
     - "Used in Gear Second form"
     - "Multiple rapid-fire punches"
-  difficulty: "medium"
 
 - question: "What is the name of the mysterious figure who saved Luffy at Marineford?"
   answers:
@@ -361,7 +319,6 @@ What is the name of Zoro's dojo
   hints:
     - "A Warlord turned Pacifista"
     - "Used his Paw-Paw Fruit powers"
-  difficulty: "hard"
 
 - question: "What is the name of the island where Roger found the One Piece?"
   answers:
@@ -370,7 +327,6 @@ What is the name of Zoro's dojo
   hints:
     - "Final island of the Grand Line"
     - "Only reached by the Roger Pirates"
-  difficulty: "hard"
 
 - question: "What is the name of Kaido's daughter?"
   answers:
@@ -378,7 +334,6 @@ What is the name of Zoro's dojo
   hints:
     - "Wants to be like Oden"
     - "Carries his logbook"
-  difficulty: "medium"
 
 - question: "What is the name of the sword that replaced Shusui in Zoro's arsenal?"
   answers:
@@ -386,7 +341,6 @@ What is the name of Zoro's dojo
   hints:
     - "Belonged to Kozuki Oden"
     - "Known for drawing out Haki"
-  difficulty: "medium"
 
 - question: "What is the name of the person who gave Shanks his scar?"
   answers:
@@ -395,7 +349,6 @@ What is the name of Zoro's dojo
   hints:
     - "Before he became infamous"
     - "Used no Devil Fruit powers"
-  difficulty: "medium"
 
 - question: "What is the name of the island where the Straw Hats first met Vivi?"
   answers:
@@ -403,7 +356,6 @@ What is the name of Zoro's dojo
   hints:
     - "Full of bounty hunters"
     - "Baroque Works operation base"
-  difficulty: "medium"
 
 - question: "What is the name of Ace's mother?"
   answers:
@@ -412,7 +364,6 @@ What is the name of Zoro's dojo
   hints:
     - "Held Ace for 20 months"
     - "From South Blue"
-  difficulty: "hard"
 
 - question: "What is the name of the longest island in One Piece?"
   answers:
@@ -420,7 +371,6 @@ What is the name of Zoro's dojo
   hints:
     - "Where the Davy Back Fight took place"
     - "Home to unique elongated animals"
-  difficulty: "medium"
 
 - question: "What is the name of Luffy's technique that allows him to see the future?"
   answers:
@@ -429,4 +379,3 @@ What is the name of Zoro's dojo
   hints:
     - "Learned during the fight with Katakuri"
     - "Highest form of Observation Haki"
-  difficulty: "hard"
