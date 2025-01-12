@@ -101,6 +101,46 @@ class Trivia(commands.Cog):
 
         state.reset()
         await ctx.send("Trivia session stopped.")
+        
+    @trivia.command()
+    async def leaderboard(self, ctx):
+        """Show the all-time trivia leaderboard."""
+        try:
+            total_scores = await self.config.guild(ctx.guild).total_scores()
+            if not total_scores:
+                await ctx.send("No scores recorded yet!")
+                return
+    
+            # Sort scores in descending order and get the top 10 players
+            sorted_scores = sorted(total_scores.items(), key=lambda x: x[1], reverse=True)
+            top_players = sorted_scores[:10]
+    
+            embed = discord.Embed(
+                title="🏆 All-Time Trivia Leaderboard 🏆",
+                description="Top 10 Players",
+                color=discord.Color.gold()
+            )
+    
+            # Add medals for the top 3 positions
+            medals = {0: "🥇", 1: "🥈", 2: "🥉"}
+            for idx, (player_id, score) in enumerate(top_players):
+                medal = medals.get(idx, "")
+                try:
+                    player = await self.bot.fetch_user(int(player_id))
+                    player_name = player.name if player else "Unknown Player"
+                except:
+                    player_name = "Unknown Player"
+                embed.add_field(
+                    name=f"{medal} #{idx + 1}",
+                    value=f"{player_name}: {score} points",
+                    inline=False
+                )
+    
+            await ctx.send(embed=embed)
+    
+        except Exception as e:
+            log.error(f"Error showing leaderboard: {e}")
+            await ctx.send("An error occurred while showing the leaderboard.")
 
     async def run_trivia(self, guild, channel):
         """Main trivia loop for a specific channel."""
