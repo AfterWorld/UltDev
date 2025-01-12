@@ -112,12 +112,18 @@ class Trivia(commands.Cog):
     async def stop(self, ctx):
         """Stop the trivia session in this channel."""
         state = self.get_channel_state(ctx.channel)
-
+    
         if not state.active:
             await ctx.send("No trivia session is currently running in this channel.")
             return
-
+    
+        # Display session recap
+        session_scores = await self.config.guild(ctx.guild).scores()
+        await self.display_session_recap(ctx.guild, ctx.channel, session_scores)
+    
+        # Reset state and scores
         state.reset()
+        await self.config.guild(ctx.guild).scores.set({})
         await ctx.send("Trivia session stopped.")
         
     @trivia.command()
@@ -166,33 +172,38 @@ class Trivia(commands.Cog):
         try:
             genre = await self.config.guild(guild).selected_genre()
             questions = await self.fetch_questions(guild, genre)
-
+    
             if not questions:
                 await channel.send(f"No questions found for the genre '{genre}'.")
                 state.reset()
                 return
-
+    
             while state.active:
                 available_questions = [q for q in questions if q["question"] not in state.used_questions]
                 if not available_questions:
                     await channel.send("All questions have been used! Reshuffling the question pool...")
                     state.used_questions.clear()
                     available_questions = questions
-
+    
                 question_data = random.choice(available_questions)
                 state.question = question_data["question"]
                 state.answers = question_data["answers"]
                 state.hints = question_data.get("hints", [])
                 state.used_questions.add(state.question)
-
+    
                 await self._handle_question_round(channel, guild, state)
-
+    
         except asyncio.CancelledError:
             log.info("Trivia task cancelled.")
         except Exception as e:
             log.error(f"Error in trivia loop: {e}")
         finally:
-            state.reset()
+            # Trigger session recap after the trivia ends, before resetting the state
+            session_scores = await self.config.guild(guild).scores()
+            await self.display_session_recap(guild, channel, session_scores)
+            await self.config.guild(guild).scores.set({})  # Clear session scores
+        state.reset()
+
 
     async def _handle_question_round(self, channel, guild, state):
         """Handle a single question round."""
@@ -261,6 +272,50 @@ class Trivia(commands.Cog):
             await self.channel_states[guild.id].channel.send(
                 f"🏆 {user.mention} reached **{total_points} points**! Keep it up!"
             )
+
+    async def display_session_recap(self, guild, channel, session_scores):
+        """Display a recap of the trivia session."""
+        if not session_scores:
+            await channel.send("No one scored any points this session. Better luck next time!")
+            return
+    
+        # Sort scores in descending order
+        sorted_scores = sorted(session_scores.items(), key=lambda x: x[1], reverse=True)
+    
+        embed = discord.Embed(
+            title="📊 Trivia Session Recap",
+            color=discord.Color.blue(),
+            description=f"Great job, everyone! Here's how the session went:"
+        )
+    
+        # Add top players
+        for idx, (user_id, score) in enumerate(sorted_scores[:5]):  # Show top 5 players
+            try:
+                user = await self.bot.fetch_user(int(user_id))
+                player_name = user.name if user else "Unknown Player"
+            except:
+                player_name = "Unknown Player"
+            position = ["🥇", "🥈", "🥉"][idx] if idx < 3 else f"#{idx + 1}"
+            embed.add_field(
+                name=f"{position}: {player_name}",
+                value=f"Points: {score}",
+                inline=False
+            )
+    
+        # Add total questions answered
+        questions_answered = await self.config.guild(guild).questions_answered()
+        embed.add_field(name="Total Questions Answered", value=str(questions_answered), inline=False)
+    
+        # Congratulate the top scorer
+        top_user_id, top_score = sorted_scores[0]
+        try:
+            top_user = await self.bot.fetch_user(int(top_user_id))
+            top_user_name = top_user.name if top_user else "Unknown Player"
+        except:
+            top_user_name = "Unknown Player"
+        embed.set_footer(text=f"🏆 Top Scorer: {top_user_name} with {top_score} points!")
+    
+        await channel.send(embed=embed)
 
     async def fetch_genres(self, guild) -> List[str]:
         """Fetch available genres."""
