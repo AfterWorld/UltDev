@@ -78,29 +78,31 @@ class Trivia(commands.Cog):
             if self.state.active:
                 await ctx.send("A trivia session is already running!")
                 return
-
+    
             genres = await self.fetch_genres(ctx.guild)
             if genre not in genres:
                 await ctx.send(f"Invalid genre. Available genres: {', '.join(genres)}")
                 return
-
+    
             log.info(f"Starting trivia with genre: {genre}")
             self.state.reset()  # Ensure a clean state before starting
             self.state.active = True
             self.state.channel = ctx.channel
             await self.config.guild(ctx.guild).selected_genre.set(genre)
             await self.config.guild(ctx.guild).last_active.set(discord.utils.utcnow().timestamp())
-
-            async with self.config.guild(ctx.guild).games_played() as games:
-                games += 1
-
+    
+            # Increment games played
+            games_played = await self.config.guild(ctx.guild).games_played()
+            await self.config.guild(ctx.guild).games_played.set(games_played + 1)
+    
             await ctx.send(f"Starting trivia for the **{genre}** genre. Get ready!")
             self.state.task = asyncio.create_task(self.run_trivia(ctx.guild))
-
+    
         except Exception as e:
             log.error(f"Error starting trivia: {e}")
             await ctx.send("An error occurred while starting the trivia game.")
             self.state.reset()
+
 
     @trivia.command()
     async def stop(self, ctx):
