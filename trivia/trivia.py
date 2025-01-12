@@ -51,6 +51,17 @@ class Trivia(commands.Cog):
         await ctx.send(f"Starting trivia for the **{genre}** genre. Get ready!")
         await self.run_trivia(ctx.guild)
 
+    def get_partial_answer(self, answer: str, reveal_percentage: float) -> str:
+        """Returns a partially revealed answer."""
+        if not answer:
+            return ""
+        chars = list(answer)
+        reveal_count = int(len(chars) * reveal_percentage)
+        for i in range(len(chars) - reveal_count):
+            if chars[i].isalnum():
+                chars[i] = '_'
+        return ''.join(chars)
+
     async def run_trivia(self, guild):
         """Main trivia loop."""
         channel = self.trivia_channel
@@ -63,23 +74,27 @@ class Trivia(commands.Cog):
             return
 
         while self.trivia_active:
-            question, answers, hints = random.choice(questions)
-            self.current_question = question
-            self.current_answers = answers
+            question_data = random.choice(questions)
+            self.current_question = question_data["question"]
+            self.current_answers = question_data["answers"]
+            main_answer = self.current_answers[0]  # Use first answer as main answer for hints
 
-            await channel.send(f"**Trivia Question:**\n{question}")
+            await channel.send(f"**Trivia Question:**\n{self.current_question}")
+            
             for i in range(30, 0, -5):  # Countdown
                 await asyncio.sleep(5)
                 if not self.current_question:  # Stop if answered
                     break
 
-                if i == 15 and hints:
-                    await channel.send(f"**Hint 1:** {hints[0]}")
-                elif i == 10 and len(hints) > 1:
-                    await channel.send(f"**Hint 2:** {hints[1]}")
+                if i == 15:  # At 15 seconds, reveal 33% of the answer
+                    partial_answer = self.get_partial_answer(main_answer, 0.33)
+                    await channel.send(f"**Hint:** The answer looks like: {partial_answer}")
+                elif i == 10:  # At 10 seconds, reveal 66% of the answer
+                    partial_answer = self.get_partial_answer(main_answer, 0.66)
+                    await channel.send(f"**Hint:** The answer looks like: {partial_answer}")
 
             if self.current_question:  # Time's up
-                await channel.send(f"Time's up! The correct answers were: {', '.join(answers)}.")
+                await channel.send(f"Time's up! The correct answer was: {main_answer}")
                 self.current_question = None
                 self.current_answers = []
 
@@ -88,7 +103,6 @@ class Trivia(commands.Cog):
     async def fetch_genres(self, guild) -> List[str]:
         """Fetch available genres."""
         github_url = f"{await self.config.guild(guild).github_url()}"
-        log.debug(f"Fetching genres from: {github_url}")
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(github_url) as response:
@@ -98,13 +112,12 @@ class Trivia(commands.Cog):
                     data = await response.json()
                     return [item["name"].replace(".yaml", "") for item in data if item["name"].endswith(".yaml")]
         except Exception as e:
-            log.exception("Error while fetching genres")
+            log.error(f"Error while fetching genres: {str(e)}")
             return []
 
-    async def fetch_questions(self, guild, genre: str) -> List[Tuple[str, List[str], List[str]]]:
+    async def fetch_questions(self, guild, genre: str) -> List[dict]:
         """Fetch questions for the selected genre."""
         github_url = f"{await self.config.guild(guild).github_url()}{genre}.yaml"
-        log.debug(f"Fetching questions from: {github_url}")
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(github_url) as response:
@@ -113,10 +126,9 @@ class Trivia(commands.Cog):
                         return []
 
                     content = await response.text()
-                    data = yaml.safe_load(content)
-                    return [(q["question"], q["answers"], q["hints"]) for q in data]
+                    return yaml.safe_load(content)
         except Exception as e:
-            log.exception(f"Error while fetching questions for genre '{genre}'")
+            log.error(f"Error while fetching questions for genre '{genre}': {str(e)}")
             return []
 
 def setup(bot):
