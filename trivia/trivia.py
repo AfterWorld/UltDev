@@ -389,7 +389,6 @@ class Trivia(commands.Cog):
             await self.config.guild(guild).scores.set({})  # Clear session scores
         state.reset()
 
-
     async def _handle_question_round(self, channel, guild, state):
         """Handle a single question round."""
         await channel.send(f"**Trivia Question:** {state.question}\nType your answer below!")
@@ -422,6 +421,31 @@ class Trivia(commands.Cog):
             state.hints = []
     
         await asyncio.sleep(5)
+
+    def get_partial_answer(self, answer: str, reveal_percentage: float) -> str:
+        """
+        Returns a partially revealed answer string.
+        
+        :param answer: The correct answer to the question.
+        :param reveal_percentage: The percentage of characters to reveal (0.0 to 1.0).
+        :return: A string with some characters replaced by underscores.
+        """
+        if not answer:
+            return ""
+    
+        # Convert the answer into a list of characters
+        chars = list(answer)
+        reveal_count = int(len(chars) * reveal_percentage)
+    
+        # Randomly choose indices to hide
+        hidden_indices = random.sample(range(len(chars)), len(chars) - reveal_count)
+    
+        for i in hidden_indices:
+            if chars[i].isalnum():  # Hide only alphanumeric characters
+                chars[i] = "_"
+    
+        return ''.join(chars)
+
 
     async def add_score(self, guild, user_id: int, points: int):
         """Add points to both current and total scores, with gamification."""
