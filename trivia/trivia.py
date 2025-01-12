@@ -569,9 +569,13 @@ class Trivia(commands.Cog):
         """Check messages for trivia answers."""
         if message.author.bot:
             return
-    
+        
         state = self.channel_states.get(message.channel.id)
         if not state or not state.active or not state.question:
+            return
+        
+        # Ensure trivia bot only responds to answers in trivia channels
+        if state.channel != message.channel:
             return
     
         correct_answers = [ans.lower().strip() for ans in state.answers]
@@ -595,7 +599,12 @@ class Trivia(commands.Cog):
             if message.author.streak >= 3:
                 await state.channel.send(f"🔥 {message.author.mention}, you're on fire with {message.author.streak} correct answers in a row!")
     
-            state.question = None  # Clear the question for the next round
+            # Clear the question and trigger the next round
+            state.question = None
+            state.answers = []
+            state.hints = []
+            await asyncio.sleep(1)  # Brief delay before starting the next question
+            await self._handle_question_round(state.channel, message.guild, state)
     
         else:
             await message.add_reaction("❌")
@@ -605,7 +614,6 @@ class Trivia(commands.Cog):
                 "Good guess, but it's not correct. Try again!",
             ]
             await state.channel.send(random.choice(encouraging_responses))
-            
             
 def setup(bot):
     bot.add_cog(Trivia(bot))
