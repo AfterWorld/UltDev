@@ -361,29 +361,31 @@ class Trivia(commands.Cog):
             await ctx.send("An error occurred while resetting the leaderboard.")
 
     async def run_trivia(self, guild, channel):
-        """Main trivia loop for a specific channel."""
+        """Main trivia loop."""
         state = self.get_channel_state(channel)
         try:
             genre = await self.config.guild(guild).selected_genre()
             questions = await self.fetch_questions(guild, genre)
     
             if not questions:
-                await channel.send(f"No questions found for the genre '{genre}'.")
+                await channel.send(f"No questions found for the genre '{genre}'. Please check your YAML file.")
                 state.reset()
                 return
     
             while state.active:
-                # Shuffle questions and pick one that hasn't been used
+                # Filter unused questions
                 available_questions = [q for q in questions if q["question"] not in state.used_questions]
                 if not available_questions:
                     await channel.send("All questions have been used! Reshuffling the question pool...")
                     state.used_questions.clear()
                     available_questions = questions
     
+                # Select a random question
                 question_data = random.choice(available_questions)
                 state.question = question_data["question"]
                 state.answers = question_data["answers"]
                 state.hints = question_data.get("hints", [])
+                state.difficulty = question_data.get("difficulty", "medium")
                 state.used_questions.add(state.question)
     
                 await self._handle_question_round(channel, guild, state)
@@ -393,9 +395,9 @@ class Trivia(commands.Cog):
             state.reset()
         
     async def _handle_question_round(self, channel, guild, state):
-        """Handle a single question round."""
+        """Handle a single trivia question round."""
         if not state.channel:
-            log.error("State channel is None during a question round.")
+            log.error("No channel set for the trivia session.")
             return
     
         if not state.question or not state.answers:
@@ -413,7 +415,7 @@ class Trivia(commands.Cog):
     
         try:
             response = await self.bot.wait_for("message", check=check_answer, timeout=30)
-            points = 10  # Adjust as needed
+            points = {"easy": 5, "medium": 10, "hard": 20}.get(state.difficulty, 10)
             await self.add_score(guild, response.author.id, points)
             await response.add_reaction("✅")
             await state.channel.send(
@@ -422,11 +424,15 @@ class Trivia(commands.Cog):
             )
     
         except asyncio.TimeoutError:
-            await state.channel.send(f"⏰ Time's up! The answer was: **{state.answers[0]}**.")
+            if state.hints:
+                await state.channel.send(f"Hint: {state.hints.pop(0)}")
+            else:
+                await state.channel.send(f"⏰ Time's up! The answer was: **{state.answers[0]}**.")
     
-        # Reset the question for the next round
+        # Reset state for the next question
         state.question = None
         state.answers = []
+        state.hints = []
     
         def get_partial_answer(self, answer: str, reveal_percentage: float) -> str:
             """
@@ -551,7 +557,7 @@ class Trivia(commands.Cog):
     async def fetch_questions(self, guild, genre: str):
         """Fetch questions for the selected genre from GitHub."""
         try:
-            # GitHub URL to fetch the file
+            # URL to fetch the YAML file from the GitHub repository
             github_url = f"https://api.github.com/repos/AfterWorld/UltDev/contents/trivia/questions/{genre}.yaml"
     
             async with aiohttp.ClientSession() as session:
@@ -560,27 +566,31 @@ class Trivia(commands.Cog):
                         log.error(f"Failed to fetch questions from GitHub. Status: {response.status}")
                         return []
     
-                    # GitHub returns file content in base64 encoding
+                    # GitHub returns the file content in base64 encoding
                     data = await response.json()
                     file_content = base64.b64decode(data["content"]).decode("utf-8")
     
                     # Parse the YAML content
                     questions = yaml.safe_load(file_content)
     
-                    # Validate questions structure
+                    # Validate the structure of the questions
                     valid_questions = [
                         q for q in questions
-                        if "question" in q and "answers" in q and isinstance(q["answers"], list)
+                        if isinstance(q, dict) and
+                           "question" in q and
+                           "answers" in q and isinstance(q["answers"], list) and
+                           "hints" in q and isinstance(q["hints"], list) and
+                           "difficulty" in q
                     ]
     
                     if not valid_questions:
-                        log.error(f"No valid questions found in {genre}.yaml on GitHub.")
+                        log.error(f"No valid questions found in {genre}.yaml.")
                         return []
     
                     return valid_questions
     
         except Exception as e:
-            log.error(f"Error fetching questions: {e}")
+            log.error(f"Error fetching or parsing questions: {e}")
             return []
 
     async def add_score(self, guild, user_id: int, points: int):
