@@ -40,9 +40,6 @@ class TriviaState:
 class Trivia(commands.Cog):
     """A trivia game with YAML-based questions."""
 
-    # Difficulty points configuration
-    difficulty_points = {"easy": 5, "medium": 10, "hard": 20}
-
     # Define ranks and their point thresholds
     RANKS = {
         10: "Novice",
@@ -116,34 +113,30 @@ class Trivia(commands.Cog):
         pass
 
     @trivia.command()
-    async def start(self, ctx, genre: str, difficulty: Optional[str] = None):
-        """Start a trivia session in this channel. Players can optionally choose difficulty."""
+    async def start(self, ctx, genre: str):
+        """Start a trivia session in this channel."""
         state = self.get_channel_state(ctx.channel)
-    
+
         if state.active:
             await ctx.send("A trivia session is already running in this channel!")
             return
-    
+
         genres = await self.fetch_genres(ctx.guild)
         if genre not in genres:
             await ctx.send(f"Invalid genre. Available genres: {', '.join(genres)}")
             return
-    
-        # Validate the optional difficulty argument
-        if difficulty and difficulty not in ["easy", "medium", "hard"]:
-            await ctx.send("Invalid difficulty. Choose from: easy, medium, hard.")
-            return
-    
-        state.reset()  # Reset the trivia state
+
+        log.info(f"Starting trivia with genre: {genre} in channel: {ctx.channel.id}")
+        state.reset()  # Ensure a clean state before starting
         state.active = True
         state.channel = ctx.channel
-    
         await self.config.guild(ctx.guild).selected_genre.set(genre)
-        await self.config.guild(ctx.guild).selected_difficulty.set(difficulty)  # Can be None
         await self.config.guild(ctx.guild).last_active.set(discord.utils.utcnow().timestamp())
-    
-        difficulty_message = f" with **{difficulty}** difficulty" if difficulty else " with dynamic difficulty"
-        await ctx.send(f"Starting trivia for the **{genre}** genre{difficulty_message}. Get ready!")
+
+        games_played = await self.config.guild(ctx.guild).games_played()
+        await self.config.guild(ctx.guild).games_played.set(games_played + 1)
+
+        await ctx.send(f"Starting trivia for the **{genre}** genre. Get ready!")
         state.task = asyncio.create_task(self.run_trivia(ctx.guild, ctx.channel))
 
     @trivia.command()
@@ -400,7 +393,7 @@ class Trivia(commands.Cog):
     async def _handle_question_round(self, channel, guild, state):
         """Handle a single question round."""
         await channel.send(f"**Trivia Question:** {state.question}\nType your answer below!")
-    
+        
         def check_answer(message):
             return (
                 message.channel == channel
@@ -409,58 +402,70 @@ class Trivia(commands.Cog):
             )
     
         try:
+            # Wait for the correct answer or timeout
             response = await self.bot.wait_for("message", check=check_answer, timeout=30)
-    
-            # Determine difficulty dynamically if not selected
-            selected_difficulty = await self.config.guild(guild).selected_difficulty()
-            question_difficulty = (
-                selected_difficulty if selected_difficulty else state.current_question.get("difficulty", "medium")
-            )
-    
-            points = self.difficulty_points.get(question_difficulty, 10)  # Default to 10 points
+            points = 10
             await self.add_score(guild, response.author.id, points)
-    
             await response.add_reaction("✅")
             await channel.send(
                 f"🎉 Correct, {response.author.mention}! (+{points} points)\n"
                 f"The answer was: **{state.answers[0]}**"
             )
     
-            state.question = None  # Reset the current question
+            # Praise for streaks
+            user_id = response.author.id
+            if user_id in self.streaks:
+                self.streaks[user_id] += 1
+            else:
+                self.streaks[user_id] = 1
+    
+            if self.streaks[user_id] >= 3:
+                await channel.send(f"🔥 {response.author.mention}, you're on fire with {self.streaks[user_id]} correct answers in a row!")
+    
+            # Reset the question and move to the next
+            state.question = None
             state.answers = []
             state.hints = []
             await asyncio.sleep(1)  # Brief delay
             await self._handle_question_round(channel, guild, state)
     
         except asyncio.TimeoutError:
-            await channel.send(f"⏰ Time's up! The answer was: **{state.answers[0]}**.")
+            # Timeout handling if no one answers correctly
+            genre = await self.config.guild(guild).selected_genre()
+            timeout_message = random.choice(
+                self.TIMEOUT_MESSAGES.get(genre, ["⏰ Time's up! The answer was: **{answer}**."])
+            ).format(answer=state.answers[0])
+    
+            await channel.send(timeout_message)
             state.question = None
             state.answers = []
             state.hints = []
     
-        def get_partial_answer(self, answer: str, reveal_percentage: float) -> str:
-            """
-            Returns a partially revealed answer string.
-            
-            :param answer: The correct answer to the question.
-            :param reveal_percentage: The percentage of characters to reveal (0.0 to 1.0).
-            :return: A string with some characters replaced by underscores.
-            """
-            if not answer:
-                return ""
+        await asyncio.sleep(1)
+
+    def get_partial_answer(self, answer: str, reveal_percentage: float) -> str:
+        """
+        Returns a partially revealed answer string.
         
-            # Convert the answer into a list of characters
-            chars = list(answer)
-            reveal_count = int(len(chars) * reveal_percentage)
-        
-            # Randomly choose indices to hide
-            hidden_indices = random.sample(range(len(chars)), len(chars) - reveal_count)
-        
-            for i in hidden_indices:
-                if chars[i].isalnum():  # Hide only alphanumeric characters
-                    chars[i] = "_"
-        
-            return ''.join(chars)
+        :param answer: The correct answer to the question.
+        :param reveal_percentage: The percentage of characters to reveal (0.0 to 1.0).
+        :return: A string with some characters replaced by underscores.
+        """
+        if not answer:
+            return ""
+    
+        # Convert the answer into a list of characters
+        chars = list(answer)
+        reveal_count = int(len(chars) * reveal_percentage)
+    
+        # Randomly choose indices to hide
+        hidden_indices = random.sample(range(len(chars)), len(chars) - reveal_count)
+    
+        for i in hidden_indices:
+            if chars[i].isalnum():  # Hide only alphanumeric characters
+                chars[i] = "_"
+    
+        return ''.join(chars)
 
 
     async def add_score(self, guild, user_id: int, points: int):
@@ -559,7 +564,7 @@ class Trivia(commands.Cog):
             return []
 
     async def fetch_questions(self, guild, genre: str) -> List[dict]:
-        """Fetch questions for the selected genre and optional difficulty."""
+        """Fetch questions for the selected genre."""
         try:
             url = f"{await self.config.guild(guild).github_url()}{genre}.yaml"
             async with aiohttp.ClientSession() as session:
@@ -568,16 +573,7 @@ class Trivia(commands.Cog):
                         return []
                     data = await response.json()
                     content = base64.b64decode(data["content"]).decode("utf-8")
-                    questions = yaml.safe_load(content)
-    
-                    # Get the selected difficulty
-                    selected_difficulty = await self.config.guild(guild).selected_difficulty()
-    
-                    # If difficulty is specified, filter questions; otherwise, return all
-                    if selected_difficulty:
-                        questions = [q for q in questions if q.get("difficulty") == selected_difficulty]
-    
-                    return questions
+                    return yaml.safe_load(content)
         except Exception as e:
             log.error(f"Error fetching questions: {e}")
             return []
