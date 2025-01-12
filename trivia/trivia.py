@@ -19,7 +19,7 @@ class Trivia(commands.Cog):
         self.config = Config.get_conf(self, identifier=9876543211, force_registration=True)
         default_guild = {
             "channel_id": None,  # Channel for trivia
-            "github_url": "https://raw.githubusercontent.com/AfterWorld/UltDev/main/trivia/questions/",
+            "github_url": "https://api.github.com/repos/AfterWorld/UltDev/contents/trivia/questions/",
             "github_token": None,  # GitHub API token
             "selected_genre": None,  # Active genre
             "leaderboard": {},  # Leaderboard data
@@ -44,8 +44,9 @@ class Trivia(commands.Cog):
         """List available trivia genres."""
         genres = await self.fetch_genres(ctx.guild)
         if not genres:
-            return await ctx.send("No trivia genres are available.")
+            return await ctx.send("No trivia genres are available. Please check the GitHub folder or configuration.")
         await ctx.send(f"Available trivia genres: {', '.join(genres)}")
+
 
     @trivia.command()
     async def start(self, ctx, genre: str):
@@ -163,6 +164,7 @@ class Trivia(commands.Cog):
     async def fetch_genres(self, guild) -> List[str]:
         """Fetch available genres from the GitHub folder."""
         github_url = f"{await self.config.guild(guild).github_url()}"
+        log.debug(f"Fetching genres from: {github_url}")
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(github_url) as response:
@@ -170,9 +172,11 @@ class Trivia(commands.Cog):
                         log.error(f"Failed to fetch genres: {response.status} - {response.reason}")
                         return []
     
-                    # Parse JSON response from GitHub API
+                    # Parse the JSON response
                     data = await response.json()
-                    # Extract .json filenames and strip the extension
+                    log.debug(f"GitHub API response: {data}")
+    
+                    # Extract .json file names and remove the extension
                     return [item["name"].replace(".json", "") for item in data if item["name"].endswith(".json")]
         except Exception as e:
             log.exception("Error while fetching genres")
