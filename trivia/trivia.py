@@ -6,6 +6,7 @@ import random
 import asyncio
 from typing import List, Tuple
 import logging
+import base64
 
 log = logging.getLogger("red.trivia")
 
@@ -23,6 +24,7 @@ class Trivia(commands.Cog):
         self.trivia_active = False
         self.current_question = None
         self.current_answers = []
+        self.current_hints = []
         self.trivia_channel = None
 
     @commands.group()
@@ -51,6 +53,27 @@ class Trivia(commands.Cog):
         await ctx.send(f"Starting trivia for the **{genre}** genre. Get ready!")
         await self.run_trivia(ctx.guild)
 
+    @trivia.command()
+    async def stop(self, ctx):
+        """Stop the current trivia session."""
+        if self.trivia_active:
+            self.trivia_active = False
+            await ctx.send("Trivia session stopped.")
+        else:
+            await ctx.send("No trivia session is currently running.")
+
+    @trivia.command()
+    async def hint(self, ctx):
+        """Get a hint for the current question."""
+        if not self.trivia_active or not self.current_question:
+            return await ctx.send("No trivia question is currently active.")
+        
+        if not self.current_hints:
+            return await ctx.send("No hints available for this question.")
+            
+        hint = self.current_hints.pop(0) if self.current_hints else "No more hints available!"
+        await ctx.send(f"**Hint:** {hint}")
+
     def get_partial_answer(self, answer: str, reveal_percentage: float) -> str:
         """Returns a partially revealed answer."""
         if not answer:
@@ -77,9 +100,10 @@ class Trivia(commands.Cog):
             question_data = random.choice(questions)
             self.current_question = question_data["question"]
             self.current_answers = question_data["answers"]
-            main_answer = self.current_answers[0]  # Use first answer as main answer for hints
+            self.current_hints = question_data.get("hints", []).copy()  # Make a copy of hints
+            main_answer = self.current_answers[0]  # Use first answer as main answer for reveals
 
-            await channel.send(f"**Trivia Question:**\n{self.current_question}")
+            await channel.send(f"**Trivia Question:**\n{self.current_question}\n*Use `!trivia hint` for a hint!*")
             
             for i in range(30, 0, -5):  # Countdown
                 await asyncio.sleep(5)
@@ -88,15 +112,16 @@ class Trivia(commands.Cog):
 
                 if i == 15:  # At 15 seconds, reveal 33% of the answer
                     partial_answer = self.get_partial_answer(main_answer, 0.33)
-                    await channel.send(f"**Hint:** The answer looks like: {partial_answer}")
+                    await channel.send(f"**15 seconds left!** The answer looks like: {partial_answer}")
                 elif i == 10:  # At 10 seconds, reveal 66% of the answer
                     partial_answer = self.get_partial_answer(main_answer, 0.66)
-                    await channel.send(f"**Hint:** The answer looks like: {partial_answer}")
+                    await channel.send(f"**10 seconds left!** The answer looks like: {partial_answer}")
 
             if self.current_question:  # Time's up
                 await channel.send(f"Time's up! The correct answer was: {main_answer}")
                 self.current_question = None
                 self.current_answers = []
+                self.current_hints = []
 
             await asyncio.sleep(5)  # Pause before next question
 
@@ -125,7 +150,8 @@ class Trivia(commands.Cog):
                         log.error(f"Failed to fetch questions for genre '{genre}': {response.status} - {response.reason}")
                         return []
 
-                    content = await response.text()
+                    data = await response.json()
+                    content = base64.b64decode(data["content"]).decode("utf-8")
                     return yaml.safe_load(content)
         except Exception as e:
             log.error(f"Error while fetching questions for genre '{genre}': {str(e)}")
