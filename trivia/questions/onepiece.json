@@ -1,104 +1,159 @@
-{
-    "onepiece": [
-        {
-            "question": "What is the name of Luffy's ship?",
-            "answers": ["Thousand Sunny", "Going Merry", "The Sunny"],
-            "hints": ["It is the second ship of the Straw Hat Pirates.", "Built by Franky using Adam Wood."]
-        },
-        {
-            "question": "Who is the first crewmate Luffy recruits?",
-            "answers": ["Zoro", "Roronoa Zoro"],
-            "hints": ["A swordsman with three swords.", "Known as the Pirate Hunter."]
-        },
-        {
-            "question": "What fruit did Luffy eat to gain his powers?",
-            "answers": ["Gum-Gum Fruit", "Gomu Gomu no Mi"],
-            "hints": ["A rubber-based Devil Fruit.", "Its Japanese name starts with 'Gomu'."]
-        },
-        {
-            "question": "What is Sanji's dream?",
-            "answers": ["To find the All Blue", "All Blue"],
-            "hints": ["A legendary sea that connects all four seas.", "Sanji is a chef with this goal."]
-        },
-        {
-            "question": "Who is the doctor of the Straw Hat Pirates?",
-            "answers": ["Chopper", "Tony Tony Chopper"],
-            "hints": ["A reindeer with the ability to talk.", "Uses the Human-Human Fruit."]
-        },
-        {
-            "question": "What does Nami specialize in?",
-            "answers": ["Navigation", "Cartography"],
-            "hints": ["Nami creates maps and navigates the ship.", "Her weapon is the Clima-Tact."]
-        },
-        {
-            "question": "What is Zoro's ultimate goal?",
-            "answers": ["To become the world's greatest swordsman", "Greatest swordsman"],
-            "hints": ["A goal inspired by his childhood rival.", "He wants to defeat Dracule Mihawk."]
-        },
-        {
-            "question": "Who is the 'Strongest Creature in the World'?",
-            "answers": ["Kaido", "Kaidou"],
-            "hints": ["A Yonko with a reputation for indestructibility.", "Known as the King of Beasts."]
-        },
-        {
-            "question": "What is the name of Luffy's father?",
-            "answers": ["Monkey D. Dragon", "Dragon"],
-            "hints": ["Leader of the Revolutionary Army.", "Known as the world's most wanted man."]
-        },
-        {
-            "question": "What does the 'D' in Luffy's name stand for?",
-            "answers": ["Will of D", "D clan"],
-            "hints": ["A mysterious middle initial.", "Associated with a 'storm' or 'rebellion'."]
-        },
-        {
-            "question": "Who is the Fleet Admiral of the Marines after the Marineford War?",
-            "answers": ["Akainu", "Sakazuki"],
-            "hints": ["Known for his Magma-Magma Fruit.", "Defeated Aokiji in a duel."]
-        },
-        {
-            "question": "What is Usopp's alias in Dressrosa?",
-            "answers": ["God Usopp", "Sogeking"],
-            "hints": ["He is worshiped for knocking out Sugar.", "He used a long-distance sniper shot."]
-        },
-        {
-            "question": "What is Brook's signature phrase?",
-            "answers": ["Yohohoho", "Skull Joke"],
-            "hints": ["Often followed by a joke about his bones.", "Laughs like a skeleton."]
-        },
-        {
-            "question": "What is Nico Robin's epithet?",
-            "answers": ["Devil Child", "Miss All Sunday"],
-            "hints": ["Her nickname from the World Government.", "She worked for Crocodile in Baroque Works."]
-        },
-        {
-            "question": "What is Franky's real name?",
-            "answers": ["Cutty Flam", "Franky"],
-            "hints": ["A shipwright with a mechanical body.", "His real name is rarely used."]
-        },
-        {
-            "question": "What is the name of Luffy's grandfather?",
-            "answers": ["Monkey D. Garp", "Garp"],
-            "hints": ["A Marine hero who fought Gol D. Roger.", "Known as the Fist of Love."]
-        },
-        {
-            "question": "What is the name of the sea surrounding the Grand Line?",
-            "answers": ["Calm Belt"],
-            "hints": ["Known for its lack of wind and sea kings.", "Acts as a barrier to the Grand Line."]
-        },
-        {
-            "question": "What island is Luffy from?",
-            "answers": ["Foosha Village", "Dawn Island"],
-            "hints": ["A small village where Shanks inspired Luffy.", "Home to Dadan and the mountain bandits."]
-        },
-        {
-            "question": "What is Luffy's bounty after Dressrosa?",
-            "answers": ["500,000,000 berries", "500 million"],
-            "hints": ["Increased significantly after defeating Doflamingo.", "Half a billion."]
-        },
-        {
-            "question": "Who is the leader of the Revolutionary Army?",
-            "answers": ["Monkey D. Dragon", "Dragon"],
-            "hints": ["Luffy's father.", "A mysterious figure fighting against the World Government."]
-        }
-    ]
-}
+- question: "What is the name of Luffy's ship?"
+  answers:
+    - "Thousand Sunny"
+    - "Going Merry"
+    - "The Sunny"
+  hints:
+    - "It is the second ship of the Straw Hat Pirates."
+    - "Built by Franky using Adam Wood."
+
+- question: "Who is the first crewmate Luffy recruits?"
+  answers:
+    - "Zoro"
+    - "Roronoa Zoro"
+  hints:
+    - "A swordsman with three swords."
+    - "Known as the Pirate Hunter."
+
+- question: "What fruit did Luffy eat to gain his powers?"
+  answers:
+    - "Gum-Gum Fruit"
+    - "Gomu Gomu no Mi"
+  hints:
+    - "A rubber-based Devil Fruit."
+    - "Its Japanese name starts with 'Gomu'."
+
+- question: "What is Sanji's dream?"
+  answers:
+    - "To find the All Blue"
+    - "All Blue"
+  hints:
+    - "A legendary sea that connects all four seas."
+    - "Sanji is a chef with this goal."
+
+- question: "Who is the doctor of the Straw Hat Pirates?"
+  answers:
+    - "Chopper"
+    - "Tony Tony Chopper"
+  hints:
+    - "A reindeer with the ability to talk."
+    - "Uses the Human-Human Fruit."
+
+- question: "What does Nami specialize in?"
+  answers:
+    - "Navigation"
+    - "Cartography"
+  hints:
+    - "Nami creates maps and navigates the ship."
+    - "Her weapon is the Clima-Tact."
+
+- question: "What is Zoro's ultimate goal?"
+  answers:
+    - "To become the world's greatest swordsman"
+    - "Greatest swordsman"
+  hints:
+    - "A goal inspired by his childhood rival."
+    - "He wants to defeat Dracule Mihawk."
+
+- question: "Who is the 'Strongest Creature in the World'?"
+  answers:
+    - "Kaido"
+    - "Kaidou"
+  hints:
+    - "A Yonko with a reputation for indestructibility."
+    - "Known as the King of Beasts."
+
+- question: "What is the name of Luffy's father?"
+  answers:
+    - "Monkey D. Dragon"
+    - "Dragon"
+  hints:
+    - "Leader of the Revolutionary Army."
+    - "Known as the world's most wanted man."
+
+- question: "What does the 'D' in Luffy's name stand for?"
+  answers:
+    - "Will of D"
+    - "D clan"
+  hints:
+    - "A mysterious middle initial."
+    - "Associated with a 'storm' or 'rebellion'."
+
+- question: "Who is the Fleet Admiral of the Marines after the Marineford War?"
+  answers:
+    - "Akainu"
+    - "Sakazuki"
+  hints:
+    - "Known for his Magma-Magma Fruit."
+    - "Defeated Aokiji in a duel."
+
+- question: "What is Usopp's alias in Dressrosa?"
+  answers:
+    - "God Usopp"
+    - "Sogeking"
+  hints:
+    - "He is worshiped for knocking out Sugar."
+    - "He used a long-distance sniper shot."
+
+- question: "What is Brook's signature phrase?"
+  answers:
+    - "Yohohoho"
+    - "Skull Joke"
+  hints:
+    - "Often followed by a joke about his bones."
+    - "Laughs like a skeleton."
+
+- question: "What is Nico Robin's epithet?"
+  answers:
+    - "Devil Child"
+    - "Miss All Sunday"
+  hints:
+    - "Her nickname from the World Government."
+    - "She worked for Crocodile in Baroque Works."
+
+- question: "What is Franky's real name?"
+  answers:
+    - "Cutty Flam"
+    - "Franky"
+  hints:
+    - "A shipwright with a mechanical body."
+    - "His real name is rarely used."
+
+- question: "What is the name of Luffy's grandfather?"
+  answers:
+    - "Monkey D. Garp"
+    - "Garp"
+  hints:
+    - "A Marine hero who fought Gol D. Roger."
+    - "Known as the Fist of Love."
+
+- question: "What is the name of the sea surrounding the Grand Line?"
+  answers:
+    - "Calm Belt"
+  hints:
+    - "Known for its lack of wind and sea kings."
+    - "Acts as a barrier to the Grand Line."
+
+- question: "What island is Luffy from?"
+  answers:
+    - "Foosha Village"
+    - "Dawn Island"
+  hints:
+    - "A small village where Shanks inspired Luffy."
+    - "Home to Dadan and the mountain bandits."
+
+- question: "What is Luffy's bounty after Dressrosa?"
+  answers:
+    - "500,000,000 berries"
+    - "500 million"
+  hints:
+    - "Increased significantly after defeating Doflamingo."
+    - "Half a billion."
+
+- question: "Who is the leader of the Revolutionary Army?"
+  answers:
+    - "Monkey D. Dragon"
+    - "Dragon"
+  hints:
+    - "Luffy's father."
+    - "A mysterious figure fighting against the World Government."
