@@ -7,6 +7,7 @@ import asyncio
 from typing import List, Optional
 import logging
 import base64
+from datetime import datetime, timedelta
 
 log = logging.getLogger("red.trivia")
 
@@ -231,6 +232,102 @@ class Trivia(commands.Cog):
         except Exception as e:
             log.error(f"Error previewing questions: {e}")
             await ctx.send("An error occurred while previewing questions.")
+
+    @trivia.command()
+    async def daily(self, ctx):
+        """Participate in the daily trivia challenge."""
+        try:
+            guild = ctx.guild
+            user_id = str(ctx.author.id)
+            daily_scores = await self.config.guild(guild).get_raw("daily_scores", default={})
+    
+            # Check if the user has already participated today
+            today = datetime.utcnow().date()
+            last_attempt = daily_scores.get(user_id, {}).get("date")
+            if last_attempt and datetime.strptime(last_attempt, "%Y-%m-%d").date() == today:
+                await ctx.send("You've already participated in today's daily challenge! Come back tomorrow.")
+                return
+    
+            # Fetch a random category
+            genres = await self.fetch_genres(guild)
+            if not genres:
+                await ctx.send("No trivia categories are available for the daily challenge.")
+                return
+            random_genre = random.choice(genres)
+    
+            # Fetch questions for the selected category
+            questions = await self.fetch_questions(guild, random_genre)
+            if not questions:
+                await ctx.send(f"No questions found for today's challenge in the genre '{random_genre}'.")
+                return
+    
+            # Select a random question
+            question_data = random.choice(questions)
+            question = question_data["question"]
+            answers = question_data["answers"]
+    
+            # Send the question
+            await ctx.send(
+                f"🌟 **Daily Trivia Challenge** 🌟\n"
+                f"Category: **{random_genre.title()}**\n\n"
+                f"**Question:** {question}\n"
+                f"Type your answer below!"
+            )
+    
+            def check(m):
+                return (
+                    m.author == ctx.author
+                    and m.channel == ctx.channel
+                    and m.content.lower().strip() in [ans.lower().strip() for ans in answers]
+                )
+    
+            try:
+                # Wait for the user's response
+                response = await self.bot.wait_for("message", check=check, timeout=30)
+                await ctx.send(f"🎉 Correct, {ctx.author.mention}! You've earned **20 bonus points!**")
+    
+                # Add bonus points for the daily challenge
+                async with self.config.guild(guild).get_raw("daily_scores", default={}) as scores:
+                    scores[user_id] = {"date": today.strftime("%Y-%m-%d"), "points": 20}
+    
+                await self.add_score(guild, ctx.author.id, 20)
+    
+            except asyncio.TimeoutError:
+                await ctx.send(f"⏰ Time's up! The correct answer was: **{answers[0]}**.")
+    
+        except Exception as e:
+            log.error(f"Error in daily trivia: {e}")
+            await ctx.send("An error occurred while starting the daily challenge. Please try again.")
+
+    @trivia.command()
+    @commands.admin()
+    async def weeklyreset(self, ctx):
+        """Reset the weekly trivia leaderboard."""
+        try:
+            guild = ctx.guild
+            total_scores = await self.config.guild(guild).total_scores()
+    
+            if not total_scores:
+                await ctx.send("No scores recorded this week to reset.")
+                return
+    
+            # Determine the weekly champion
+            sorted_scores = sorted(total_scores.items(), key=lambda x: x[1], reverse=True)
+            top_user_id, top_score = sorted_scores[0]
+            top_user = await self.bot.fetch_user(int(top_user_id))
+    
+            # Announce the champion
+            await ctx.send(
+                f"🏆 **Weekly Trivia Champion** 🏆\n"
+                f"Congratulations to **{top_user.name}** with **{top_score} points!**\n"
+                f"The leaderboard has been reset. Good luck next week!"
+            )
+    
+            # Reset total scores
+            await self.config.guild(guild).total_scores.set({})
+        except Exception as e:
+            log.error(f"Error in weekly reset: {e}")
+            await ctx.send("An error occurred while resetting the leaderboard.")
 
     async def run_trivia(self, guild, channel):
         """Main trivia loop for a specific channel."""
