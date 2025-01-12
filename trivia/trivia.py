@@ -361,7 +361,7 @@ class Trivia(commands.Cog):
             await ctx.send("An error occurred while resetting the leaderboard.")
 
     async def run_trivia(self, guild, channel):
-        """Main trivia loop."""
+        """Main trivia loop for a specific channel."""
         state = self.get_channel_state(channel)
         try:
             genre = await self.config.guild(guild).selected_genre()
@@ -373,20 +373,24 @@ class Trivia(commands.Cog):
                 return
     
             while state.active:
-                # Filter unused questions
                 available_questions = [q for q in questions if q["question"] not in state.used_questions]
                 if not available_questions:
                     await channel.send("All questions have been used! Reshuffling the question pool...")
                     state.used_questions.clear()
                     available_questions = questions
     
-                # Select a random question
                 question_data = random.choice(available_questions)
-                state.question = question_data["question"]
-                state.answers = question_data["answers"]
+    
+                # Validate question structure
+                state.question = question_data.get("question", None)
+                state.answers = question_data.get("answers", [])
                 state.hints = question_data.get("hints", [])
                 state.difficulty = question_data.get("difficulty", "medium")
                 state.used_questions.add(state.question)
+    
+                if not state.answers:  # Skip questions without valid answers
+                    log.warning(f"Skipping question without answers: {state.question}")
+                    continue
     
                 await self._handle_question_round(channel, guild, state)
     
@@ -397,7 +401,7 @@ class Trivia(commands.Cog):
     async def _handle_question_round(self, channel, guild, state):
         """Handle a single trivia question round."""
         if not state.channel:
-            log.error("No channel set for the trivia session.")
+            log.error("State channel is None during a question round.")
             return
     
         if not state.question or not state.answers:
@@ -429,7 +433,7 @@ class Trivia(commands.Cog):
             else:
                 await state.channel.send(f"⏰ Time's up! The answer was: **{state.answers[0]}**.")
     
-        # Reset state for the next question
+        # Reset question data for the next round
         state.question = None
         state.answers = []
         state.hints = []
@@ -557,7 +561,7 @@ class Trivia(commands.Cog):
     async def fetch_questions(self, guild, genre: str):
         """Fetch questions for the selected genre from GitHub."""
         try:
-            # URL to fetch the YAML file from the GitHub repository
+            # GitHub API URL for the YAML file
             github_url = f"https://api.github.com/repos/AfterWorld/UltDev/contents/trivia/questions/{genre}.yaml"
     
             async with aiohttp.ClientSession() as session:
@@ -566,14 +570,14 @@ class Trivia(commands.Cog):
                         log.error(f"Failed to fetch questions from GitHub. Status: {response.status}")
                         return []
     
-                    # GitHub returns the file content in base64 encoding
+                    # Decode the base64-encoded content from GitHub
                     data = await response.json()
                     file_content = base64.b64decode(data["content"]).decode("utf-8")
     
                     # Parse the YAML content
                     questions = yaml.safe_load(file_content)
     
-                    # Validate the structure of the questions
+                    # Validate the structure of questions
                     valid_questions = [
                         q for q in questions
                         if isinstance(q, dict) and
@@ -610,15 +614,16 @@ class Trivia(commands.Cog):
         if not state or not state.active or not state.question:
             return
     
-        if not state.channel:
-            log.error("State.channel is None during message processing.")
+        user_answer = message.content.lower().strip()
+    
+        if not state.answers:  # Check if answers are available
+            await state.channel.send("Error: No answers available for the current question.")
             return
     
         correct_answers = [ans.lower().strip() for ans in state.answers]
-        user_answer = message.content.lower().strip()
     
         if user_answer in correct_answers:
-            points = 10  # You can calculate points dynamically based on difficulty
+            points = 10  # Adjust scoring logic as needed
             await self.add_score(message.guild, message.author.id, points)
             await message.add_reaction("✅")
             await state.channel.send(
@@ -628,20 +633,17 @@ class Trivia(commands.Cog):
     
             state.question = None
             state.answers = []
-            state.hints = []
-            await asyncio.sleep(1)
+            await asyncio.sleep(1)  # Delay before the next question
             await self._handle_question_round(state.channel, message.guild, state)
         else:
-            if not state.channel:
-                log.error("State.channel is None when sending encouragement.")
-                return
-    
+            await message.add_reaction("❌")
             encouraging_responses = [
                 f"Not quite, {message.author.mention}, but keep trying!",
                 "Close, but not the answer we're looking for!",
                 "Good guess, but it's not correct. Try again!",
             ]
             await state.channel.send(random.choice(encouraging_responses))
+
             
 def setup(bot):
     bot.add_cog(Trivia(bot))
