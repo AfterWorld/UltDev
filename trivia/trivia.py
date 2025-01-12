@@ -33,14 +33,30 @@ class Trivia(commands.Cog):
         self.task = None
         self.used_questions = set()
 
-    @commands.group()
+    @commands.group(invoke_without_command=True)
     async def trivia(self, ctx):
         """Trivia commands."""
-        pass
+        if ctx.invoked_subcommand is None:
+            commands_list = [
+                "`.trivia start <genre>` - Start a trivia game",
+                "`.trivia stop` - Stop the current game",
+                "`.trivia list` - List available genres",
+                "`.trivia scores` - Show current scores",
+                "`.trivia leaderboard` - Show all-time scores",
+                "`.trivia stats` - Show trivia statistics",
+                "`.trivia hint` - Get a hint for current question"
+            ]
+            embed = discord.Embed(
+                title="📝 Trivia Commands",
+                description="\n".join(commands_list),
+                color=discord.Color.blue()
+            )
+            await ctx.send(embed=embed)
 
     @trivia.command()
     async def list(self, ctx):
         """List available trivia genres."""
+        log.info("Fetching trivia genres")
         genres = await self.fetch_genres(ctx.guild)
         if not genres:
             return await ctx.send("No trivia genres available.")
@@ -49,11 +65,17 @@ class Trivia(commands.Cog):
     @trivia.command()
     async def start(self, ctx, genre: str):
         """Start a trivia session with the selected genre."""
+        log.info(f"Starting trivia with genre: {genre}")
+        
         if self.trivia_active:
+            log.warning("Attempted to start trivia while already active")
             return await ctx.send("A trivia session is already running!")
 
         genres = await self.fetch_genres(ctx.guild)
+        log.info(f"Available genres: {genres}")
+        
         if genre not in genres:
+            log.warning(f"Invalid genre attempted: {genre}")
             return await ctx.send(f"Invalid genre. Available genres: {', '.join(genres)}")
 
         await self.config.guild(ctx.guild).selected_genre.set(genre)
@@ -61,7 +83,6 @@ class Trivia(commands.Cog):
         self.trivia_channel = ctx.channel
         self.used_questions.clear()
         
-        # Increment games played counter
         async with self.config.guild(ctx.guild).games_played() as games:
             games += 1
             
@@ -89,7 +110,6 @@ class Trivia(commands.Cog):
         questions_answered = await self.config.guild(guild).questions_answered()
         total_scores = await self.config.guild(guild).total_scores()
         
-        # Calculate top scorer
         top_scorer_id = max(total_scores.items(), key=lambda x: x[1])[0] if total_scores else None
         top_scorer = await self.bot.fetch_user(int(top_scorer_id)) if top_scorer_id else None
         
@@ -225,7 +245,6 @@ class Trivia(commands.Cog):
             points = 10
             await self.add_score(message.guild, message.author.id, points)
             
-            # Increment questions answered counter
             async with self.config.guild(message.guild).questions_answered() as questions:
                 questions += 1
             
@@ -237,6 +256,47 @@ class Trivia(commands.Cog):
             self.current_question = None
             self.current_answers = []
             self.current_hints = []
+
+    async def fetch_genres(self, guild) -> List[str]:
+        """Fetch available genres."""
+        github_url = f"{await self.config.guild(guild).github_url()}"
+        log.info(f"Fetching genres from URL: {github_url}")
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(github_url) as response:
+                    if response.status != 200:
+                        log.error(f"Failed to fetch genres: {response.status} - {response.reason}")
+                        return []
+                    data = await response.json()
+                    genres = [item["name"].replace(".yaml", "") for item in data if item["name"].endswith(".yaml")]
+                    log.info(f"Successfully fetched genres: {genres}")
+                    return genres
+        except Exception as e:
+            log.error(f"Error while fetching genres: {str(e)}")
+            return []
+
+    async def fetch_questions(self, guild, genre: str) -> List[dict]:
+        """Fetch questions for the selected genre."""
+        github_url = f"{await self.config.guild(guild).github_url()}{genre}.yaml"
+        log.info(f"Fetching questions from URL: {github_url}")
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(github_url) as response:
+                    if response.status != 200:
+                        log.error(f"Failed to fetch questions: {response.status} - {response.reason}")
+                        log.error(f"Response content: {await response.text()}")
+                        return []
+
+                    data = await response.json()
+                    content = base64.b64decode(data["content"]).decode("utf-8")
+                    questions = yaml.safe_load(content)
+                    log.info(f"Successfully loaded {len(questions)} questions for genre {genre}")
+                    return questions
+        except Exception as e:
+            log.error(f"Error while fetching questions: {str(e)}")
+            return []
 
     async def run_trivia(self, guild):
         """Main trivia loop."""
@@ -267,7 +327,7 @@ class Trivia(commands.Cog):
 
                 await channel.send(
                     f"**Trivia Question:**\n{self.current_question}\n"
-                    f"*Use `!trivia hint` for a hint!*"
+                    f"*Use `.trivia hint` for a hint!*"
                 )
                 
                 for i in range(30, 0, -5):
@@ -302,38 +362,6 @@ class Trivia(commands.Cog):
             log.error(f"Error in trivia loop: {str(e)}")
             await channel.send("An error occurred running the trivia game.")
             self.trivia_active = False
-
-    async def fetch_genres(self, guild) -> List[str]:
-        """Fetch available genres."""
-        github_url = f"{await self.config.guild(guild).github_url()}"
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(github_url) as response:
-                    if response.status != 200:
-                        log.error(f"Failed to fetch genres: {response.status} - {response.reason}")
-                        return []
-                    data = await response.json()
-                    return [item["name"].replace(".yaml", "") for item in data if item["name"].endswith(".yaml")]
-        except Exception as e:
-            log.error(f"Error while fetching genres: {str(e)}")
-            return []
-
-    async def fetch_questions(self, guild, genre: str) -> List[dict]:
-        """Fetch questions for the selected genre."""
-        github_url = f"{await self.config.guild(guild).github_url()}{genre}.yaml"
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(github_url) as response:
-                    if response.status != 200:
-                        log.error(f"Failed to fetch questions for genre '{genre}': {response.status} - {response.reason}")
-                        return []
-
-                    data = await response.json()
-                    content = base64.b64decode(data["content"]).decode("utf-8")
-                    return yaml.safe_load(content)
-        except Exception as e:
-            log.error(f"Error while fetching questions for genre '{genre}': {str(e)}")
-            return []
 
 def setup(bot):
     bot.add_cog(Trivia(bot))
