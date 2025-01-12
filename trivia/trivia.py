@@ -15,30 +15,27 @@ log = logging.getLogger("red.trivia")
 class TriviaState:
     """Class to manage trivia game state."""
 
-    def __init__(self):
+    def __init__(self, channel=None):
         self.active = False
+        self.channel = channel  # Ensure channel is set during initialization
         self.question: Optional[str] = None
         self.answers: List[str] = []
         self.hints: List[str] = []
-        self.channel: Optional[discord.TextChannel] = None
         self.task: Optional[asyncio.Task] = None
         self.used_questions: set = set()
-        self.current_question: Optional[dict] = None  # Add this attribute
 
-    def reset(self, clear_channel=True):
+    def reset(self, clear_channel=False):
         """Reset all state variables."""
         self.active = False
         self.question = None
         self.answers = []
         self.hints = []
         if clear_channel:
-            self.channel = None  # Clear channel only if requested
+            self.channel = None  # Only reset the channel if explicitly requested
         if self.task and not self.task.done():
             self.task.cancel()
         self.task = None
         self.used_questions.clear()
-        self.current_question = None
-
 
 
 class Trivia(commands.Cog):
@@ -140,10 +137,10 @@ class Trivia(commands.Cog):
     
         state.reset()  # Reset the trivia state
         state.active = True
-        state.channel = ctx.channel  # Ensure channel is set
+        state.channel = ctx.channel  # Set the channel at the start
     
         await self.config.guild(ctx.guild).selected_genre.set(genre)
-        await self.config.guild(ctx.guild).selected_difficulty.set(difficulty)  # Can be None
+        await self.config.guild(ctx.guild).selected_difficulty.set(difficulty)
         await self.config.guild(ctx.guild).last_active.set(discord.utils.utcnow().timestamp())
     
         difficulty_message = f" with **{difficulty}** difficulty" if difficulty else " with dynamic difficulty"
@@ -376,15 +373,18 @@ class Trivia(commands.Cog):
                 return
     
             while state.active:
+                if not state.channel:
+                    log.error("No channel set for the trivia session. Aborting.")
+                    state.reset()
+                    return
+    
                 available_questions = [q for q in questions if q["question"] not in state.used_questions]
                 if not available_questions:
                     await channel.send("All questions have been used! Reshuffling the question pool...")
                     state.used_questions.clear()
                     available_questions = questions
     
-                # Select a random question
                 question_data = random.choice(available_questions)
-                state.current_question = question_data  # Assign the current question
                 state.question = question_data["question"]
                 state.answers = question_data["answers"]
                 state.hints = question_data.get("hints", [])
@@ -392,22 +392,18 @@ class Trivia(commands.Cog):
     
                 await self._handle_question_round(channel, guild, state)
     
-        except asyncio.CancelledError:
-            log.info("Trivia task cancelled.")
         except Exception as e:
             log.error(f"Error in trivia loop: {e}")
-        finally:
-            # Trigger session recap after the trivia ends, before resetting the state
-            session_scores = await self.config.guild(guild).scores()
-            await self.display_session_recap(guild, channel, session_scores)
-            await self.config.guild(guild).scores.set({})  # Clear session scores
             state.reset()
         
     async def _handle_question_round(self, channel, guild, state):
         """Handle a single question round."""
-        if not state.channel:  # Safety check to ensure the channel is set
-            log.error("No channel set for the trivia session. Aborting round.")
-            state.reset()
+        if not state.channel:
+            log.error("State channel is None during a question round.")
+            return
+    
+        if not state.question or not state.answers:
+            await state.channel.send("Error: Invalid question or answers. Skipping...")
             return
     
         await state.channel.send(f"**Trivia Question:** {state.question}\nType your answer below!")
@@ -421,35 +417,30 @@ class Trivia(commands.Cog):
     
         try:
             response = await self.bot.wait_for("message", check=check_answer, timeout=30)
-    
-            # Determine difficulty dynamically if not selected
-            selected_difficulty = await self.config.guild(guild).selected_difficulty()
-            question_difficulty = (
-                selected_difficulty if selected_difficulty else state.current_question.get("difficulty", "medium")
-            )
-    
-            points = self.difficulty_points.get(question_difficulty, 10)  # Default to 10 points
+            points = 10  # Adjust as needed
             await self.add_score(guild, response.author.id, points)
-    
             await response.add_reaction("✅")
             await state.channel.send(
                 f"🎉 Correct, {response.author.mention}! (+{points} points)\n"
                 f"The answer was: **{state.answers[0]}**"
             )
     
-            state.question = None  # Reset question for the next round
-            state.answers = []
-            state.hints = []
-            state.current_question = None
-            await asyncio.sleep(1)  # Brief delay before next question
-    
         except asyncio.TimeoutError:
             await state.channel.send(f"⏰ Time's up! The answer was: **{state.answers[0]}**.")
-            state.question = None
-            state.answers = []
-            state.hints = []
-            state.current_question = None
-            await asyncio.sleep(1)
+    
+        state.question = None
+        state.answers = []
+        state.hints = []
+        state.current_question = None
+        await asyncio.sleep(1)  # Brief delay before next question
+    
+    except asyncio.TimeoutError:
+        await state.channel.send(f"⏰ Time's up! The answer was: **{state.answers[0]}**.")
+        state.question = None
+        state.answers = []
+        state.hints = []
+        state.current_question = None
+        await asyncio.sleep(1)
     
         def get_partial_answer(self, answer: str, reveal_percentage: float) -> str:
             """
