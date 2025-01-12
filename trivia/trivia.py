@@ -424,23 +424,12 @@ class Trivia(commands.Cog):
                 f"🎉 Correct, {response.author.mention}! (+{points} points)\n"
                 f"The answer was: **{state.answers[0]}**"
             )
-    
         except asyncio.TimeoutError:
             await state.channel.send(f"⏰ Time's up! The answer was: **{state.answers[0]}**.")
     
+        # Reset state for the next question
         state.question = None
         state.answers = []
-        state.hints = []
-        state.current_question = None
-        await asyncio.sleep(1)  # Brief delay before next question
-    
-    except asyncio.TimeoutError:
-        await state.channel.send(f"⏰ Time's up! The answer was: **{state.answers[0]}**.")
-        state.question = None
-        state.answers = []
-        state.hints = []
-        state.current_question = None
-        await asyncio.sleep(1)
     
         def get_partial_answer(self, answer: str, reveal_percentage: float) -> str:
             """
