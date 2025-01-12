@@ -25,18 +25,20 @@ class TriviaState:
         self.used_questions: set = set()
         self.current_question: Optional[dict] = None  # Add this attribute
 
-    def reset(self):
+    def reset(self, clear_channel=True):
         """Reset all state variables."""
         self.active = False
         self.question = None
         self.answers = []
         self.hints = []
-        self.channel = None
+        if clear_channel:
+            self.channel = None  # Clear channel only if requested
         if self.task and not self.task.done():
             self.task.cancel()
         self.task = None
         self.used_questions.clear()
-        self.current_question = None  # Reset the current question
+        self.current_question = None
+
 
 
 class Trivia(commands.Cog):
@@ -138,7 +140,7 @@ class Trivia(commands.Cog):
     
         state.reset()  # Reset the trivia state
         state.active = True
-        state.channel = ctx.channel  # Set the channel here
+        state.channel = ctx.channel  # Ensure channel is set
     
         await self.config.guild(ctx.guild).selected_genre.set(genre)
         await self.config.guild(ctx.guild).selected_difficulty.set(difficulty)  # Can be None
@@ -605,20 +607,20 @@ class Trivia(commands.Cog):
         """Check messages for trivia answers."""
         if message.author.bot:
             return
-        
+    
         state = self.channel_states.get(message.channel.id)
         if not state or not state.active or not state.question:
             return
-        
-        # Ensure trivia bot only responds to answers in trivia channels
-        if state.channel != message.channel:
+    
+        if not state.channel:
+            log.error("State.channel is None during message processing.")
             return
     
         correct_answers = [ans.lower().strip() for ans in state.answers]
         user_answer = message.content.lower().strip()
     
         if user_answer in correct_answers:
-            points = 10
+            points = 10  # You can calculate points dynamically based on difficulty
             await self.add_score(message.guild, message.author.id, points)
             await message.add_reaction("✅")
             await state.channel.send(
@@ -626,35 +628,22 @@ class Trivia(commands.Cog):
                 f"The answer was: **{state.answers[0]}**"
             )
     
-            # Update streaks
-            user_id = message.author.id
-            if user_id in self.streaks:
-                self.streaks[user_id] += 1
-            else:
-                self.streaks[user_id] = 1
-    
-            # Praise for streaks
-            if self.streaks[user_id] >= 3:
-                await state.channel.send(f"🔥 {message.author.mention}, you're on fire with {self.streaks[user_id]} correct answers in a row!")
-    
-            # Clear the question and trigger the next round
             state.question = None
             state.answers = []
             state.hints = []
-            await asyncio.sleep(1)  # Brief delay before starting the next question
+            await asyncio.sleep(1)
             await self._handle_question_round(state.channel, message.guild, state)
-    
         else:
-            await message.add_reaction("❌")
+            if not state.channel:
+                log.error("State.channel is None when sending encouragement.")
+                return
+    
             encouraging_responses = [
                 f"Not quite, {message.author.mention}, but keep trying!",
                 "Close, but not the answer we're looking for!",
                 "Good guess, but it's not correct. Try again!",
             ]
             await state.channel.send(random.choice(encouraging_responses))
-    
-            # Reset the streak for incorrect answers
-            self.streaks[message.author.id] = 0
             
 def setup(bot):
     bot.add_cog(Trivia(bot))
