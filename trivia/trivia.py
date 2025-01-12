@@ -15,23 +15,22 @@ log = logging.getLogger("red.trivia")
 class TriviaState:
     """Class to manage trivia game state."""
 
-    def __init__(self, channel=None):
+    def __init__(self):
         self.active = False
-        self.channel = channel  # Ensure channel is set during initialization
         self.question: Optional[str] = None
         self.answers: List[str] = []
         self.hints: List[str] = []
+        self.channel: Optional[discord.TextChannel] = None
         self.task: Optional[asyncio.Task] = None
         self.used_questions: set = set()
 
-    def reset(self, clear_channel=False):
+    def reset(self):
         """Reset all state variables."""
         self.active = False
         self.question = None
         self.answers = []
         self.hints = []
-        if clear_channel:
-            self.channel = None  # Only reset the channel if explicitly requested
+        self.channel = None
         if self.task and not self.task.done():
             self.task.cancel()
         self.task = None
@@ -96,7 +95,6 @@ class Trivia(commands.Cog):
         default_guild = {
             "github_url": "https://api.github.com/repos/AfterWorld/UltDev/contents/trivia/questions/",
             "selected_genre": None,
-            "selected_difficulty": None,  # Add this field for difficulty
             "scores": {},
             "total_scores": {},
             "games_played": 0,
@@ -131,16 +129,17 @@ class Trivia(commands.Cog):
             await ctx.send(f"Invalid genre. Available genres: {', '.join(genres)}")
             return
     
+        # Validate the optional difficulty argument
         if difficulty and difficulty not in ["easy", "medium", "hard"]:
             await ctx.send("Invalid difficulty. Choose from: easy, medium, hard.")
             return
     
         state.reset()  # Reset the trivia state
         state.active = True
-        state.channel = ctx.channel  # Set the channel at the start
+        state.channel = ctx.channel
     
         await self.config.guild(ctx.guild).selected_genre.set(genre)
-        await self.config.guild(ctx.guild).selected_difficulty.set(difficulty)
+        await self.config.guild(ctx.guild).selected_difficulty.set(difficulty)  # Can be None
         await self.config.guild(ctx.guild).last_active.set(discord.utils.utcnow().timestamp())
     
         difficulty_message = f" with **{difficulty}** difficulty" if difficulty else " with dynamic difficulty"
@@ -368,7 +367,7 @@ class Trivia(commands.Cog):
             questions = await self.fetch_questions(guild, genre)
     
             if not questions:
-                await channel.send(f"No questions found for the genre '{genre}'. Please check your YAML file.")
+                await channel.send(f"No questions found for the genre '{genre}'.")
                 state.reset()
                 return
     
@@ -380,63 +379,64 @@ class Trivia(commands.Cog):
                     available_questions = questions
     
                 question_data = random.choice(available_questions)
-    
-                # Validate question structure
-                state.question = question_data.get("question", None)
-                state.answers = question_data.get("answers", [])
+                state.question = question_data["question"]
+                state.answers = question_data["answers"]
                 state.hints = question_data.get("hints", [])
-                state.difficulty = question_data.get("difficulty", "medium")
                 state.used_questions.add(state.question)
-    
-                if not state.answers:  # Skip questions without valid answers
-                    log.warning(f"Skipping question without answers: {state.question}")
-                    continue
     
                 await self._handle_question_round(channel, guild, state)
     
+        except asyncio.CancelledError:
+            log.info("Trivia task cancelled.")
         except Exception as e:
             log.error(f"Error in trivia loop: {e}")
-            state.reset()
-        
+        finally:
+            # Trigger session recap after the trivia ends, before resetting the state
+            session_scores = await self.config.guild(guild).scores()
+            await self.display_session_recap(guild, channel, session_scores)
+            await self.config.guild(guild).scores.set({})  # Clear session scores
+        state.reset()
+
     async def _handle_question_round(self, channel, guild, state):
-        """Handle a single trivia question round."""
-        if not state.channel:
-            log.error("State channel is None during a question round.")
-            return
-    
-        if not state.question or not state.answers:
-            await state.channel.send("Error: Invalid question or answers. Skipping...")
-            return
-    
-        await state.channel.send(f"**Trivia Question:** {state.question}\nType your answer below!")
+        """Handle a single question round."""
+        await channel.send(f"**Trivia Question:** {state.question}\nType your answer below!")
     
         def check_answer(message):
             return (
-                message.channel == state.channel
+                message.channel == channel
                 and message.author != self.bot.user
                 and message.content.lower().strip() in [ans.lower().strip() for ans in state.answers]
             )
     
         try:
             response = await self.bot.wait_for("message", check=check_answer, timeout=30)
-            points = {"easy": 5, "medium": 10, "hard": 20}.get(state.difficulty, 10)
+    
+            # Determine difficulty dynamically if not selected
+            selected_difficulty = await self.config.guild(guild).selected_difficulty()
+            question_difficulty = (
+                selected_difficulty if selected_difficulty else state.current_question.get("difficulty", "medium")
+            )
+    
+            points = self.difficulty_points.get(question_difficulty, 10)  # Default to 10 points
             await self.add_score(guild, response.author.id, points)
+    
             await response.add_reaction("✅")
-            await state.channel.send(
+            await channel.send(
                 f"🎉 Correct, {response.author.mention}! (+{points} points)\n"
                 f"The answer was: **{state.answers[0]}**"
             )
     
-        except asyncio.TimeoutError:
-            if state.hints:
-                await state.channel.send(f"Hint: {state.hints.pop(0)}")
-            else:
-                await state.channel.send(f"⏰ Time's up! The answer was: **{state.answers[0]}**.")
+            state.question = None  # Reset the current question
+            state.answers = []
+            state.hints = []
+            await asyncio.sleep(1)  # Brief delay
+            await self._handle_question_round(channel, guild, state)
     
-        # Reset question data for the next round
-        state.question = None
-        state.answers = []
-        state.hints = []
+        except asyncio.TimeoutError:
+            await channel.send(f"⏰ Time's up! The answer was: **{state.answers[0]}**.")
+            state.question = None
+            state.answers = []
+            state.hints = []
     
         def get_partial_answer(self, answer: str, reveal_percentage: float) -> str:
             """
@@ -558,43 +558,28 @@ class Trivia(commands.Cog):
             log.error(f"Error fetching genres: {e}")
             return []
 
-    async def fetch_questions(self, guild, genre: str):
-        """Fetch questions for the selected genre from GitHub."""
+    async def fetch_questions(self, guild, genre: str) -> List[dict]:
+        """Fetch questions for the selected genre and optional difficulty."""
         try:
-            # GitHub API URL for the YAML file
-            github_url = f"https://api.github.com/repos/AfterWorld/UltDev/contents/trivia/questions/{genre}.yaml"
-    
+            url = f"{await self.config.guild(guild).github_url()}{genre}.yaml"
             async with aiohttp.ClientSession() as session:
-                async with session.get(github_url) as response:
+                async with session.get(url) as response:
                     if response.status != 200:
-                        log.error(f"Failed to fetch questions from GitHub. Status: {response.status}")
                         return []
-    
-                    # Decode the base64-encoded content from GitHub
                     data = await response.json()
-                    file_content = base64.b64decode(data["content"]).decode("utf-8")
+                    content = base64.b64decode(data["content"]).decode("utf-8")
+                    questions = yaml.safe_load(content)
     
-                    # Parse the YAML content
-                    questions = yaml.safe_load(file_content)
+                    # Get the selected difficulty
+                    selected_difficulty = await self.config.guild(guild).selected_difficulty()
     
-                    # Validate the structure of questions
-                    valid_questions = [
-                        q for q in questions
-                        if isinstance(q, dict) and
-                           "question" in q and
-                           "answers" in q and isinstance(q["answers"], list) and
-                           "hints" in q and isinstance(q["hints"], list) and
-                           "difficulty" in q
-                    ]
+                    # If difficulty is specified, filter questions; otherwise, return all
+                    if selected_difficulty:
+                        questions = [q for q in questions if q.get("difficulty") == selected_difficulty]
     
-                    if not valid_questions:
-                        log.error(f"No valid questions found in {genre}.yaml.")
-                        return []
-    
-                    return valid_questions
-    
+                    return questions
         except Exception as e:
-            log.error(f"Error fetching or parsing questions: {e}")
+            log.error(f"Error fetching questions: {e}")
             return []
 
     async def add_score(self, guild, user_id: int, points: int):
@@ -609,21 +594,20 @@ class Trivia(commands.Cog):
         """Check messages for trivia answers."""
         if message.author.bot:
             return
-    
+        
         state = self.channel_states.get(message.channel.id)
         if not state or not state.active or not state.question:
             return
-    
-        user_answer = message.content.lower().strip()
-    
-        if not state.answers:  # Check if answers are available
-            await state.channel.send("Error: No answers available for the current question.")
+        
+        # Ensure trivia bot only responds to answers in trivia channels
+        if state.channel != message.channel:
             return
     
         correct_answers = [ans.lower().strip() for ans in state.answers]
+        user_answer = message.content.lower().strip()
     
         if user_answer in correct_answers:
-            points = 10  # Adjust scoring logic as needed
+            points = 10
             await self.add_score(message.guild, message.author.id, points)
             await message.add_reaction("✅")
             await state.channel.send(
@@ -631,10 +615,24 @@ class Trivia(commands.Cog):
                 f"The answer was: **{state.answers[0]}**"
             )
     
+            # Update streaks
+            user_id = message.author.id
+            if user_id in self.streaks:
+                self.streaks[user_id] += 1
+            else:
+                self.streaks[user_id] = 1
+    
+            # Praise for streaks
+            if self.streaks[user_id] >= 3:
+                await state.channel.send(f"🔥 {message.author.mention}, you're on fire with {self.streaks[user_id]} correct answers in a row!")
+    
+            # Clear the question and trigger the next round
             state.question = None
             state.answers = []
-            await asyncio.sleep(1)  # Delay before the next question
+            state.hints = []
+            await asyncio.sleep(1)  # Brief delay before starting the next question
             await self._handle_question_round(state.channel, message.guild, state)
+    
         else:
             await message.add_reaction("❌")
             encouraging_responses = [
@@ -643,7 +641,9 @@ class Trivia(commands.Cog):
                 "Good guess, but it's not correct. Try again!",
             ]
             await state.channel.send(random.choice(encouraging_responses))
-
+    
+            # Reset the streak for incorrect answers
+            self.streaks[message.author.id] = 0
             
 def setup(bot):
     bot.add_cog(Trivia(bot))
