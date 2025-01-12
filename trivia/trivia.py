@@ -216,31 +216,36 @@ class Trivia(commands.Cog):
         """Check messages for trivia answers."""
         if message.author.bot:
             return
-
+    
+        # Retrieve the trivia state for the current channel
         state = self.channel_states.get(message.channel.id)
         if not state or not state.active or not state.question:
             return
-
+    
+        # List of correct answers for the current question
         correct_answers = [ans.lower().strip() for ans in state.answers]
         user_answer = message.content.lower().strip()
-
+    
+        # Check if the user's answer is correct
         if user_answer in correct_answers:
             points = 10
             await self.add_score(message.guild, message.author.id, points)
-            await message.add_reaction("✅")
+            await message.add_reaction("✅")  # React to correct answer
             await state.channel.send(
                 f"🎉 Correct, {message.author.mention}! (+{points} points)\n"
                 f"The answer was: **{state.answers[0]}**"
             )
             state.question = None  # Clear the question for the next round
-            else:
-            await message.add_reaction("❌")
+        else:
+            await message.add_reaction("❌")  # React to incorrect answer
+            # Randomized encouraging responses
             encouraging_responses = [
                 f"Not quite, {message.author.mention}, but keep trying!",
                 "Close, but not the answer we're looking for!",
                 "Good guess, but it's not correct. Try again!",
             ]
             await state.channel.send(random.choice(encouraging_responses))
+
                
 def setup(bot):
     bot.add_cog(Trivia(bot))
