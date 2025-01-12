@@ -10,8 +10,10 @@ import base64
 
 log = logging.getLogger("red.trivia")
 
+
 class TriviaState:
     """Class to manage trivia game state."""
+
     def __init__(self):
         self.active = False
         self.question: Optional[str] = None
@@ -33,8 +35,25 @@ class TriviaState:
         self.task = None
         self.used_questions.clear()
 
+
 class Trivia(commands.Cog):
     """A trivia game with YAML-based questions."""
+
+    # Define ranks and their point thresholds
+    RANKS = {
+        10: "Novice",
+        50: "Trivia Enthusiast",
+        100: "Trivia Master",
+        250: "Trivia Legend",
+        500: "Trivia Champion",
+    }
+    BADGES = {
+        "Novice": "🔰",
+        "Trivia Enthusiast": "✨",
+        "Trivia Master": "🌟",
+        "Trivia Legend": "🏅",
+        "Trivia Champion": "🏆",
+    }
 
     def __init__(self, bot):
         self.bot = bot
@@ -46,10 +65,10 @@ class Trivia(commands.Cog):
             "total_scores": {},
             "games_played": 0,
             "questions_answered": 0,
-            "last_active": None
+            "last_active": None,
         }
         self.config.register_guild(**default_guild)
-        self.channel_states = {}  # State per channel
+        self.channel_states = {}
 
     def get_channel_state(self, channel: discord.TextChannel):
         """Get or initialize the trivia state for a specific channel."""
@@ -83,7 +102,6 @@ class Trivia(commands.Cog):
         await self.config.guild(ctx.guild).selected_genre.set(genre)
         await self.config.guild(ctx.guild).last_active.set(discord.utils.utcnow().timestamp())
 
-        # Increment games played
         games_played = await self.config.guild(ctx.guild).games_played()
         await self.config.guild(ctx.guild).games_played.set(games_played + 1)
 
@@ -101,6 +119,108 @@ class Trivia(commands.Cog):
 
         state.reset()
         await ctx.send("Trivia session stopped.")
+
+    async def run_trivia(self, guild, channel):
+        """Main trivia loop for a specific channel."""
+        state = self.get_channel_state(channel)
+        try:
+            genre = await self.config.guild(guild).selected_genre()
+            questions = await self.fetch_questions(guild, genre)
+
+            if not questions:
+                await channel.send(f"No questions found for the genre '{genre}'.")
+                state.reset()
+                return
+
+            while state.active:
+                available_questions = [q for q in questions if q["question"] not in state.used_questions]
+                if not available_questions:
+                    await channel.send("All questions have been used! Reshuffling the question pool...")
+                    state.used_questions.clear()
+                    available_questions = questions
+
+                question_data = random.choice(available_questions)
+                state.question = question_data["question"]
+                state.answers = question_data["answers"]
+                state.hints = question_data.get("hints", [])
+                state.used_questions.add(state.question)
+
+                await self._handle_question_round(channel, guild, state)
+
+        except asyncio.CancelledError:
+            log.info("Trivia task cancelled.")
+        except Exception as e:
+            log.error(f"Error in trivia loop: {e}")
+        finally:
+            state.reset()
+
+    async def _handle_question_round(self, channel, guild, state):
+        """Handle a single question round."""
+        await channel.send(f"**Trivia Question:** {state.question}\nType your answer below!")
+
+        for i in range(30, 0, -5):
+            if not state.active:
+                return
+            await asyncio.sleep(5)
+            if not state.question:
+                break
+
+            if i in (15, 10):
+                partial_answer = self.get_partial_answer(
+                    state.answers[0],
+                    0.66 if i == 10 else 0.33
+                )
+                await channel.send(f"**{i} seconds left!** Hint: {partial_answer}")
+
+        if state.question and state.active:
+            await channel.send(f"Time's up! The correct answer was: {state.answers[0]}")
+            state.question = None
+            state.answers = []
+            state.hints = []
+
+        await asyncio.sleep(5)
+
+    async def add_score(self, guild, user_id: int, points: int):
+        """Add points to both current and total scores, with gamification."""
+        try:
+            async with self.config.guild(guild).scores() as scores:
+                scores[str(user_id)] = scores.get(str(user_id), 0) + points
+
+            async with self.config.guild(guild).total_scores() as total_scores:
+                if str(user_id) not in total_scores:
+                    total_scores[str(user_id)] = 0
+                total_scores[str(user_id)] += points
+                total_points = total_scores[str(user_id)]
+
+            await self.check_achievements(guild, user_id, total_points)
+        except Exception as e:
+            log.error(f"Error adding score: {e}")
+            raise
+
+    async def check_achievements(self, guild, user_id: int, total_points: int):
+        """Check if a user has achieved a new rank or milestone."""
+        user = await self.bot.fetch_user(user_id)
+        if not user:
+            return
+
+        rank = None
+        for points, rank_name in sorted(self.RANKS.items(), reverse=True):
+            if total_points >= points:
+                rank = rank_name
+                break
+
+        if rank:
+            badge = self.BADGES.get(rank, "")
+            await self.channel_states[guild.id].channel.send(
+                f"🎉 {user.mention} has achieved the rank of **{rank}**! {badge}\n"
+                f"Total Points: {total_points}"
+            )
+
+        milestones = [10, 50, 100, 250, 500]
+        if total_points in milestones:
+            await self.channel_states[guild.id].channel.send(
+                f"🏆 {user.mention} reached **{total_points} points**! Keep it up!"
+            )
         
     @trivia.command()
     async def leaderboard(self, ctx):
