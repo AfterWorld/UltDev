@@ -198,3 +198,235 @@
     - "Built by Tom"
     - "Runs on sea tracks"
   difficulty: "medium"
+
+- question: "Who is the captain of the Red Hair Pirates?"
+  answers:
+    - "Shanks"
+    - "Red-Haired Shanks"
+  hints:
+    - "Gave Luffy his straw hat"
+    - "One of the Four Emperors"
+  difficulty: "easy"
+
+- question: "What is the name of Zoro's village?"
+  answers:
+    - "Shimotsuki Village"
+  hints:
+    - "Located in East Blue"
+    - "Home to his childhood dojo"
+  difficulty: "easy"
+
+- question: "What is the name of Law's crew?"
+  answers:
+    - "Heart Pirates"
+  hints:
+    - "Named after Corazon"
+    - "Their Jolly Roger features a smiley face"
+  difficulty: "easy"
+
+- question: "What is the name of Doflamingo's devil fruit?"
+  answers:
+    - "String-String Fruit"
+    - "Ito Ito no Mi"
+  hints:
+    - "Allows manipulation of strings"
+    - "Used to control people like puppets"
+  difficulty: "medium"
+
+- question: "Who is known as the 'Knight of the Sea'?"
+  answers:
+    - "Jinbe"
+    - "Jinbei"
+  hints:
+    - "Former Warlord of the Sea"
+    - "Expert in Fish-Man Karate"
+  difficulty: "easy"
+
+- question: "What is the name of Big Mom's main homie?"
+  answers:
+    - "Napoleon"
+    - "Living Sword Napoleon"
+  hints:
+    - "A sword with a soul"
+    - "Can transform into different weapons"
+  difficulty: "medium"
+
+- question: "What is the name of Whitebeard's ship?"
+  answers:
+    - "Moby Dick"
+  hints:
+    - "Named after a famous whale"
+    - "Flagship of the Whitebeard Pirates"
+  difficulty: "easy"
+
+- question: "What is the name of Robin's hometown?"
+  answers:
+    - "Ohara"
+  hints:
+    - "Known for its great library"
+    - "Destroyed by a Buster Call"
+  difficulty: "medium"
+
+- question: "What is the name of Usopp's crew in his village?"
+  answers:
+    - "Usopp Pirates"
+    - "Veggie Pirates"
+  hints:
+    - "Consisted of three children"
+    - "Protected Syrup Village"
+  difficulty: "easy"
+
+- question: "What is the name of Sanji's restaurant in Baratie?"
+  answers:
+    - "Shit Kitchen"
+    - "Crap Café"
+  hints:
+    - "His section of the Baratie"
+    - "Known for quick meals"
+  difficulty: "medium"
+
+- question: "What is the name of Nami's tangerine grove?"
+  answers:
+    - "Bellemere's Grove"
+    - "Cocoyasi Tangerines"
+  hints:
+    - "Grown on the Thousand Sunny"
+    - "Originally from her hometown"
+  difficulty: "easy"
+
+- question: "What is the name of Chopper's mentor?"
+  answers:
+    - "Dr. Hiriluk"
+    - "Hiriluk"
+  hints:
+    - "A quack doctor"
+    - "Inspired Chopper to become a doctor"
+  difficulty: "medium"
+
+- question: "What is the name of Franky's special cola-powered attack?"
+  answers:
+    - "Radical Beam"
+    - "Franky Radical Beam"
+  hints:
+    - "Fired from his palm"
+    - "Requires cola to function"
+  difficulty: "medium"
+
+- question: "What is the name of Brook's sword?"
+  answers:
+    - "Soul Solid"
+  hints:
+    - "Can channel his soul powers"
+    - "Creates ice effects"
+  difficulty: "medium"
+
+- question: "What is the name of the revolutionary army's second-in-command?"
+  answers:
+    - "Sabo"
+  hints:
+    - "Luffy's sworn brother"
+    - "Current user of the Flame-Flame Fruit"
+  difficulty: "easy"
+
+- question: "What is the name of the island where the Straw Hats separated?"
+  answers:
+    - "Sabaody Archipelago"
+    - "Sabaody"
+  hints:
+    - "Known for its bubble trees"
+    - "Where Kuma scattered the crew"
+  difficulty: "medium"
+
+- question: "What is the name of Zoro's childhood friend?"
+  answers:
+    - "Kuina"
+  hints:
+    - "Daughter of his dojo master"
+    - "Owner of Wado Ichimonji"
+  difficulty: "medium"
+
+- question: "What is the name of Luffy's attack that defeated Rob Lucci?"
+  answers:
+    - "Gear Second Jet Gatling"
+    - "Gomu Gomu no Jet Gatling"
+  hints:
+    - "Used in Gear Second form"
+    - "Multiple rapid-fire punches"
+  difficulty: "medium"
+
+- question: "What is the name of the mysterious figure who saved Luffy at Marineford?"
+  answers:
+    - "Bartholomew Kuma"
+    - "Kuma"
+  hints:
+    - "A Warlord turned Pacifista"
+    - "Used his Paw-Paw Fruit powers"
+  difficulty: "hard"
+
+- question: "What is the name of the island where Roger found the One Piece?"
+  answers:
+    - "Laugh Tale"
+    - "Raftel"
+  hints:
+    - "Final island of the Grand Line"
+    - "Only reached by the Roger Pirates"
+  difficulty: "hard"
+
+- question: "What is the name of Kaido's daughter?"
+  answers:
+    - "Yamato"
+  hints:
+    - "Wants to be like Oden"
+    - "Carries his logbook"
+  difficulty: "medium"
+
+- question: "What is the name of the sword that replaced Shusui in Zoro's arsenal?"
+  answers:
+    - "Enma"
+  hints:
+    - "Belonged to Kozuki Oden"
+    - "Known for drawing out Haki"
+  difficulty: "medium"
+
+- question: "What is the name of the person who gave Shanks his scar?"
+  answers:
+    - "Marshall D. Teach"
+    - "Blackbeard"
+  hints:
+    - "Before he became infamous"
+    - "Used no Devil Fruit powers"
+  difficulty: "medium"
+
+- question: "What is the name of the island where the Straw Hats first met Vivi?"
+  answers:
+    - "Whiskey Peak"
+  hints:
+    - "Full of bounty hunters"
+    - "Baroque Works operation base"
+  difficulty: "medium"
+
+- question: "What is the name of Ace's mother?"
+  answers:
+    - "Portgas D. Rouge"
+    - "Rouge"
+  hints:
+    - "Held Ace for 20 months"
+    - "From South Blue"
+  difficulty: "hard"
+
+- question: "What is the name of the longest island in One Piece?"
+  answers:
+    - "Long Ring Long Land"
+  hints:
+    - "Where the Davy Back Fight took place"
+    - "Home to unique elongated animals"
+  difficulty: "medium"
+
+- question: "What is the name of Luffy's technique that allows him to see the future?"
+  answers:
+    - "Advanced Observation Haki"
+    - "Future Sight"
+  hints:
+    - "Learned during the fight with Katakuri"
+    - "Highest form of Observation Haki"
+  difficulty: "hard"
