@@ -5,6 +5,7 @@
   hints:
     - "A natural disaster at Water 7"
     - "An annual storm phenomenon"
+  difficulty: "medium"
 
 - question: "Who trained Luffy during the two-year timeskip?"
   answers:
@@ -13,6 +14,7 @@
   hints:
     - "Former first mate of the Roger Pirates"
     - "Known as the Dark King"
+  difficulty: "easy"
 
 - question: "What is the name of Zoro's black sword?"
   answers:
@@ -20,6 +22,7 @@
   hints:
     - "A legendary blade from Wano"
     - "Previously owned by Ryuma"
+  difficulty: "medium"
 
 - question: "Which member of CP9 had the power of the Cat-Cat Fruit, Leopard Model?"
   answers:
@@ -27,6 +30,7 @@
   hints:
     - "The strongest member of CP9"
     - "Leader of the assassination squad"
+  difficulty: "medium"
 
 - question: "What is the name of the island where the Straw Hats met Brook?"
   answers:
@@ -34,6 +38,7 @@
   hints:
     - "A floating island in the Florian Triangle"
     - "Ruled by Gecko Moria"
+  difficulty: "easy"
 
 - question: "What is the name of Nami's adopted mother?"
   answers:
@@ -42,6 +47,7 @@
   hints:
     - "A former Marine"
     - "Raised Nami and Nojiko"
+  difficulty: "medium"
 
 - question: "Which Celestial Dragon did Luffy punch at Sabaody Archipelago?"
   answers:
@@ -50,6 +56,7 @@
   hints:
     - "He tried to buy Keimi"
     - "Wore a bubble helmet"
+  difficulty: "easy"
 
 - question: "What is the name of Ace's devil fruit?"
   answers:
@@ -58,6 +65,7 @@
   hints:
     - "Allows the user to create and control fire"
     - "Later eaten by Sabo"
+  difficulty: "easy"
 
 - question: "Who is known as 'The Surgeon of Death'?"
   answers:
@@ -66,6 +74,7 @@
   hints:
     - "Captain of the Heart Pirates"
     - "Has the Op-Op Fruit powers"
+  difficulty: "easy"
 
 - question: "What is the name of Zoro's dojo?"
   answers:
@@ -74,6 +83,7 @@
   hints:
     - "Where he trained with Kuina"
     - "Located in Shimotsuki Village"
+  difficulty: "medium"
 
 - question: "What is the name of Shanks' sword?"
   answers:
@@ -81,6 +91,7 @@
   hints:
     - "A named blade wielded by a Yonko"
     - "Used in his duels with Mihawk"
+  difficulty: "medium"
 
 - question: "What is the name of the Revolutionary Army's base?"
   answers:
@@ -89,6 +100,7 @@
   hints:
     - "Located on a winter island"
     - "Destroyed by the Blackbeard Pirates"
+  difficulty: "hard"
 
 - question: "What is the name of Sanji's genetic enhancement?"
   answers:
@@ -97,6 +109,7 @@
   hints:
     - "Given by his family"
     - "Grants invisibility powers"
+  difficulty: "medium"
 
 - question: "What is the name of Robin's signature attack?"
   answers:
@@ -105,6 +118,7 @@
   hints:
     - "Uses her Devil Fruit powers to break enemies' backs"
     - "Often preceded by sprouting arms"
+  difficulty: "easy"
 
 - question: "What is the name of Usopp's first weapon?"
   answers:
@@ -113,6 +127,7 @@
   hints:
     - "A simple slingshot from Syrup Village"
     - "Used before the Kabuto"
+  difficulty: "easy"
 
 - question: "What is the name of Chopper's home island?"
   answers:
@@ -121,6 +136,7 @@
   hints:
     - "Known for its medical expertise"
     - "Ruled by Wapol before his defeat"
+  difficulty: "medium"
 
 - question: "What is the name of Franky's mentor?"
   answers:
@@ -129,6 +145,7 @@
   hints:
     - "Built the Oro Jackson"
     - "A legendary shipwright"
+  difficulty: "medium"
 
 - question: "What is the name of Brook's former pirate crew?"
   answers:
@@ -136,6 +153,7 @@
   hints:
     - "Led by Yorki"
     - "Known for their musical performances"
+  difficulty: "medium"
 
 - question: "What is the official name of Marineford?"
   answers:
@@ -144,6 +162,7 @@
   hints:
     - "Center of Marine operations"
     - "Location of the paramount war"
+  difficulty: "easy"
 
 - question: "What is the name of the island where Roger was executed?"
   answers:
@@ -152,6 +171,7 @@
   hints:
     - "Where the Great Pirate Era began"
     - "Located in East Blue"
+  difficulty: "easy"
 
 - question: "What is Blackbeard's real name?"
   answers:
@@ -160,6 +180,7 @@
   hints:
     - "Former member of Whitebeard's crew"
     - "Current Emperor of the Sea"
+  difficulty: "medium"
 
 - question: "What is the name of Luffy's signature attack?"
   answers:
@@ -168,6 +189,7 @@
   hints:
     - "His basic stretching punch"
     - "First attack he mastered"
+  difficulty: "easy"
 
 - question: "What is the name of the Sea Train that connects Water 7 to other islands?"
   answers:
@@ -175,207 +197,4 @@
   hints:
     - "Built by Tom"
     - "Runs on sea tracks"
-
-- question: "Who is the captain of the Red Hair Pirates?"
-  answers:
-    - "Shanks"
-    - "Red-Haired Shanks"
-  hints:
-    - "Gave Luffy his straw hat"
-    - "One of the Four Emperors"
-
-- question: "What is the name of Zoro's village?"
-  answers:
-    - "Shimotsuki Village"
-  hints:
-    - "Located in East Blue"
-    - "Home to his childhood dojo"
-- question: "What is the name of Law's crew?"
-  answers:
-    - "Heart Pirates"
-  hints:
-    - "Named after Corazon"
-    - "Their Jolly Roger features a smiley face"
-
-- question: "What is the name of Doflamingo's devil fruit?"
-  answers:
-    - "String-String Fruit"
-    - "Ito Ito no Mi"
-  hints:
-    - "Allows manipulation of strings"
-    - "Used to control people like puppets"
-
-- question: "Who is known as the 'Knight of the Sea'?"
-  answers:
-    - "Jinbe"
-    - "Jinbei"
-  hints:
-    - "Former Warlord of the Sea"
-    - "Expert in Fish-Man Karate"
-
-- question: "What is the name of Big Mom's main homie?"
-  answers:
-    - "Napoleon"
-    - "Living Sword Napoleon"
-  hints:
-    - "A sword with a soul"
-    - "Can transform into different weapons"
-
-- question: "What is the name of Whitebeard's ship?"
-  answers:
-    - "Moby Dick"
-  hints:
-    - "Named after a famous whale"
-    - "Flagship of the Whitebeard Pirates"
-
-- question: "What is the name of Robin's hometown?"
-  answers:
-    - "Ohara"
-  hints:
-    - "Known for its great library"
-    - "Destroyed by a Buster Call"
-
-- question: "What is the name of Usopp's crew in his village?"
-  answers:
-    - "Usopp Pirates"
-    - "Veggie Pirates"
-  hints:
-    - "Consisted of three children"
-    - "Protected Syrup Village"
-
-- question: "What is the name of Sanji's restaurant in Baratie?"
-  answers:
-    - "Shit Kitchen"
-    - "Crap Café"
-  hints:
-    - "His section of the Baratie"
-    - "Known for quick meals"
-
-- question: "What is the name of Nami's tangerine grove?"
-  answers:
-    - "Bellemere's Grove"
-    - "Cocoyasi Tangerines"
-  hints:
-    - "Grown on the Thousand Sunny"
-    - "Originally from her hometown"
-
-- question: "What is the name of Chopper's mentor?"
-  answers:
-    - "Dr. Hiriluk"
-    - "Hiriluk"
-  hints:
-    - "A quack doctor"
-    - "Inspired Chopper to become a doctor"
-
-- question: "What is the name of Franky's special cola-powered attack?"
-  answers:
-    - "Radical Beam"
-    - "Franky Radical Beam"
-  hints:
-    - "Fired from his palm"
-    - "Requires cola to function"
-
-- question: "What is the name of Brook's sword?"
-  answers:
-    - "Soul Solid"
-  hints:
-    - "Can channel his soul powers"
-    - "Creates ice effects"
-
-- question: "What is the name of the revolutionary army's second-in-command?"
-  answers:
-    - "Sabo"
-  hints:
-    - "Luffy's sworn brother"
-    - "Current user of the Flame-Flame Fruit"
-
-- question: "What is the name of the island where the Straw Hats separated?"
-  answers:
-    - "Sabaody Archipelago"
-    - "Sabaody"
-  hints:
-    - "Known for its bubble trees"
-    - "Where Kuma scattered the crew"
-
-- question: "What is the name of Zoro's childhood friend?"
-  answers:
-    - "Kuina"
-  hints:
-    - "Daughter of his dojo master"
-    - "Owner of Wado Ichimonji"
-
-- question: "What is the name of Luffy's attack that defeated Rob Lucci?"
-  answers:
-    - "Gear Second Jet Gatling"
-    - "Gomu Gomu no Jet Gatling"
-  hints:
-    - "Used in Gear Second form"
-    - "Multiple rapid-fire punches"
-
-- question: "What is the name of the mysterious figure who saved Luffy at Marineford?"
-  answers:
-    - "Bartholomew Kuma"
-    - "Kuma"
-  hints:
-    - "A Warlord turned Pacifista"
-    - "Used his Paw-Paw Fruit powers"
-
-- question: "What is the name of the island where Roger found the One Piece?"
-  answers:
-    - "Laugh Tale"
-    - "Raftel"
-  hints:
-    - "Final island of the Grand Line"
-    - "Only reached by the Roger Pirates"
-
-- question: "What is the name of Kaido's daughter?"
-  answers:
-    - "Yamato"
-  hints:
-    - "Wants to be like Oden"
-    - "Carries his logbook"
-
-- question: "What is the name of the sword that replaced Shusui in Zoro's arsenal?"
-  answers:
-    - "Enma"
-  hints:
-    - "Belonged to Kozuki Oden"
-    - "Known for drawing out Haki"
-
-- question: "What is the name of the person who gave Shanks his scar?"
-  answers:
-    - "Marshall D. Teach"
-    - "Blackbeard"
-  hints:
-    - "Before he became infamous"
-    - "Used no Devil Fruit powers"
-
-- question: "What is the name of the island where the Straw Hats first met Vivi?"
-  answers:
-    - "Whiskey Peak"
-  hints:
-    - "Full of bounty hunters"
-    - "Baroque Works operation base"
-
-- question: "What is the name of Ace's mother?"
-  answers:
-    - "Portgas D. Rouge"
-    - "Rouge"
-  hints:
-    - "Held Ace for 20 months"
-    - "From South Blue"
-
-- question: "What is the name of the longest island in One Piece?"
-  answers:
-    - "Long Ring Long Land"
-  hints:
-    - "Where the Davy Back Fight took place"
-    - "Home to unique elongated animals"
-
-- question: "What is the name of Luffy's technique that allows him to see the future?"
-  answers:
-    - "Advanced Observation Haki"
-    - "Future Sight"
-  hints:
-    - "Learned during the fight with Katakuri"
-    - "Highest form of Observation Haki"
+  difficulty: "medium"
