@@ -19,7 +19,10 @@ class Trivia(commands.Cog):
         default_guild = {
             "github_url": "https://api.github.com/repos/AfterWorld/UltDev/contents/trivia/questions/",
             "selected_genre": None,
-            "scores": {}
+            "scores": {},
+            "total_scores": {},
+            "games_played": 0,
+            "questions_answered": 0
         }
         self.config.register_guild(**default_guild)
         self.trivia_active = False
@@ -27,7 +30,8 @@ class Trivia(commands.Cog):
         self.current_answers = []
         self.current_hints = []
         self.trivia_channel = None
-        self.task = None  # Store the trivia task
+        self.task = None
+        self.used_questions = set()
 
     @commands.group()
     async def trivia(self, ctx):
@@ -55,9 +59,13 @@ class Trivia(commands.Cog):
         await self.config.guild(ctx.guild).selected_genre.set(genre)
         self.trivia_active = True
         self.trivia_channel = ctx.channel
-        await ctx.send(f"Starting trivia for the **{genre}** genre. Get ready!")
+        self.used_questions.clear()
         
-        # Start the trivia task
+        # Increment games played counter
+        async with self.config.guild(ctx.guild).games_played() as games:
+            games += 1
+            
+        await ctx.send(f"Starting trivia for the **{genre}** genre. Get ready!")
         self.task = asyncio.create_task(self.run_trivia(ctx.guild))
 
     @trivia.command()
@@ -68,12 +76,33 @@ class Trivia(commands.Cog):
             if self.task:
                 self.task.cancel()
             await ctx.send("Trivia session stopped.")
-            # Show final scores
             await self.show_scores(ctx.guild)
-            # Reset scores
             await self.config.guild(ctx.guild).scores.set({})
         else:
             await ctx.send("No trivia session is currently running.")
+
+    @trivia.command()
+    async def stats(self, ctx):
+        """Show trivia statistics."""
+        guild = ctx.guild
+        games_played = await self.config.guild(guild).games_played()
+        questions_answered = await self.config.guild(guild).questions_answered()
+        total_scores = await self.config.guild(guild).total_scores()
+        
+        # Calculate top scorer
+        top_scorer_id = max(total_scores.items(), key=lambda x: x[1])[0] if total_scores else None
+        top_scorer = await self.bot.fetch_user(int(top_scorer_id)) if top_scorer_id else None
+        
+        embed = discord.Embed(
+            title="📊 Trivia Statistics",
+            color=discord.Color.blue()
+        )
+        embed.add_field(name="Games Played", value=str(games_played), inline=True)
+        embed.add_field(name="Questions Answered", value=str(questions_answered), inline=True)
+        if top_scorer:
+            embed.add_field(name="Top Scorer", value=f"{top_scorer.name}: {total_scores[top_scorer_id]}", inline=True)
+        
+        await ctx.send(embed=embed)
 
     @trivia.command()
     async def hint(self, ctx):
@@ -89,20 +118,71 @@ class Trivia(commands.Cog):
 
     @trivia.command()
     async def scores(self, ctx):
-        """Show current scores."""
+        """Show current session scores."""
         await self.show_scores(ctx.guild)
 
+    @trivia.command()
+    async def leaderboard(self, ctx):
+        """Show the all-time leaderboard."""
+        await self.show_leaderboard(ctx.guild)
+
     async def show_scores(self, guild):
-        """Display the current scores."""
+        """Display the current session scores."""
         scores = await self.config.guild(guild).scores()
         if not scores:
-            await self.trivia_channel.send("No scores yet!")
+            await self.trivia_channel.send("No scores yet in this session!")
             return
 
         sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-        score_list = "\n".join([f"{idx+1}. <@{player_id}>: {score}" 
-                               for idx, (player_id, score) in enumerate(sorted_scores)])
-        embed = discord.Embed(title="Trivia Scores", description=score_list, color=discord.Color.blue())
+        embed = discord.Embed(
+            title="📝 Current Session Scores",
+            color=discord.Color.green()
+        )
+        
+        for idx, (player_id, score) in enumerate(sorted_scores):
+            try:
+                player = await self.bot.fetch_user(int(player_id))
+                player_name = player.name if player else "Unknown Player"
+            except:
+                player_name = "Unknown Player"
+            embed.add_field(
+                name=f"#{idx + 1}",
+                value=f"{player_name}: {score}",
+                inline=False
+            )
+
+        await self.trivia_channel.send(embed=embed)
+
+    async def show_leaderboard(self, guild):
+        """Display the all-time leaderboard."""
+        total_scores = await self.config.guild(guild).total_scores()
+        if not total_scores:
+            await self.trivia_channel.send("No scores recorded yet!")
+            return
+
+        sorted_scores = sorted(total_scores.items(), key=lambda x: x[1], reverse=True)
+        top_players = sorted_scores[:10]
+
+        embed = discord.Embed(
+            title="🏆 All-Time Trivia Leaderboard 🏆",
+            description="Top 10 Players",
+            color=discord.Color.gold()
+        )
+
+        medals = {0: "🥇", 1: "🥈", 2: "🥉"}
+        for idx, (player_id, score) in enumerate(top_players):
+            medal = medals.get(idx, "")
+            try:
+                player = await self.bot.fetch_user(int(player_id))
+                player_name = player.name if player else "Unknown Player"
+            except:
+                player_name = "Unknown Player"
+            embed.add_field(
+                name=f"{medal} #{idx + 1}",
+                value=f"{player_name}: {score} points",
+                inline=False
+            )
+
         await self.trivia_channel.send(embed=embed)
 
     def get_partial_answer(self, answer: str, reveal_percentage: float) -> str:
@@ -111,17 +191,23 @@ class Trivia(commands.Cog):
             return ""
         chars = list(answer)
         reveal_count = int(len(chars) * reveal_percentage)
-        for i in range(len(chars) - reveal_count):
+        hidden_indices = random.sample(range(len(chars)), len(chars) - reveal_count)
+        for i in hidden_indices:
             if chars[i].isalnum():
                 chars[i] = '_'
         return ''.join(chars)
 
     async def add_score(self, guild, user_id: int, points: int):
-        """Add points to a user's score."""
+        """Add points to both current and total scores."""
         async with self.config.guild(guild).scores() as scores:
             if str(user_id) not in scores:
                 scores[str(user_id)] = 0
             scores[str(user_id)] += points
+
+        async with self.config.guild(guild).total_scores() as total_scores:
+            if str(user_id) not in total_scores:
+                total_scores[str(user_id)] = 0
+            total_scores[str(user_id)] += points
 
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -132,21 +218,22 @@ class Trivia(commands.Cog):
             message.channel != self.trivia_channel):
             return
 
-        # Convert answer to lowercase for comparison
         answer = message.content.lower().strip()
         correct_answers = [ans.lower().strip() for ans in self.current_answers]
 
         if answer in correct_answers:
-            # Award points (more points for faster answers)
-            points = 10  # Base points
+            points = 10
             await self.add_score(message.guild, message.author.id, points)
+            
+            # Increment questions answered counter
+            async with self.config.guild(message.guild).questions_answered() as questions:
+                questions += 1
             
             await message.add_reaction("✅")
             await self.trivia_channel.send(
-                f"🎉 Correct, {message.author.mention}! The answer was: {self.current_answers[0]}"
+                f"🎉 Correct, {message.author.mention}! (+{points} points)\nThe answer was: {self.current_answers[0]}"
             )
             
-            # Reset current question
             self.current_question = None
             self.current_answers = []
             self.current_hints = []
@@ -164,19 +251,30 @@ class Trivia(commands.Cog):
                 return
 
             while self.trivia_active:
-                question_data = random.choice(questions)
+                available_questions = [q for q in questions if q["question"] not in self.used_questions]
+                
+                if not available_questions:
+                    await channel.send("All questions have been used! Reshuffling question pool...")
+                    self.used_questions.clear()
+                    available_questions = questions
+
+                question_data = random.choice(available_questions)
                 self.current_question = question_data["question"]
                 self.current_answers = question_data["answers"]
                 self.current_hints = question_data.get("hints", []).copy()
+                self.used_questions.add(self.current_question)
                 main_answer = self.current_answers[0]
 
-                await channel.send(f"**Trivia Question:**\n{self.current_question}\n*Use `!trivia hint` for a hint!*")
+                await channel.send(
+                    f"**Trivia Question:**\n{self.current_question}\n"
+                    f"*Use `!trivia hint` for a hint!*"
+                )
                 
                 for i in range(30, 0, -5):
-                    if not self.trivia_active:  # Check if trivia was stopped
+                    if not self.trivia_active:
                         return
                     await asyncio.sleep(5)
-                    if not self.current_question:  # Question was answered
+                    if not self.current_question:
                         break
 
                     if i == 15:
@@ -186,16 +284,15 @@ class Trivia(commands.Cog):
                         partial_answer = self.get_partial_answer(main_answer, 0.66)
                         await channel.send(f"**10 seconds left!** The answer looks like: {partial_answer}")
 
-                if self.current_question and self.trivia_active:  # Time's up and trivia still active
+                if self.current_question and self.trivia_active:
                     await channel.send(f"Time's up! The correct answer was: {main_answer}")
                     self.current_question = None
                     self.current_answers = []
                     self.current_hints = []
 
-                await asyncio.sleep(5)  # Pause before next question
+                await asyncio.sleep(5)
 
         except asyncio.CancelledError:
-            # Handle the cancellation gracefully
             self.current_question = None
             self.current_answers = []
             self.current_hints = []
