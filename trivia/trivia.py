@@ -11,8 +11,6 @@ import base64
 log = logging.getLogger("red.trivia")
 
 class Trivia(commands.Cog):
-    """A trivia game with YAML-based questions."""
-
     def __init__(self, bot):
         self.bot = bot
         self.config = Config.get_conf(self, identifier=9876543212, force_registration=True)
@@ -32,6 +30,18 @@ class Trivia(commands.Cog):
         self.trivia_channel = None
         self.task = None
         self.used_questions = set()
+        self.last_github_request = 0
+        self.github_rate_limit = 2  # seconds between requests
+
+    async def github_request(self, url: str, session: aiohttp.ClientSession):
+        """Handle GitHub API requests with rate limiting."""
+        current_time = asyncio.get_event_loop().time()
+        if current_time - self.last_github_request < self.github_rate_limit:
+            await asyncio.sleep(self.github_rate_limit)
+        
+        async with session.get(url) as response:
+            self.last_github_request = asyncio.get_event_loop().time()
+            return response
 
     @commands.group(invoke_without_command=True)
     async def trivia(self, ctx):
@@ -68,8 +78,15 @@ class Trivia(commands.Cog):
         log.info(f"Starting trivia with genre: {genre}")
         
         if self.trivia_active:
-            log.warning("Attempted to start trivia while already active")
-            return await ctx.send("A trivia session is already running!")
+            # Check if the task is actually running
+            if self.task and not self.task.done():
+                log.warning("Attempted to start trivia while already active")
+                return await ctx.send("A trivia session is already running!")
+            else:
+                # Task is done or doesn't exist, reset the state
+                log.info("Resetting stale trivia state")
+                self.trivia_active = False
+                self.task = None
 
         genres = await self.fetch_genres(ctx.guild)
         log.info(f"Available genres: {genres}")
@@ -78,16 +95,42 @@ class Trivia(commands.Cog):
             log.warning(f"Invalid genre attempted: {genre}")
             return await ctx.send(f"Invalid genre. Available genres: {', '.join(genres)}")
 
-        await self.config.guild(ctx.guild).selected_genre.set(genre)
-        self.trivia_active = True
-        self.trivia_channel = ctx.channel
-        self.used_questions.clear()
-        
-        async with self.config.guild(ctx.guild).games_played() as games:
-            games += 1
+        try:
+            # Set up the trivia session
+            await self.config.guild(ctx.guild).selected_genre.set(genre)
+            self.trivia_active = True
+            self.trivia_channel = ctx.channel
+            self.used_questions.clear()
             
-        await ctx.send(f"Starting trivia for the **{genre}** genre. Get ready!")
-        self.task = asyncio.create_task(self.run_trivia(ctx.guild))
+            async with self.config.guild(ctx.guild).games_played() as games:
+                games += 1
+            
+            await ctx.send(f"Starting trivia for the **{genre}** genre. Get ready!")
+            
+            # Create and start the trivia task
+            self.task = asyncio.create_task(self.run_trivia(ctx.guild))
+            log.info("Trivia task created and started")
+            
+            # Add task error handling
+            self.task.add_done_callback(self.handle_task_completion)
+            
+        except Exception as e:
+            log.error(f"Error starting trivia: {str(e)}")
+            self.trivia_active = False
+            self.task = None
+            await ctx.send("An error occurred while starting the trivia game.")
+
+    def handle_task_completion(self, task):
+        """Handle trivia task completion and exceptions."""
+        try:
+            task.result()
+        except asyncio.CancelledError:
+            log.info("Trivia task was cancelled")
+        except Exception as e:
+            log.error(f"Trivia task failed with error: {str(e)}")
+        finally:
+            self.trivia_active = False
+            self.task = None
 
     @trivia.command()
     async def stop(self, ctx):
@@ -283,17 +326,17 @@ class Trivia(commands.Cog):
         
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(github_url) as response:
-                    if response.status != 200:
-                        log.error(f"Failed to fetch questions: {response.status} - {response.reason}")
-                        log.error(f"Response content: {await response.text()}")
-                        return []
+                response = await self.github_request(github_url, session)
+                if response.status != 200:
+                    log.error(f"Failed to fetch questions: {response.status} - {response.reason}")
+                    log.error(f"Response content: {await response.text()}")
+                    return []
 
-                    data = await response.json()
-                    content = base64.b64decode(data["content"]).decode("utf-8")
-                    questions = yaml.safe_load(content)
-                    log.info(f"Successfully loaded {len(questions)} questions for genre {genre}")
-                    return questions
+                data = await response.json()
+                content = base64.b64decode(data["content"]).decode("utf-8")
+                questions = yaml.safe_load(content)
+                log.info(f"Successfully loaded {len(questions)} questions for genre {genre}")
+                return questions
         except Exception as e:
             log.error(f"Error while fetching questions: {str(e)}")
             return []
@@ -303,15 +346,20 @@ class Trivia(commands.Cog):
         try:
             channel = self.trivia_channel
             genre = await self.config.guild(guild).selected_genre()
+            log.info(f"Fetching questions for genre: {genre}")
+            
             questions = await self.fetch_questions(guild, genre)
+            log.info(f"Fetched {len(questions)} questions")
 
             if not questions:
                 await channel.send(f"No questions found for the genre '{genre}'. Please check the file.")
                 self.trivia_active = False
                 return
 
+            log.info("Starting trivia loop")
             while self.trivia_active:
                 available_questions = [q for q in questions if q["question"] not in self.used_questions]
+                log.info(f"Available questions: {len(available_questions)}")
                 
                 if not available_questions:
                     await channel.send("All questions have been used! Reshuffling question pool...")
@@ -325,6 +373,7 @@ class Trivia(commands.Cog):
                 self.used_questions.add(self.current_question)
                 main_answer = self.current_answers[0]
 
+                log.info(f"Sending question: {self.current_question}")
                 await channel.send(
                     f"**Trivia Question:**\n{self.current_question}\n"
                     f"*Use `.trivia hint` for a hint!*"
@@ -332,9 +381,11 @@ class Trivia(commands.Cog):
                 
                 for i in range(30, 0, -5):
                     if not self.trivia_active:
+                        log.info("Trivia deactivated during countdown")
                         return
                     await asyncio.sleep(5)
                     if not self.current_question:
+                        log.info("Question answered, breaking countdown")
                         break
 
                     if i == 15:
@@ -353,15 +404,12 @@ class Trivia(commands.Cog):
                 await asyncio.sleep(5)
 
         except asyncio.CancelledError:
-            self.current_question = None
-            self.current_answers = []
-            self.current_hints = []
-            self.trivia_active = False
-            return
+            log.info("Trivia task cancelled")
+            raise
         except Exception as e:
             log.error(f"Error in trivia loop: {str(e)}")
             await channel.send("An error occurred running the trivia game.")
-            self.trivia_active = False
+            raise
 
 def setup(bot):
     bot.add_cog(Trivia(bot))
