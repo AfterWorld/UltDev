@@ -175,12 +175,13 @@ class Trivia(commands.Cog):
         pass
 
     @trivia.command()
-    async def start(self, ctx, genre: str, mode: Optional[str] = None):
+    async def start(self, ctx, genre: str, language: str = "english", mode: Optional[str] = None):
         """
         Start a trivia session in this channel.
     
         Arguments:
         - genre: The genre of trivia questions (e.g., onepiece, anime).
+        - language: The language of the trivia questions (e.g., english, spanish).
         - mode (optional): The mode of the trivia game (speed, koth).
         """
         state = self.get_channel_state(ctx.channel)
@@ -189,9 +190,9 @@ class Trivia(commands.Cog):
             await ctx.send("A trivia session is already running in this channel!")
             return
     
-        genres = await self.fetch_genres(ctx.guild)
+        genres = await self.fetch_genres(ctx.guild, language)
         if genre not in genres:
-            await ctx.send(f"Invalid genre. Available genres: {', '.join(genres)}")
+            await ctx.send(f"Invalid genre or language. Available genres for {language}: {', '.join(genres)}")
             return
     
         if mode not in (None, "speed", "koth"):
@@ -201,14 +202,16 @@ class Trivia(commands.Cog):
         state.reset()
         state.active = True
         state.channel = ctx.channel
-        state.mode = mode  # Store the mode in the state
+        state.mode = mode
         await self.config.guild(ctx.guild).selected_genre.set(genre)
+        await self.config.guild(ctx.guild).selected_language.set(language)
         await self.config.guild(ctx.guild).last_active.set(discord.utils.utcnow().timestamp())
     
         games_played = await self.config.guild(ctx.guild).games_played()
         await self.config.guild(ctx.guild).games_played.set(games_played + 1)
     
-        await ctx.send(f"Starting trivia for the **{genre}** genre. Mode: **{mode or 'standard'}**. Get ready!")
+        log.info(f"Starting trivia for genre '{genre}' in language '{language}', mode: '{mode or 'standard'}'")
+        await ctx.send(f"Starting trivia for the **{genre}** genre in **{language}**. Mode: **{mode or 'standard'}**. Get ready!")
         state.task = asyncio.create_task(self.run_trivia(ctx.guild, ctx.channel))
 
 
@@ -382,6 +385,8 @@ class Trivia(commands.Cog):
 
     async def run_trivia(self, guild, channel):
         """Main trivia loop for a specific channel."""
+        log.info(f"Starting trivia loop for guild: {guild.id}, channel: {channel.id}")
+    
         state = self.get_channel_state(channel)
     
         # Prevent duplicate trivia tasks
@@ -391,41 +396,24 @@ class Trivia(commands.Cog):
     
         try:
             genre = await self.config.guild(guild).selected_genre()
+            log.info(f"Selected genre: {genre}")
+    
             questions = await self.fetch_questions(guild, genre)
+            log.info(f"Fetched {len(questions)} questions for genre: {genre}")
     
             if not questions:
                 await channel.send(f"No questions found for the genre '{genre}'.")
                 state.reset()
                 return
-    
-            while state.active:
-                available_questions = [q for q in questions if q["question"] not in state.used_questions]
-                if not available_questions:
-                    await channel.send("All questions have been used! Reshuffling the question pool...")
-                    state.used_questions.clear()
-                    available_questions = questions
-    
-                question_data = random.choice(available_questions)
-                state.question = question_data["question"]
-                state.answers = question_data["answers"]
-                state.hints = question_data.get("hints", [])
-                state.used_questions.add(state.question)
-    
-                await self._handle_question_round(channel, guild, state)
-    
-        except asyncio.CancelledError:
-            log.info("Trivia task cancelled.")
-        except Exception as e:
-            log.error(f"Error in trivia loop: {e}")
-        finally:
-            session_scores = await self.config.guild(guild).scores()
-            await self.display_session_recap(guild, channel, session_scores)
-            await self.config.guild(guild).scores.set({})
-            state.reset()
         
     async def _handle_question_round(self, channel, guild, state):
         """Handle a single question round."""
         try:
+            if not state.question:
+                log.warning("No active question found. Skipping round.")
+                return
+    
+            log.info(f"Sending question: {state.question}")
             await channel.send(f"**Trivia Question:** {state.question}\nType your answer below!")
     
             for i in range(30, 0, -5):
@@ -439,19 +427,18 @@ class Trivia(commands.Cog):
     
                 if i in (15, 10):
                     partial_answer = self.get_partial_answer(state.answers[0], 0.66 if i == 10 else 0.33)
+                    log.info(f"Sending hint: {partial_answer}")
                     await channel.send(f"**{i} seconds left!** Hint: {partial_answer}")
     
-            # If question is still active after time limit
             if state.question and state.active:
                 await channel.send(f"Time's up! The correct answer was: {state.answers[0]}")
+                log.info("Question timed out.")
     
             # Reset question state for the next round
             state.question = None
             state.answers = []
             state.hints = []
     
-            if state.active:
-                await asyncio.sleep(1)  # Brief pause to avoid flooding
         except Exception as e:
             log.error(f"Error in question round: {e}")
 
@@ -474,16 +461,23 @@ class Trivia(commands.Cog):
     async def fetch_questions(self, guild, genre: str) -> List[dict]:
         """Fetch questions for the selected genre."""
         try:
-            url = f"{await self.config.guild(guild).github_url()}{genre}.yaml"
+            language = await self.config.guild(guild).selected_language() or "english"
+            url = f"{await self.config.guild(guild).github_url()}{language}/{genre}.yaml"
+            log.info(f"Fetching questions from URL: {url}")
+    
             async with aiohttp.ClientSession() as session:
                 async with session.get(url) as response:
                     if response.status != 200:
+                        log.error(f"Failed to fetch questions: {response.status}")
                         return []
+    
                     data = await response.json()
                     content = base64.b64decode(data["content"]).decode("utf-8")
-                    return yaml.safe_load(content)
+                    questions = yaml.safe_load(content)
+                    log.info(f"Successfully fetched {len(questions)} questions for genre '{genre}' in language '{language}'")
+                    return questions
         except Exception as e:
-            log.error(f"Error fetching questions: {e}")
+            log.error(f"Error fetching questions for genre '{genre}': {e}")
             return []
 
     async def add_score(self, guild, user_id: int, points: int, scope: str = "session"):
