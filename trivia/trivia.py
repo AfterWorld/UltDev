@@ -23,6 +23,7 @@ class TriviaState:
         self.channel: Optional[discord.TextChannel] = None
         self.task: Optional[asyncio.Task] = None
         self.used_questions: set = set()
+        self.remaining_players = []  # List of players still in the game
 
     def reset(self):
         """Reset all state variables."""
@@ -174,30 +175,39 @@ class Trivia(commands.Cog):
         pass
 
     @trivia.command()
-    async def start(self, ctx, genre: str):
-        """Start a trivia session in this channel."""
+    async def start(self, ctx, genre: str, *, mode: str = None):
+        """
+        Start a trivia session in this channel.
+        Modes:
+        - `speed`: Speed Trivia with shorter time limits.
+        - `koth`: King of the Hill, where only the top player continues.
+        """
         state = self.get_channel_state(ctx.channel)
-
+    
         if state.active:
             await ctx.send("A trivia session is already running in this channel!")
             return
-
+    
         genres = await self.fetch_genres(ctx.guild)
         if genre not in genres:
             await ctx.send(f"Invalid genre. Available genres: {', '.join(genres)}")
             return
-
-        log.info(f"Starting trivia with genre: {genre} in channel: {ctx.channel.id}")
-        state.reset()  # Ensure a clean state before starting
+    
+        if mode not in (None, "speed", "koth"):
+            await ctx.send("Invalid mode. Available modes: `speed`, `koth`.")
+            return
+    
+        state.reset()
         state.active = True
         state.channel = ctx.channel
+        state.mode = mode  # Store the mode in the state
         await self.config.guild(ctx.guild).selected_genre.set(genre)
         await self.config.guild(ctx.guild).last_active.set(discord.utils.utcnow().timestamp())
-
+    
         games_played = await self.config.guild(ctx.guild).games_played()
         await self.config.guild(ctx.guild).games_played.set(games_played + 1)
-
-        await ctx.send(f"Starting trivia for the **{genre}** genre. Get ready!")
+    
+        await ctx.send(f"Starting trivia for the **{genre}** genre. Mode: **{mode or 'standard'}**. Get ready!")
         state.task = asyncio.create_task(self.run_trivia(ctx.guild, ctx.channel))
 
     @trivia.command()
@@ -369,30 +379,37 @@ class Trivia(commands.Cog):
     async def run_trivia(self, guild, channel):
         """Main trivia loop for a specific channel."""
         state = self.get_channel_state(channel)
+    
         try:
             genre = await self.config.guild(guild).selected_genre()
             questions = await self.fetch_questions(guild, genre)
-
+    
             if not questions:
                 await channel.send(f"No questions found for the genre '{genre}'.")
                 state.reset()
                 return
-
+    
             while state.active:
                 available_questions = [q for q in questions if q["question"] not in state.used_questions]
                 if not available_questions:
                     await channel.send("All questions have been used! Reshuffling the question pool...")
                     state.used_questions.clear()
                     available_questions = questions
-
+    
                 question_data = random.choice(available_questions)
                 state.question = question_data["question"]
                 state.answers = question_data["answers"]
                 state.hints = question_data.get("hints", [])
                 state.used_questions.add(state.question)
-
-                await self._handle_question_round(channel, guild, state)
-
+    
+                await self._handle_question_round(channel, guild, state, mode=state.mode)
+    
+                # For King of the Hill, check if only one player remains
+                if state.mode == "koth" and len(state.remaining_players) <= 1:
+                    winner = state.remaining_players[0] if state.remaining_players else "No one"
+                    await channel.send(f"👑 **King of the Hill Winner:** {winner}")
+                    break
+    
         except asyncio.CancelledError:
             log.info("Trivia task cancelled.")
         except Exception as e:
@@ -401,38 +418,43 @@ class Trivia(commands.Cog):
             session_scores = await self.config.guild(guild).scores()
             await self.display_session_recap(guild, channel, session_scores)
             await self.config.guild(guild).scores.set({})
-        state.reset()
-
-    async def _handle_question_round(self, channel, guild, state):
-        """Handle a single question round with immediate progression."""
-        await channel.send(f"**Trivia Question:** {state.question}\nType your answer below!")
-
-        correct = False
-        for i in range(30, 0, -5):
-            if not state.active:
-                return
-            await asyncio.sleep(5)
-            if correct:  # If someone answered correctly, skip the rest of the countdown.
-                break
-
-            if i in (15, 10):
-                partial_answer = self.get_partial_answer(
-                    state.answers[0],
-                    0.66 if i == 10 else 0.33
-                )
-                await channel.send(f"**{i} seconds left!** Hint: {partial_answer}")
-
-        if not correct and state.question and state.active:
-            await channel.send(f"Time's up! The correct answer was: {state.answers[0]}")
+            state.reset()
+        
+    async def _handle_question_round(self, channel, guild, state, mode=None):
+        """Handle a single question round with special modes."""
+        try:
+            time_limit = 15 if mode == "speed" else 30  # Shorter time for Speed Trivia
+            hint_intervals = [int(time_limit * 0.5), int(time_limit * 0.33)] if mode == "speed" else [15, 10]
+    
+            await channel.send(f"**Trivia Question:** {state.question}\nType your answer below!")
+    
+            correct_players = set()
+            for i in range(time_limit, 0, -5):
+                if not state.active or not state.question:
+                    return
+    
+                await asyncio.sleep(5)
+    
+                if i in hint_intervals and state.active and state.question:
+                    partial_answer = self.get_partial_answer(state.answers[0], reveal_ratio=0.5 if i in hint_intervals else 0.33)
+                    await channel.send(f"**{i} seconds left!** Hint: {partial_answer}")
+    
+            # If question is still active after time limit
+            if state.question and state.active:
+                await channel.send(f"Time's up! The correct answer was: {state.answers[0]}")
+    
+            # For King of the Hill, eliminate incorrect players
+            if mode == "koth":
+                state.remaining_players = [p for p in state.remaining_players if p in correct_players]
+                if not state.remaining_players:
+                    await channel.send("Everyone has been eliminated! Game over.")
+                    state.active = False
+    
             state.question = None
             state.answers = []
-            state.hints = []
-
-        if state.active:
-            await asyncio.sleep(1)
-            state.task = asyncio.create_task(self.run_trivia(guild, channel))
-
     
+        except Exception as e:
+            log.error(f"Error in question round: {e}")
 
     # --- Fetching and Utility Methods ---
 
