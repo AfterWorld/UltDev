@@ -406,44 +406,34 @@ class Trivia(commands.Cog):
                 state.reset()
                 return
         
-    async def _handle_question_round(self, channel, guild):
-        """Handle a single question round."""
-        try:
-            if not state.question:
-                log.warning("No active question found. Skipping round.")
+    async def _handle_question_round(self, channel, guild, state):
+        """Handle a single question round with immediate progression."""
+        await channel.send(f"**Trivia Question:** {state.question}\nType your answer below!")
+
+        correct = False
+        for i in range(30, 0, -5):
+            if not state.active:
                 return
-    
-            log.info(f"Sending question: {state.question}")
-            await channel.send(f"**Trivia Question:** {state.question}\nType your answer below!")
-    
-            for i in range(30, 0, -5):  # Countdown from 30 seconds
-                if not state.active or not state.question:
-                    return
-    
-                await asyncio.sleep(5)
-    
-                if state.question is None:  # Question was answered or canceled
-                    break
-    
-                if i in (15, 10):  # Send hints at 15 and 10 seconds remaining
-                    partial_answer = self.get_partial_answer(state.answers[0], 0.66 if i == 10 else 0.33)
-                    log.info(f"Sending hint: {partial_answer}")
-                    await channel.send(f"**{i} seconds left!** Hint: {partial_answer}")
-    
-            # If the question is still active after the time limit
-            if state.question and state.active:
-                await channel.send(f"Time's up! The correct answer was: {state.answers[0]}")
-                log.info("Question timed out.")
-    
-            # Reset question state for the next round
+            await asyncio.sleep(5)
+            if correct:  # If someone answered correctly, skip the rest of the countdown.
+                break
+
+            if i in (15, 10):
+                partial_answer = self.get_partial_answer(
+                    state.answers[0],
+                    0.66 if i == 10 else 0.33
+                )
+                await channel.send(f"**{i} seconds left!** Hint: {partial_answer}")
+
+        if not correct and state.question and state.active:
+            await channel.send(f"Time's up! The correct answer was: {state.answers[0]}")
             state.question = None
             state.answers = []
             state.hints = []
-    
-            if state.active:
-                await asyncio.sleep(1)  # Small delay before the next question
-        except Exception as e:
-            log.error(f"Error in question round: {e}")
+
+        if state.active:
+            await asyncio.sleep(1)
+            state.task = asyncio.create_task(self.run_trivia(guild, channel))
 
     # --- Fetching and Utility Methods ---
 
