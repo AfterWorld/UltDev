@@ -108,6 +108,55 @@ class Trivia(commands.Cog):
             await self.config.guild_from_id(guild_id).weekly_scores.set({})
         log.info("Weekly scores have been reset.")
 
+    async def display_session_recap(self, guild, channel, session_scores):
+        """Display a recap of the trivia session."""
+        if not session_scores:
+            await channel.send("No one scored any points this session. Better luck next time!")
+            return
+
+        sorted_scores = sorted(session_scores.items(), key=lambda x: x[1], reverse=True)
+
+        embed = discord.Embed(
+            title="📊 Trivia Session Recap",
+            color=discord.Color.blue(),
+            description=f"Great job, everyone! Here's how the session went:"
+        )
+
+        for idx, (user_id, score) in enumerate(sorted_scores[:5]):
+            try:
+                user = await self.bot.fetch_user(int(user_id))
+                player_name = user.name if user else "Unknown Player"
+            except:
+                player_name = "Unknown Player"
+            position = ["🥇", "🥈", "🥉"][idx] if idx < 3 else f"#{idx + 1}"
+            embed.add_field(
+                name=f"{position}: {player_name}",
+                value=f"Points: {score}",
+                inline=False
+            )
+
+        questions_answered = await self.config.guild(guild).questions_answered()
+        embed.add_field(name="Total Questions Answered", value=str(questions_answered), inline=False)
+
+        top_user_id, top_score = sorted_scores[0]
+        try:
+            top_user = await self.bot.fetch_user(int(top_user_id))
+            top_user_name = top_user.name if top_user else "Unknown Player"
+        except:
+            top_user_name = "Unknown Player"
+        embed.set_footer(text=f"🏆 Top Scorer: {top_user_name} with {top_score} points!")
+
+        await channel.send(embed=embed)
+
+    def get_partial_answer(self, answer, reveal_ratio):
+        """
+        Generate a partial answer hint by revealing a portion of the characters.
+        Example: "elephant" -> "e____a__" (33% revealed)
+        """
+        revealed_chars = int(len(answer) * reveal_ratio)
+        hint = ''.join(c if idx < revealed_chars else '_' for idx, c in enumerate(answer))
+        return hint
+
     # --- Trivia Commands ---
 
     @commands.group()
@@ -332,6 +381,8 @@ class Trivia(commands.Cog):
         if state.active:
             await asyncio.sleep(1)
             state.task = asyncio.create_task(self.run_trivia(guild, channel))
+
+    
 
     # --- Fetching and Utility Methods ---
 
