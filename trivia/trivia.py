@@ -179,26 +179,26 @@ class Trivia(commands.Cog):
     async def start(self, ctx, genre: str):
         """Start a trivia session in this channel."""
         state = self.get_channel_state(ctx.channel)
-
+    
         if state.active:
             await ctx.send("A trivia session is already running in this channel!")
             return
-
+    
         genres = await self.fetch_genres(ctx.guild)
         if genre not in genres:
             await ctx.send(f"Invalid genre. Available genres: {', '.join(genres)}")
             return
-
+    
         log.info(f"Starting trivia with genre: {genre} in channel: {ctx.channel.id}")
         state.reset()  # Ensure a clean state before starting
         state.active = True
         state.channel = ctx.channel
         await self.config.guild(ctx.guild).selected_genre.set(genre)
         await self.config.guild(ctx.guild).last_active.set(discord.utils.utcnow().timestamp())
-
+    
         games_played = await self.config.guild(ctx.guild).games_played()
         await self.config.guild(ctx.guild).games_played.set(games_played + 1)
-
+    
         await ctx.send(f"Starting trivia for the **{genre}** genre. Get ready!")
         state.task = asyncio.create_task(self.run_trivia(ctx.guild, ctx.channel))
 
@@ -370,6 +370,8 @@ class Trivia(commands.Cog):
 
     async def run_trivia(self, guild, channel):
         """Main trivia loop for a specific channel."""
+        log.info(f"Starting the trivia loop for guild: {guild.id}, channel: {channel.id}")
+    
         state = self.get_channel_state(channel)
     
         if state.task and not state.task.done():
@@ -378,8 +380,9 @@ class Trivia(commands.Cog):
     
         try:
             genre = await self.config.guild(guild).selected_genre()
-            questions = await self.fetch_questions(guild, genre)
+            log.info(f"Selected genre: {genre}")
     
+            questions = await self.fetch_questions(guild, genre)
             if not questions:
                 await channel.send(f"No questions found for the genre '{genre}'.")
                 state.reset()
@@ -398,6 +401,7 @@ class Trivia(commands.Cog):
                 state.hints = question_data.get("hints", [])
                 state.used_questions.add(state.question)
     
+                log.info(f"Sending question: {state.question}")
                 await self._handle_question_round(channel, guild, state)
     
         except asyncio.CancelledError:
@@ -405,47 +409,47 @@ class Trivia(commands.Cog):
         except Exception as e:
             log.error(f"Error in trivia loop: {e}")
         finally:
-            # Recap session scores before resetting
             session_scores = await self.config.guild(guild).scores()
             await self.display_session_recap(guild, channel, session_scores)
-            await self.config.guild(guild).scores.set({})  # Clear session scores
+            await self.config.guild(guild).scores.set({})
             state.reset()
 
     async def _handle_question_round(self, channel, guild, state):
         """Handle a single question round with immediate progression."""
-        await channel.send(f"**Trivia Question:** {state.question}\nType your answer below!")
+        try:
+            await channel.send(f"**Trivia Question:** {state.question}\nType your answer below!")
     
-        for i in range(30, 0, -5):
-            if not state.active:
-                return
+            for i in range(30, 0, -5):
+                if not state.active:
+                    return
     
-            # Ensure we're not overlapping tasks
-            if state.question is None:
-                return
+                if state.question is None:
+                    return
     
-            await asyncio.sleep(5)
+                await asyncio.sleep(5)
     
-            if state.question is None:
-                break  # Exit if the question has been answered
+                if state.question is None:
+                    break
     
-            if i in (15, 10):
-                partial_answer = self.get_partial_answer(
-                    state.answers[0],
-                    0.66 if i == 10 else 0.33
-                )
-                await channel.send(f"**{i} seconds left!** Hint: {partial_answer}")
+                if i in (15, 10):
+                    partial_answer = self.get_partial_answer(
+                        state.answers[0],
+                        0.66 if i == 10 else 0.33
+                    )
+                    await channel.send(f"**{i} seconds left!** Hint: {partial_answer}")
     
-        # If question is still active, announce the correct answer and clear state
-        if state.question and state.active:
-            await channel.send(f"Time's up! The correct answer was: {state.answers[0]}")
-            state.question = None
-            state.answers = []
-            state.hints = []
+            if state.question and state.active:
+                await channel.send(f"Time's up! The correct answer was: {state.answers[0]}")
+                state.question = None
+                state.answers = []
+                state.hints = []
     
-        # Immediately progress to the next question
-        if state.active:
-            await asyncio.sleep(1)  # Brief pause to avoid overwhelming the channel
-            state.task = asyncio.create_task(self.run_trivia(guild, channel))
+            if state.active:
+                await asyncio.sleep(1)
+                state.task = asyncio.create_task(self.run_trivia(guild, channel))
+    
+        except Exception as e:
+            log.error(f"Error in question round: {e}")
 
     # --- Fetching and Utility Methods ---
 
@@ -467,15 +471,21 @@ class Trivia(commands.Cog):
         """Fetch questions for the selected genre."""
         try:
             url = f"{await self.config.guild(guild).github_url()}{genre}.yaml"
+            log.info(f"Fetching questions from: {url}")
+    
             async with aiohttp.ClientSession() as session:
                 async with session.get(url) as response:
                     if response.status != 200:
+                        log.error(f"Failed to fetch questions: {response.status}")
                         return []
+    
                     data = await response.json()
                     content = base64.b64decode(data["content"]).decode("utf-8")
-                    return yaml.safe_load(content)
+                    questions = yaml.safe_load(content)
+                    log.info(f"Successfully fetched {len(questions)} questions for genre '{genre}'")
+                    return questions
         except Exception as e:
-            log.error(f"Error fetching questions: {e}")
+            log.error(f"Error fetching questions for genre '{genre}': {e}")
             return []
 
     async def add_score(self, guild, user_id: int, points: int, scope: str = "session"):
