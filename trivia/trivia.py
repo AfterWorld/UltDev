@@ -416,20 +416,21 @@ class Trivia(commands.Cog):
             log.info(f"Sending question: {state.question}")
             await channel.send(f"**Trivia Question:** {state.question}\nType your answer below!")
     
-            for i in range(30, 0, -5):
+            for i in range(30, 0, -5):  # Countdown from 30 seconds
                 if not state.active or not state.question:
                     return
     
                 await asyncio.sleep(5)
     
-                if state.question is None:
+                if state.question is None:  # Question was answered or canceled
                     break
     
-                if i in (15, 10):
+                if i in (15, 10):  # Send hints at 15 and 10 seconds remaining
                     partial_answer = self.get_partial_answer(state.answers[0], 0.66 if i == 10 else 0.33)
                     log.info(f"Sending hint: {partial_answer}")
                     await channel.send(f"**{i} seconds left!** Hint: {partial_answer}")
     
+            # If the question is still active after the time limit
             if state.question and state.active:
                 await channel.send(f"Time's up! The correct answer was: {state.answers[0]}")
                 log.info("Question timed out.")
@@ -439,9 +440,10 @@ class Trivia(commands.Cog):
             state.answers = []
             state.hints = []
     
+            if state.active:
+                await asyncio.sleep(1)  # Small delay before the next question
         except Exception as e:
             log.error(f"Error in question round: {e}")
-
 
     # --- Fetching and Utility Methods ---
 
