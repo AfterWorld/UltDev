@@ -175,12 +175,13 @@ class Trivia(commands.Cog):
         pass
 
     @trivia.command()
-    async def start(self, ctx, genre: str, *, mode: str = None):
+    async def start(self, ctx, genre: str, mode: Optional[str] = None):
         """
         Start a trivia session in this channel.
-        Modes:
-        - `speed`: Speed Trivia with shorter time limits.
-        - `koth`: King of the Hill, where only the top player continues.
+    
+        Arguments:
+        - genre: The genre of trivia questions (e.g., onepiece, anime).
+        - mode (optional): The mode of the trivia game (speed, koth).
         """
         state = self.get_channel_state(ctx.channel)
     
@@ -209,6 +210,7 @@ class Trivia(commands.Cog):
     
         await ctx.send(f"Starting trivia for the **{genre}** genre. Mode: **{mode or 'standard'}**. Get ready!")
         state.task = asyncio.create_task(self.run_trivia(ctx.guild, ctx.channel))
+
 
     @trivia.command()
     async def stop(self, ctx):
