@@ -4,9 +4,10 @@ import aiohttp
 import yaml
 import random
 import asyncio
-from typing import List, Optional
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import logging
 import base64
+from typing import List, Optional
 
 log = logging.getLogger("red.trivia")
 
@@ -55,11 +56,11 @@ class Trivia(commands.Cog):
         "Trivia Champion": "🏆",
     }
     GENRE_DESCRIPTIONS = {
-    "onepiece": "Questions about the One Piece anime and manga universe.",
-    "anime": "Test your knowledge about anime.",
-    "music": "Guess music, or lyrics",
-    "history": "How well do you know world history?",
-    "general": "Trivia about anything",
+        "onepiece": "Questions about the One Piece anime and manga universe.",
+        "anime": "Test your knowledge about anime.",
+        "music": "Guess music, or lyrics",
+        "history": "How well do you know world history?",
+        "general": "Trivia about anything",
     }
 
     def __init__(self, bot):
@@ -68,8 +69,10 @@ class Trivia(commands.Cog):
         default_guild = {
             "github_url": "https://api.github.com/repos/AfterWorld/UltDev/contents/trivia/questions/",
             "selected_genre": None,
-            "scores": {},
-            "total_scores": {},
+            "scores": {},  # Current session scores
+            "total_scores": {},  # All-time scores
+            "daily_scores": {},  # Daily leaderboard
+            "weekly_scores": {},  # Weekly leaderboard
             "games_played": 0,
             "questions_answered": 0,
             "last_active": None,
@@ -77,11 +80,35 @@ class Trivia(commands.Cog):
         self.config.register_guild(**default_guild)
         self.channel_states = {}
 
+        # Initialize the scheduler for resets
+        self.scheduler = AsyncIOScheduler()
+        self.scheduler.add_job(self.reset_daily_scores, "cron", hour=0, minute=0)
+        self.scheduler.add_job(self.reset_weekly_scores, "cron", day_of_week="mon", hour=0, minute=0)
+        self.scheduler.start()
+
     def get_channel_state(self, channel: discord.TextChannel):
         """Get or initialize the trivia state for a specific channel."""
         if channel.id not in self.channel_states:
             self.channel_states[channel.id] = TriviaState()
         return self.channel_states[channel.id]
+
+    # --- Score Reset Methods ---
+
+    async def reset_daily_scores(self):
+        """Reset daily scores for all guilds."""
+        all_guilds = await self.config.all_guilds()
+        for guild_id in all_guilds:
+            await self.config.guild_from_id(guild_id).daily_scores.set({})
+        log.info("Daily scores have been reset.")
+
+    async def reset_weekly_scores(self):
+        """Reset weekly scores for all guilds."""
+        all_guilds = await self.config.all_guilds()
+        for guild_id in all_guilds:
+            await self.config.guild_from_id(guild_id).weekly_scores.set({})
+        log.info("Weekly scores have been reset.")
+
+    # --- Trivia Commands ---
 
     @commands.group()
     async def trivia(self, ctx):
@@ -119,118 +146,64 @@ class Trivia(commands.Cog):
     async def stop(self, ctx):
         """Stop the trivia session in this channel."""
         state = self.get_channel_state(ctx.channel)
-    
         if not state.active:
             await ctx.send("No trivia session is currently running in this channel.")
             return
-    
-        # Display session recap
+
         session_scores = await self.config.guild(ctx.guild).scores()
         await self.display_session_recap(ctx.guild, ctx.channel, session_scores)
-    
-        # Reset state and scores
+
         state.reset()
         await self.config.guild(ctx.guild).scores.set({})
         await ctx.send("Trivia session stopped.")
-        
-    @trivia.command()
-    async def leaderboard(self, ctx):
-        """Show the all-time trivia leaderboard."""
-        try:
-            total_scores = await self.config.guild(ctx.guild).total_scores()
-            if not total_scores:
-                await ctx.send("No scores recorded yet!")
-                return
-    
-            # Sort scores in descending order and get the top 10 players
-            sorted_scores = sorted(total_scores.items(), key=lambda x: x[1], reverse=True)
-            top_players = sorted_scores[:10]
-    
-            embed = discord.Embed(
-                title="🏆 All-Time Trivia Leaderboard 🏆",
-                description="Top 10 Players",
-                color=discord.Color.gold()
-            )
-    
-            # Add medals for the top 3 positions
-            medals = {0: "🥇", 1: "🥈", 2: "🥉"}
-            for idx, (player_id, score) in enumerate(top_players):
-                medal = medals.get(idx, "")
-                try:
-                    player = await self.bot.fetch_user(int(player_id))
-                    player_name = player.name if player else "Unknown Player"
-                except:
-                    player_name = "Unknown Player"
-                embed.add_field(
-                    name=f"{medal} #{idx + 1}",
-                    value=f"{player_name}: {score} points",
-                    inline=False
-                )
-    
-            await ctx.send(embed=embed)
-    
-        except Exception as e:
-            log.error(f"Error showing leaderboard: {e}")
-            await ctx.send("An error occurred while showing the leaderboard.")
 
     @trivia.command()
-    async def categories(self, ctx):
-        """List all available trivia categories with descriptions."""
-        try:
-            # Fetch available genres
-            genres = await self.fetch_genres(ctx.guild)
-            if not genres:
-                await ctx.send("No trivia categories are currently available.")
-                return
-    
-            # Create an embed for the category list
-            embed = discord.Embed(
-                title="📚 Trivia Categories",
-                description="Choose a category to play trivia!",
-                color=discord.Color.green(),
-            )
-    
-            # Add genres with descriptions
-            for genre in genres:
-                description = self.GENRE_DESCRIPTIONS.get(genre, "No description available.")
-                embed.add_field(name=genre.title(), value=description, inline=False)
-    
-            await ctx.send(embed=embed)
-    
-        except Exception as e:
-            log.error(f"Error fetching categories: {e}")
-            await ctx.send("An error occurred while fetching categories.")
+    async def leaderboard(self, ctx, scope: str = "all-time"):
+        """
+        Show the trivia leaderboard.
+        Scope can be:
+        - "all-time" (default)
+        - "daily"
+        - "weekly"
+        """
+        scores = {}
+        if scope == "daily":
+            scores = await self.config.guild(ctx.guild).daily_scores()
+        elif scope == "weekly":
+            scores = await self.config.guild(ctx.guild).weekly_scores()
+        else:
+            scores = await self.config.guild(ctx.guild).total_scores()
 
-    @trivia.command()
-    async def preview(self, ctx, genre: str):
-        """Preview a few questions from a specific category."""
-        try:
-            genres = await self.fetch_genres(ctx.guild)
-            if genre not in genres:
-                await ctx.send(f"Invalid genre. Available genres: {', '.join(genres)}")
-                return
-    
-            questions = await self.fetch_questions(ctx.guild, genre)
-            if not questions:
-                await ctx.send(f"No questions available for the genre '{genre}'.")
-                return
-    
-            # Select up to 3 random questions to preview
-            preview_questions = random.sample(questions, min(3, len(questions)))
-    
-            embed = discord.Embed(
-                title=f"🔍 Preview of {genre.title()} Questions",
-                description="Here are a few sample questions:",
-                color=discord.Color.blue(),
+        if not scores:
+            await ctx.send(f"No scores recorded yet for the {scope} leaderboard!")
+            return
+
+        sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+        top_players = sorted_scores[:10]
+
+        embed = discord.Embed(
+            title=f"🏆 {scope.title()} Trivia Leaderboard 🏆",
+            description="Top 10 Players",
+            color=discord.Color.gold()
+        )
+
+        medals = {0: "🥇", 1: "🥈", 2: "🥉"}
+        for idx, (player_id, score) in enumerate(top_players):
+            medal = medals.get(idx, "")
+            try:
+                player = await self.bot.fetch_user(int(player_id))
+                player_name = player.name if player else "Unknown Player"
+            except:
+                player_name = "Unknown Player"
+            embed.add_field(
+                name=f"{medal} #{idx + 1}",
+                value=f"{player_name}: {score} points",
+                inline=False
             )
-            for idx, question in enumerate(preview_questions, start=1):
-                embed.add_field(name=f"Question {idx}", value=question["question"], inline=False)
-    
-            await ctx.send(embed=embed)
-    
-        except Exception as e:
-            log.error(f"Error previewing questions: {e}")
-            await ctx.send("An error occurred while previewing questions.")
+
+        await ctx.send(embed=embed)
+
+    # --- Trivia Logic ---
 
     async def run_trivia(self, guild, channel):
         """Main trivia loop for a specific channel."""
@@ -238,48 +211,47 @@ class Trivia(commands.Cog):
         try:
             genre = await self.config.guild(guild).selected_genre()
             questions = await self.fetch_questions(guild, genre)
-    
+
             if not questions:
                 await channel.send(f"No questions found for the genre '{genre}'.")
                 state.reset()
                 return
-    
+
             while state.active:
                 available_questions = [q for q in questions if q["question"] not in state.used_questions]
                 if not available_questions:
                     await channel.send("All questions have been used! Reshuffling the question pool...")
                     state.used_questions.clear()
                     available_questions = questions
-    
+
                 question_data = random.choice(available_questions)
                 state.question = question_data["question"]
                 state.answers = question_data["answers"]
                 state.hints = question_data.get("hints", [])
                 state.used_questions.add(state.question)
-    
+
                 await self._handle_question_round(channel, guild, state)
-    
+
         except asyncio.CancelledError:
             log.info("Trivia task cancelled.")
         except Exception as e:
             log.error(f"Error in trivia loop: {e}")
         finally:
-            # Trigger session recap after the trivia ends, before resetting the state
             session_scores = await self.config.guild(guild).scores()
             await self.display_session_recap(guild, channel, session_scores)
-            await self.config.guild(guild).scores.set({})  # Clear session scores
+            await self.config.guild(guild).scores.set({})
         state.reset()
 
-
     async def _handle_question_round(self, channel, guild, state):
-        """Handle a single question round."""
+        """Handle a single question round with immediate progression."""
         await channel.send(f"**Trivia Question:** {state.question}\nType your answer below!")
 
+        correct = False
         for i in range(30, 0, -5):
             if not state.active:
                 return
             await asyncio.sleep(5)
-            if not state.question:
+            if correct:  # If someone answered correctly, skip the rest of the countdown.
                 break
 
             if i in (15, 10):
@@ -289,99 +261,17 @@ class Trivia(commands.Cog):
                 )
                 await channel.send(f"**{i} seconds left!** Hint: {partial_answer}")
 
-        if state.question and state.active:
+        if not correct and state.question and state.active:
             await channel.send(f"Time's up! The correct answer was: {state.answers[0]}")
             state.question = None
             state.answers = []
             state.hints = []
 
-        await asyncio.sleep(5)
+        if state.active:
+            await asyncio.sleep(1)
+            state.task = asyncio.create_task(self.run_trivia(guild, channel))
 
-    async def add_score(self, guild, user_id: int, points: int):
-        """Add points to both current and total scores, with gamification."""
-        try:
-            async with self.config.guild(guild).scores() as scores:
-                scores[str(user_id)] = scores.get(str(user_id), 0) + points
-
-            async with self.config.guild(guild).total_scores() as total_scores:
-                if str(user_id) not in total_scores:
-                    total_scores[str(user_id)] = 0
-                total_scores[str(user_id)] += points
-                total_points = total_scores[str(user_id)]
-
-            await self.check_achievements(guild, user_id, total_points)
-        except Exception as e:
-            log.error(f"Error adding score: {e}")
-            raise
-
-    async def check_achievements(self, guild, user_id: int, total_points: int):
-        """Check if a user has achieved a new rank or milestone."""
-        user = await self.bot.fetch_user(user_id)
-        if not user:
-            return
-
-        rank = None
-        for points, rank_name in sorted(self.RANKS.items(), reverse=True):
-            if total_points >= points:
-                rank = rank_name
-                break
-
-        if rank:
-            badge = self.BADGES.get(rank, "")
-            await self.channel_states[guild.id].channel.send(
-                f"🎉 {user.mention} has achieved the rank of **{rank}**! {badge}\n"
-                f"Total Points: {total_points}"
-            )
-
-        milestones = [10, 50, 100, 250, 500]
-        if total_points in milestones:
-            await self.channel_states[guild.id].channel.send(
-                f"🏆 {user.mention} reached **{total_points} points**! Keep it up!"
-            )
-
-    async def display_session_recap(self, guild, channel, session_scores):
-        """Display a recap of the trivia session."""
-        if not session_scores:
-            await channel.send("No one scored any points this session. Better luck next time!")
-            return
-    
-        # Sort scores in descending order
-        sorted_scores = sorted(session_scores.items(), key=lambda x: x[1], reverse=True)
-    
-        embed = discord.Embed(
-            title="📊 Trivia Session Recap",
-            color=discord.Color.blue(),
-            description=f"Great job, everyone! Here's how the session went:"
-        )
-    
-        # Add top players
-        for idx, (user_id, score) in enumerate(sorted_scores[:5]):  # Show top 5 players
-            try:
-                user = await self.bot.fetch_user(int(user_id))
-                player_name = user.name if user else "Unknown Player"
-            except:
-                player_name = "Unknown Player"
-            position = ["🥇", "🥈", "🥉"][idx] if idx < 3 else f"#{idx + 1}"
-            embed.add_field(
-                name=f"{position}: {player_name}",
-                value=f"Points: {score}",
-                inline=False
-            )
-    
-        # Add total questions answered
-        questions_answered = await self.config.guild(guild).questions_answered()
-        embed.add_field(name="Total Questions Answered", value=str(questions_answered), inline=False)
-    
-        # Congratulate the top scorer
-        top_user_id, top_score = sorted_scores[0]
-        try:
-            top_user = await self.bot.fetch_user(int(top_user_id))
-            top_user_name = top_user.name if top_user else "Unknown Player"
-        except:
-            top_user_name = "Unknown Player"
-        embed.set_footer(text=f"🏆 Top Scorer: {top_user_name} with {top_score} points!")
-    
-        await channel.send(embed=embed)
+    # --- Fetching and Utility Methods ---
 
     async def fetch_genres(self, guild) -> List[str]:
         """Fetch available genres."""
@@ -412,12 +302,26 @@ class Trivia(commands.Cog):
             log.error(f"Error fetching questions: {e}")
             return []
 
-    async def add_score(self, guild, user_id: int, points: int):
-        """Add points to both current and total scores."""
-        async with self.config.guild(guild).scores() as scores:
-            scores[str(user_id)] = scores.get(str(user_id), 0) + points
-        async with self.config.guild(guild).total_scores() as total_scores:
-            total_scores[str(user_id)] = total_scores.get(str(user_id), 0) + points
+    async def add_score(self, guild, user_id: int, points: int, scope: str = "session"):
+        """Add points to the specified score scope."""
+        try:
+            async with self.config.guild(guild).scores() as scores:
+                scores[str(user_id)] = scores.get(str(user_id), 0) + points
+
+            if scope == "daily":
+                async with self.config.guild(guild).daily_scores() as daily_scores:
+                    daily_scores[str(user_id)] = daily_scores.get(str(user_id), 0) + points
+            elif scope == "weekly":
+                async with self.config.guild(guild).weekly_scores() as weekly_scores:
+                    weekly_scores[str(user_id)] = weekly_scores.get(str(user_id), 0) + points
+
+            async with self.config.guild(guild).total_scores() as total_scores:
+                if str(user_id) not in total_scores:
+                    total_scores[str(user_id)] = 0
+                total_scores[str(user_id)] += points
+        except Exception as e:
+            log.error(f"Error adding score: {e}")
+            raise
 
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -432,13 +336,19 @@ class Trivia(commands.Cog):
         correct_answers = [ans.lower().strip() for ans in state.answers]
         if message.content.lower().strip() in correct_answers:
             points = 10
-            await self.add_score(message.guild, message.author.id, points)
+            await self.add_score(message.guild, message.author.id, points, scope="daily")
             await message.add_reaction("✅")
             await state.channel.send(
                 f"🎉 Correct, {message.author.mention}! (+{points} points)\n"
                 f"The answer was: {state.answers[0]}"
             )
             state.question = None  # Clear the question for the next round
-            
+            state.answers = []  # Reset answers to avoid repetition
+
+            # Trigger the next question immediately
+            if state.active:
+                state.task = asyncio.create_task(self.run_trivia(message.guild, state.channel))
+
+
 def setup(bot):
     bot.add_cog(Trivia(bot))
