@@ -62,33 +62,10 @@ class Trivia(commands.Cog):
     "history": "How well do you know world history?",
     "general": "Trivia about anything",
     }
-    TIMEOUT_MESSAGES = {
-    "onepiece": [
-        "⏰ Time's up! Even Luffy couldn't guess that one. The answer was: **{answer}**.",
-        "You're out of time! Guess the One Piece isn't yours today. The answer was: **{answer}**.",
-    ],
-    "science": [
-        "⏰ Time's up! Even Einstein would've needed more time. The answer was: **{answer}**.",
-        "Oops, you're out of time! Better study the laws of the universe. The answer was: **{answer}**.",
-    ],
-    "movies": [
-        "⏰ Time's up! That was a blockbuster miss. The answer was: **{answer}**.",
-        "The credits rolled, and you're out of time! The answer was: **{answer}**.",
-    ],
-    "history": [
-        "⏰ Time's up! This moment in history was lost to you. The answer was: **{answer}**.",
-        "You're out of time! Better brush up on your history books. The answer was: **{answer}**.",
-    ],
-    "sports": [
-        "⏰ Time's up! That was a foul on your part. The answer was: **{answer}**.",
-        "You're out of time! Maybe try hitting the trivia gym. The answer was: **{answer}**.",
-    ],
-}
 
     def __init__(self, bot):
         self.bot = bot
         self.config = Config.get_conf(self, identifier=9876543212, force_registration=True)
-        self.streaks = {}  # Dictionary to track user streaks
         default_guild = {
             "github_url": "https://api.github.com/repos/AfterWorld/UltDev/contents/trivia/questions/",
             "selected_genre": None,
@@ -390,83 +367,32 @@ class Trivia(commands.Cog):
             await self.config.guild(guild).scores.set({})  # Clear session scores
         state.reset()
 
+
     async def _handle_question_round(self, channel, guild, state):
         """Handle a single question round."""
         await channel.send(f"**Trivia Question:** {state.question}\nType your answer below!")
-        
-        def check_answer(message):
-            return (
-                message.channel == channel
-                and message.author != self.bot.user
-                and message.content.lower().strip() in [ans.lower().strip() for ans in state.answers]
-            )
-    
-        try:
-            # Wait for the correct answer or timeout
-            response = await self.bot.wait_for("message", check=check_answer, timeout=30)
-            points = 10
-            await self.add_score(guild, response.author.id, points)
-            await response.add_reaction("✅")
-            await channel.send(
-                f"🎉 Correct, {response.author.mention}! (+{points} points)\n"
-                f"The answer was: **{state.answers[0]}**"
-            )
-    
-            # Praise for streaks
-            user_id = response.author.id
-            if user_id in self.streaks:
-                self.streaks[user_id] += 1
-            else:
-                self.streaks[user_id] = 1
-    
-            if self.streaks[user_id] >= 3:
-                await channel.send(f"🔥 {response.author.mention}, you're on fire with {self.streaks[user_id]} correct answers in a row!")
-    
-            # Reset the question and move to the next
+
+        for i in range(30, 0, -5):
+            if not state.active:
+                return
+            await asyncio.sleep(5)
+            if not state.question:
+                break
+
+            if i in (15, 10):
+                partial_answer = self.get_partial_answer(
+                    state.answers[0],
+                    0.66 if i == 10 else 0.33
+                )
+                await channel.send(f"**{i} seconds left!** Hint: {partial_answer}")
+
+        if state.question and state.active:
+            await channel.send(f"Time's up! The correct answer was: {state.answers[0]}")
             state.question = None
             state.answers = []
             state.hints = []
-            await asyncio.sleep(1)  # Brief delay
-            await self._handle_question_round(channel, guild, state)
-    
-        except asyncio.TimeoutError:
-            # Timeout handling if no one answers correctly
-            genre = await self.config.guild(guild).selected_genre()
-            timeout_message = random.choice(
-                self.TIMEOUT_MESSAGES.get(genre, ["⏰ Time's up! The answer was: **{answer}**."])
-            ).format(answer=state.answers[0])
-    
-            await channel.send(timeout_message)
-            state.question = None
-            state.answers = []
-            state.hints = []
-    
-        await asyncio.sleep(1)
 
-    def get_partial_answer(self, answer: str, reveal_percentage: float) -> str:
-        """
-        Returns a partially revealed answer string.
-        
-        :param answer: The correct answer to the question.
-        :param reveal_percentage: The percentage of characters to reveal (0.0 to 1.0).
-        :return: A string with some characters replaced by underscores.
-        """
-        if not answer:
-            return ""
-    
-        # Convert the answer into a list of characters
-        chars = list(answer)
-        reveal_count = int(len(chars) * reveal_percentage)
-    
-        # Randomly choose indices to hide
-        hidden_indices = random.sample(range(len(chars)), len(chars) - reveal_count)
-    
-        for i in hidden_indices:
-            if chars[i].isalnum():  # Hide only alphanumeric characters
-                chars[i] = "_"
-    
-        return ''.join(chars)
-
+        await asyncio.sleep(5)
 
     async def add_score(self, guild, user_id: int, points: int):
         """Add points to both current and total scores, with gamification."""
@@ -516,14 +442,17 @@ class Trivia(commands.Cog):
             await channel.send("No one scored any points this session. Better luck next time!")
             return
     
+        # Sort scores in descending order
         sorted_scores = sorted(session_scores.items(), key=lambda x: x[1], reverse=True)
+    
         embed = discord.Embed(
             title="📊 Trivia Session Recap",
             color=discord.Color.blue(),
-            description="Great job, everyone! Here's how the session went:"
+            description=f"Great job, everyone! Here's how the session went:"
         )
     
-        for idx, (user_id, score) in enumerate(sorted_scores[:5]):  # Top 5 players
+        # Add top players
+        for idx, (user_id, score) in enumerate(sorted_scores[:5]):  # Show top 5 players
             try:
                 user = await self.bot.fetch_user(int(user_id))
                 player_name = user.name if user else "Unknown Player"
@@ -536,16 +465,18 @@ class Trivia(commands.Cog):
                 inline=False
             )
     
+        # Add total questions answered
         questions_answered = await self.config.guild(guild).questions_answered()
         embed.add_field(name="Total Questions Answered", value=str(questions_answered), inline=False)
     
-        # Fun ending message
-        ending_messages = [
-            "Thanks for playing! 🎉",
-            "Want to improve your score? Play another round!",
-            "Invite your friends to join next time!",
-        ]
-        embed.set_footer(text=random.choice(ending_messages))
+        # Congratulate the top scorer
+        top_user_id, top_score = sorted_scores[0]
+        try:
+            top_user = await self.bot.fetch_user(int(top_user_id))
+            top_user_name = top_user.name if top_user else "Unknown Player"
+        except:
+            top_user_name = "Unknown Player"
+        embed.set_footer(text=f"🏆 Top Scorer: {top_user_name} with {top_score} points!")
     
         await channel.send(embed=embed)
 
@@ -590,56 +521,21 @@ class Trivia(commands.Cog):
         """Check messages for trivia answers."""
         if message.author.bot:
             return
-        
+
         state = self.channel_states.get(message.channel.id)
         if not state or not state.active or not state.question:
             return
-        
-        # Ensure trivia bot only responds to answers in trivia channels
-        if state.channel != message.channel:
-            return
-    
+
         correct_answers = [ans.lower().strip() for ans in state.answers]
-        user_answer = message.content.lower().strip()
-    
-        if user_answer in correct_answers:
+        if message.content.lower().strip() in correct_answers:
             points = 10
             await self.add_score(message.guild, message.author.id, points)
             await message.add_reaction("✅")
             await state.channel.send(
                 f"🎉 Correct, {message.author.mention}! (+{points} points)\n"
-                f"The answer was: **{state.answers[0]}**"
+                f"The answer was: {state.answers[0]}"
             )
-    
-            # Update streaks
-            user_id = message.author.id
-            if user_id in self.streaks:
-                self.streaks[user_id] += 1
-            else:
-                self.streaks[user_id] = 1
-    
-            # Praise for streaks
-            if self.streaks[user_id] >= 3:
-                await state.channel.send(f"🔥 {message.author.mention}, you're on fire with {self.streaks[user_id]} correct answers in a row!")
-    
-            # Clear the question and trigger the next round
-            state.question = None
-            state.answers = []
-            state.hints = []
-            await asyncio.sleep(1)  # Brief delay before starting the next question
-            await self._handle_question_round(state.channel, message.guild, state)
-    
-        else:
-            await message.add_reaction("❌")
-            encouraging_responses = [
-                f"Not quite, {message.author.mention}, but keep trying!",
-                "Close, but not the answer we're looking for!",
-                "Good guess, but it's not correct. Try again!",
-            ]
-            await state.channel.send(random.choice(encouraging_responses))
-    
-            # Reset the streak for incorrect answers
-            self.streaks[message.author.id] = 0
+            state.question = None  # Clear the question for the next round
             
 def setup(bot):
     bot.add_cog(Trivia(bot))
