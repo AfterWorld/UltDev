@@ -146,13 +146,16 @@ class Trivia(commands.Cog):
     async def stop(self, ctx):
         """Stop the trivia session in this channel."""
         state = self.get_channel_state(ctx.channel)
+    
         if not state.active:
             await ctx.send("No trivia session is currently running in this channel.")
             return
-
+    
+        # Display session recap
         session_scores = await self.config.guild(ctx.guild).scores()
         await self.display_session_recap(ctx.guild, ctx.channel, session_scores)
-
+    
+        # Reset state and scores
         state.reset()
         await self.config.guild(ctx.guild).scores.set({})
         await ctx.send("Trivia session stopped.")
