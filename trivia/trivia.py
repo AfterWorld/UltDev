@@ -442,6 +442,7 @@ class Trivia(commands.Cog):
         except Exception as e:
             log.error(f"Error in question round: {e}")
 
+
     # --- Fetching and Utility Methods ---
 
     async def fetch_genres(self, guild) -> List[str]:
