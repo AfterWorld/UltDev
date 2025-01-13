@@ -221,11 +221,13 @@ class Trivia(commands.Cog):
             await ctx.send("No trivia session is currently running in this channel.")
             return
     
-        # Display session recap
+        # Ensure session recap is displayed only once
+        if state.task and not state.task.done():
+            state.task.cancel()
+    
         session_scores = await self.config.guild(ctx.guild).scores()
         await self.display_session_recap(ctx.guild, ctx.channel, session_scores)
     
-        # Reset state and scores
         state.reset()
         await self.config.guild(ctx.guild).scores.set({})
         await ctx.send("Trivia session stopped.")
@@ -382,6 +384,11 @@ class Trivia(commands.Cog):
         """Main trivia loop for a specific channel."""
         state = self.get_channel_state(channel)
     
+        # Prevent duplicate trivia tasks
+        if state.task and not state.task.done():
+            log.warning(f"Trivia loop already running in channel: {channel.id}.")
+            return
+    
         try:
             genre = await self.config.guild(guild).selected_genre()
             questions = await self.fetch_questions(guild, genre)
@@ -404,13 +411,7 @@ class Trivia(commands.Cog):
                 state.hints = question_data.get("hints", [])
                 state.used_questions.add(state.question)
     
-                await self._handle_question_round(channel, guild, state, mode=state.mode)
-    
-                # For King of the Hill, check if only one player remains
-                if state.mode == "koth" and len(state.remaining_players) <= 1:
-                    winner = state.remaining_players[0] if state.remaining_players else "No one"
-                    await channel.send(f"👑 **King of the Hill Winner:** {winner}")
-                    break
+                await self._handle_question_round(channel, guild, state)
     
         except asyncio.CancelledError:
             log.info("Trivia task cancelled.")
@@ -422,39 +423,35 @@ class Trivia(commands.Cog):
             await self.config.guild(guild).scores.set({})
             state.reset()
         
-    async def _handle_question_round(self, channel, guild, state, mode=None):
-        """Handle a single question round with special modes."""
+    async def _handle_question_round(self, channel, guild, state):
+        """Handle a single question round."""
         try:
-            time_limit = 15 if mode == "speed" else 30  # Shorter time for Speed Trivia
-            hint_intervals = [int(time_limit * 0.5), int(time_limit * 0.33)] if mode == "speed" else [15, 10]
-    
             await channel.send(f"**Trivia Question:** {state.question}\nType your answer below!")
     
-            correct_players = set()
-            for i in range(time_limit, 0, -5):
+            for i in range(30, 0, -5):
                 if not state.active or not state.question:
                     return
     
                 await asyncio.sleep(5)
     
-                if i in hint_intervals and state.active and state.question:
-                    partial_answer = self.get_partial_answer(state.answers[0], reveal_ratio=0.5 if i in hint_intervals else 0.33)
+                if state.question is None:
+                    break
+    
+                if i in (15, 10):
+                    partial_answer = self.get_partial_answer(state.answers[0], 0.66 if i == 10 else 0.33)
                     await channel.send(f"**{i} seconds left!** Hint: {partial_answer}")
     
             # If question is still active after time limit
             if state.question and state.active:
                 await channel.send(f"Time's up! The correct answer was: {state.answers[0]}")
     
-            # For King of the Hill, eliminate incorrect players
-            if mode == "koth":
-                state.remaining_players = [p for p in state.remaining_players if p in correct_players]
-                if not state.remaining_players:
-                    await channel.send("Everyone has been eliminated! Game over.")
-                    state.active = False
-    
+            # Reset question state for the next round
             state.question = None
             state.answers = []
+            state.hints = []
     
+            if state.active:
+                await asyncio.sleep(1)  # Brief pause to avoid flooding
         except Exception as e:
             log.error(f"Error in question round: {e}")
 
