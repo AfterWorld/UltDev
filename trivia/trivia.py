@@ -203,6 +203,65 @@ class Trivia(commands.Cog):
 
         await ctx.send(embed=embed)
 
+    @trivia.command()
+    async def categories(self, ctx):
+        """List all available trivia categories with descriptions."""
+        try:
+            # Fetch available genres
+            genres = await self.fetch_genres(ctx.guild)
+            if not genres:
+                await ctx.send("No trivia categories are currently available.")
+                return
+    
+            # Create an embed for the category list
+            embed = discord.Embed(
+                title="📚 Trivia Categories",
+                description="Choose a category to play trivia!",
+                color=discord.Color.green(),
+            )
+    
+            # Add genres with descriptions
+            for genre in genres:
+                description = self.GENRE_DESCRIPTIONS.get(genre, "No description available.")
+                embed.add_field(name=genre.title(), value=description, inline=False)
+    
+            await ctx.send(embed=embed)
+    
+        except Exception as e:
+            log.error(f"Error fetching categories: {e}")
+            await ctx.send("An error occurred while fetching categories.")
+
+    @trivia.command()
+    async def preview(self, ctx, genre: str):
+        """Preview a few questions from a specific category."""
+        try:
+            genres = await self.fetch_genres(ctx.guild)
+            if genre not in genres:
+                await ctx.send(f"Invalid genre. Available genres: {', '.join(genres)}")
+                return
+    
+            questions = await self.fetch_questions(ctx.guild, genre)
+            if not questions:
+                await ctx.send(f"No questions available for the genre '{genre}'.")
+                return
+    
+            # Select up to 3 random questions to preview
+            preview_questions = random.sample(questions, min(3, len(questions)))
+    
+            embed = discord.Embed(
+                title=f"🔍 Preview of {genre.title()} Questions",
+                description="Here are a few sample questions:",
+                color=discord.Color.blue(),
+            )
+            for idx, question in enumerate(preview_questions, start=1):
+                embed.add_field(name=f"Question {idx}", value=question["question"], inline=False)
+    
+            await ctx.send(embed=embed)
+    
+        except Exception as e:
+            log.error(f"Error previewing questions: {e}")
+            await ctx.send("An error occurred while previewing questions.")
+
     # --- Trivia Logic ---
 
     async def run_trivia(self, guild, channel):
