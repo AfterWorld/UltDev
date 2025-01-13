@@ -62,7 +62,7 @@ class Trivia(commands.Cog):
         "history": "How well do you know world history?",
         "general": "Trivia about anything",
     }
-    
+
     def __init__(self, bot):
         self.bot = bot
         self.config = Config.get_conf(self, identifier=9876543212, force_registration=True)
@@ -77,14 +77,6 @@ class Trivia(commands.Cog):
             "questions_answered": 0,
             "last_active": None,
         }
-        default_user = {
-            "questions_answered": 0,
-            "correct_answers": 0,
-            "streak": 0,
-            "highest_streak": 0,
-            "points": 0,  # Total points for rank tracking
-        }
-        self.config.register_user(**default_user)
         self.config.register_guild(**default_guild)
         self.channel_states = {}
 
@@ -161,10 +153,7 @@ class Trivia(commands.Cog):
         Generate a partial answer hint by revealing a portion of the characters.
         Example: "elephant" -> "e____a__" (33% revealed)
         """
-        if not answer:  # Handle cases where the answer might be empty
-            return "No hints available."
-    
-        revealed_chars = max(1, int(len(answer) * reveal_ratio))  # At least one character revealed
+        revealed_chars = int(len(answer) * reveal_ratio)
         hint = ''.join(c if idx < revealed_chars else '_' for idx, c in enumerate(answer))
         return hint
 
@@ -179,26 +168,26 @@ class Trivia(commands.Cog):
     async def start(self, ctx, genre: str):
         """Start a trivia session in this channel."""
         state = self.get_channel_state(ctx.channel)
-    
+
         if state.active:
             await ctx.send("A trivia session is already running in this channel!")
             return
-    
+
         genres = await self.fetch_genres(ctx.guild)
         if genre not in genres:
             await ctx.send(f"Invalid genre. Available genres: {', '.join(genres)}")
             return
-    
+
         log.info(f"Starting trivia with genre: {genre} in channel: {ctx.channel.id}")
         state.reset()  # Ensure a clean state before starting
         state.active = True
         state.channel = ctx.channel
         await self.config.guild(ctx.guild).selected_genre.set(genre)
         await self.config.guild(ctx.guild).last_active.set(discord.utils.utcnow().timestamp())
-    
+
         games_played = await self.config.guild(ctx.guild).games_played()
         await self.config.guild(ctx.guild).games_played.set(games_played + 1)
-    
+
         await ctx.send(f"Starting trivia for the **{genre}** genre. Get ready!")
         state.task = asyncio.create_task(self.run_trivia(ctx.guild, ctx.channel))
 
@@ -325,85 +314,35 @@ class Trivia(commands.Cog):
             log.error(f"Error previewing questions: {e}")
             await ctx.send("An error occurred while previewing questions.")
 
-    @trivia.command()
-    async def stats(self, ctx, user: discord.Member = None):
-        """
-        Show trivia stats for a user.
-        If no user is provided, show stats for the command invoker.
-        """
-        user = user or ctx.author
-        stats = await self.config.user(user).all()
-    
-        total_questions = stats["questions_answered"]
-        correct_answers = stats["correct_answers"]
-        accuracy = (correct_answers / total_questions * 100) if total_questions > 0 else 0
-        streak = stats["streak"]
-        highest_streak = stats["highest_streak"]
-        points = stats["points"]
-    
-        # Calculate rank progress
-        next_rank_points = 0
-        current_rank = "Unranked"
-        for points_required, rank_name in sorted(self.RANKS.items()):
-            if points >= points_required:
-                current_rank = rank_name
-            else:
-                next_rank_points = points_required
-                break
-        progress = f"{points}/{next_rank_points} points" if next_rank_points else "Max Rank Achieved"
-    
-        embed = discord.Embed(
-            title=f"📊 Trivia Stats for {user.display_name}",
-            color=discord.Color.blue()
-        )
-        embed.add_field(name="Questions Answered", value=str(total_questions), inline=True)
-        embed.add_field(name="Correct Answers", value=str(correct_answers), inline=True)
-        embed.add_field(name="Accuracy", value=f"{accuracy:.2f}%", inline=True)
-        embed.add_field(name="Current Streak", value=str(streak), inline=True)
-        embed.add_field(name="Highest Streak", value=str(highest_streak), inline=True)
-        embed.add_field(name="Rank", value=current_rank, inline=True)
-        embed.add_field(name="Rank Progress", value=progress, inline=True)
-    
-        await ctx.send(embed=embed)
-
     # --- Trivia Logic ---
 
     async def run_trivia(self, guild, channel):
         """Main trivia loop for a specific channel."""
-        log.info(f"Starting the trivia loop for guild: {guild.id}, channel: {channel.id}")
-    
         state = self.get_channel_state(channel)
-    
-        if state.task and not state.task.done():
-            log.warning("Attempted to start a new trivia loop while one is already running.")
-            return  # Prevent duplicate trivia loops
-    
         try:
             genre = await self.config.guild(guild).selected_genre()
-            log.info(f"Selected genre: {genre}")
-    
             questions = await self.fetch_questions(guild, genre)
+
             if not questions:
                 await channel.send(f"No questions found for the genre '{genre}'.")
                 state.reset()
                 return
-    
+
             while state.active:
                 available_questions = [q for q in questions if q["question"] not in state.used_questions]
                 if not available_questions:
                     await channel.send("All questions have been used! Reshuffling the question pool...")
                     state.used_questions.clear()
                     available_questions = questions
-    
+
                 question_data = random.choice(available_questions)
                 state.question = question_data["question"]
                 state.answers = question_data["answers"]
                 state.hints = question_data.get("hints", [])
                 state.used_questions.add(state.question)
-    
-                log.info(f"Sending question: {state.question}")
+
                 await self._handle_question_round(channel, guild, state)
-    
+
         except asyncio.CancelledError:
             log.info("Trivia task cancelled.")
         except Exception as e:
@@ -412,44 +351,38 @@ class Trivia(commands.Cog):
             session_scores = await self.config.guild(guild).scores()
             await self.display_session_recap(guild, channel, session_scores)
             await self.config.guild(guild).scores.set({})
-            state.reset()
+        state.reset()
 
     async def _handle_question_round(self, channel, guild, state):
         """Handle a single question round with immediate progression."""
-        try:
-            await channel.send(f"**Trivia Question:** {state.question}\nType your answer below!")
+        await channel.send(f"**Trivia Question:** {state.question}\nType your answer below!")
+
+        correct = False
+        for i in range(30, 0, -5):
+            if not state.active:
+                return
+            await asyncio.sleep(5)
+            if correct:  # If someone answered correctly, skip the rest of the countdown.
+                break
+
+            if i in (15, 10):
+                partial_answer = self.get_partial_answer(
+                    state.answers[0],
+                    0.66 if i == 10 else 0.33
+                )
+                await channel.send(f"**{i} seconds left!** Hint: {partial_answer}")
+
+        if not correct and state.question and state.active:
+            await channel.send(f"Time's up! The correct answer was: {state.answers[0]}")
+            state.question = None
+            state.answers = []
+            state.hints = []
+
+        if state.active:
+            await asyncio.sleep(1)
+            state.task = asyncio.create_task(self.run_trivia(guild, channel))
+
     
-            for i in range(30, 0, -5):
-                if not state.active:
-                    return
-    
-                if state.question is None:
-                    return
-    
-                await asyncio.sleep(5)
-    
-                if state.question is None:
-                    break
-    
-                if i in (15, 10):
-                    partial_answer = self.get_partial_answer(
-                        state.answers[0],
-                        0.66 if i == 10 else 0.33
-                    )
-                    await channel.send(f"**{i} seconds left!** Hint: {partial_answer}")
-    
-            if state.question and state.active:
-                await channel.send(f"Time's up! The correct answer was: {state.answers[0]}")
-                state.question = None
-                state.answers = []
-                state.hints = []
-    
-            if state.active:
-                await asyncio.sleep(1)
-                state.task = asyncio.create_task(self.run_trivia(guild, channel))
-    
-        except Exception as e:
-            log.error(f"Error in question round: {e}")
 
     # --- Fetching and Utility Methods ---
 
@@ -471,21 +404,15 @@ class Trivia(commands.Cog):
         """Fetch questions for the selected genre."""
         try:
             url = f"{await self.config.guild(guild).github_url()}{genre}.yaml"
-            log.info(f"Fetching questions from: {url}")
-    
             async with aiohttp.ClientSession() as session:
                 async with session.get(url) as response:
                     if response.status != 200:
-                        log.error(f"Failed to fetch questions: {response.status}")
                         return []
-    
                     data = await response.json()
                     content = base64.b64decode(data["content"]).decode("utf-8")
-                    questions = yaml.safe_load(content)
-                    log.info(f"Successfully fetched {len(questions)} questions for genre '{genre}'")
-                    return questions
+                    return yaml.safe_load(content)
         except Exception as e:
-            log.error(f"Error fetching questions for genre '{genre}': {e}")
+            log.error(f"Error fetching questions: {e}")
             return []
 
     async def add_score(self, guild, user_id: int, points: int, scope: str = "session"):
@@ -514,33 +441,15 @@ class Trivia(commands.Cog):
         """Check messages for trivia answers."""
         if message.author.bot:
             return
-    
+
         state = self.channel_states.get(message.channel.id)
         if not state or not state.active or not state.question:
             return
-    
+
         correct_answers = [ans.lower().strip() for ans in state.answers]
-        user_stats = await self.config.user(message.author).all()
-    
-        # Update questions answered
-        await self.config.user(message.author).questions_answered.set(user_stats["questions_answered"] + 1)
-    
         if message.content.lower().strip() in correct_answers:
             points = 10
-    
-            # Update correct answers
-            await self.config.user(message.author).correct_answers.set(user_stats["correct_answers"] + 1)
-    
-            # Update streak
-            new_streak = user_stats["streak"] + 1
-            await self.config.user(message.author).streak.set(new_streak)
-            if new_streak > user_stats["highest_streak"]:
-                await self.config.user(message.author).highest_streak.set(new_streak)
-    
-            # Add points
-            await self.add_score(message.guild, message.author.id, points)
-            await self.config.user(message.author).points.set(user_stats["points"] + points)
-    
+            await self.add_score(message.guild, message.author.id, points, scope="daily")
             await message.add_reaction("✅")
             await state.channel.send(
                 f"🎉 Correct, {message.author.mention}! (+{points} points)\n"
@@ -548,13 +457,10 @@ class Trivia(commands.Cog):
             )
             state.question = None  # Clear the question for the next round
             state.answers = []  # Reset answers to avoid repetition
-    
+
             # Trigger the next question immediately
             if state.active:
                 state.task = asyncio.create_task(self.run_trivia(message.guild, state.channel))
-        else:
-            # Reset streak for incorrect answers
-            await self.config.user(message.author).streak.set(0)
 
 
 def setup(bot):
