@@ -161,7 +161,10 @@ class Trivia(commands.Cog):
         Generate a partial answer hint by revealing a portion of the characters.
         Example: "elephant" -> "e____a__" (33% revealed)
         """
-        revealed_chars = int(len(answer) * reveal_ratio)
+        if not answer:  # Handle cases where the answer might be empty
+            return "No hints available."
+    
+        revealed_chars = max(1, int(len(answer) * reveal_ratio))  # At least one character revealed
         hint = ''.join(c if idx < revealed_chars else '_' for idx, c in enumerate(answer))
         return hint
 
@@ -368,70 +371,81 @@ class Trivia(commands.Cog):
     async def run_trivia(self, guild, channel):
         """Main trivia loop for a specific channel."""
         state = self.get_channel_state(channel)
+    
+        if state.task and not state.task.done():
+            log.warning("Attempted to start a new trivia loop while one is already running.")
+            return  # Prevent duplicate trivia loops
+    
         try:
             genre = await self.config.guild(guild).selected_genre()
             questions = await self.fetch_questions(guild, genre)
-
+    
             if not questions:
                 await channel.send(f"No questions found for the genre '{genre}'.")
                 state.reset()
                 return
-
+    
             while state.active:
                 available_questions = [q for q in questions if q["question"] not in state.used_questions]
                 if not available_questions:
                     await channel.send("All questions have been used! Reshuffling the question pool...")
                     state.used_questions.clear()
                     available_questions = questions
-
+    
                 question_data = random.choice(available_questions)
                 state.question = question_data["question"]
                 state.answers = question_data["answers"]
                 state.hints = question_data.get("hints", [])
                 state.used_questions.add(state.question)
-
+    
                 await self._handle_question_round(channel, guild, state)
-
+    
         except asyncio.CancelledError:
             log.info("Trivia task cancelled.")
         except Exception as e:
             log.error(f"Error in trivia loop: {e}")
         finally:
+            # Recap session scores before resetting
             session_scores = await self.config.guild(guild).scores()
             await self.display_session_recap(guild, channel, session_scores)
-            await self.config.guild(guild).scores.set({})
-        state.reset()
+            await self.config.guild(guild).scores.set({})  # Clear session scores
+            state.reset()
 
     async def _handle_question_round(self, channel, guild, state):
         """Handle a single question round with immediate progression."""
         await channel.send(f"**Trivia Question:** {state.question}\nType your answer below!")
-
-        correct = False
+    
         for i in range(30, 0, -5):
             if not state.active:
                 return
+    
+            # Ensure we're not overlapping tasks
+            if state.question is None:
+                return
+    
             await asyncio.sleep(5)
-            if correct:  # If someone answered correctly, skip the rest of the countdown.
-                break
-
+    
+            if state.question is None:
+                break  # Exit if the question has been answered
+    
             if i in (15, 10):
                 partial_answer = self.get_partial_answer(
                     state.answers[0],
                     0.66 if i == 10 else 0.33
                 )
                 await channel.send(f"**{i} seconds left!** Hint: {partial_answer}")
-
-        if not correct and state.question and state.active:
+    
+        # If question is still active, announce the correct answer and clear state
+        if state.question and state.active:
             await channel.send(f"Time's up! The correct answer was: {state.answers[0]}")
             state.question = None
             state.answers = []
             state.hints = []
-
-        if state.active:
-            await asyncio.sleep(1)
-            state.task = asyncio.create_task(self.run_trivia(guild, channel))
-
     
+        # Immediately progress to the next question
+        if state.active:
+            await asyncio.sleep(1)  # Brief pause to avoid overwhelming the channel
+            state.task = asyncio.create_task(self.run_trivia(guild, channel))
 
     # --- Fetching and Utility Methods ---
 
