@@ -77,6 +77,15 @@ class Trivia(commands.Cog):
             "questions_answered": 0,
             "last_active": None,
         }
+        default_user = {
+            "questions_answered": 0,
+            "correct_answers": 0,
+            "streak": 0,
+            "highest_streak": 0,
+            "points": 0,  # Total points for rank tracking
+        }
+        
+        self.config.register_user(**default_user)
         self.config.register_guild(**default_guild)
         self.channel_states = {}
 
@@ -314,6 +323,47 @@ class Trivia(commands.Cog):
             log.error(f"Error previewing questions: {e}")
             await ctx.send("An error occurred while previewing questions.")
 
+    @trivia.command()
+    async def stats(self, ctx, user: discord.Member = None):
+        """
+        Show trivia stats for a user.
+        If no user is provided, show stats for the command invoker.
+        """
+        user = user or ctx.author
+        stats = await self.config.user(user).all()
+    
+        total_questions = stats["questions_answered"]
+        correct_answers = stats["correct_answers"]
+        accuracy = (correct_answers / total_questions * 100) if total_questions > 0 else 0
+        streak = stats["streak"]
+        highest_streak = stats["highest_streak"]
+        points = stats["points"]
+    
+        # Calculate rank progress
+        next_rank_points = 0
+        current_rank = "Unranked"
+        for points_required, rank_name in sorted(self.RANKS.items()):
+            if points >= points_required:
+                current_rank = rank_name
+            else:
+                next_rank_points = points_required
+                break
+        progress = f"{points}/{next_rank_points} points" if next_rank_points else "Max Rank Achieved"
+    
+        embed = discord.Embed(
+            title=f"📊 Trivia Stats for {user.display_name}",
+            color=discord.Color.blue()
+        )
+        embed.add_field(name="Questions Answered", value=str(total_questions), inline=True)
+        embed.add_field(name="Correct Answers", value=str(correct_answers), inline=True)
+        embed.add_field(name="Accuracy", value=f"{accuracy:.2f}%", inline=True)
+        embed.add_field(name="Current Streak", value=str(streak), inline=True)
+        embed.add_field(name="Highest Streak", value=str(highest_streak), inline=True)
+        embed.add_field(name="Rank", value=current_rank, inline=True)
+        embed.add_field(name="Rank Progress", value=progress, inline=True)
+    
+        await ctx.send(embed=embed)
+
     # --- Trivia Logic ---
 
     async def run_trivia(self, guild, channel):
@@ -441,15 +491,33 @@ class Trivia(commands.Cog):
         """Check messages for trivia answers."""
         if message.author.bot:
             return
-
+    
         state = self.channel_states.get(message.channel.id)
         if not state or not state.active or not state.question:
             return
-
+    
         correct_answers = [ans.lower().strip() for ans in state.answers]
+        user_stats = await self.config.user(message.author).all()
+    
+        # Update questions answered
+        await self.config.user(message.author).questions_answered.set(user_stats["questions_answered"] + 1)
+    
         if message.content.lower().strip() in correct_answers:
             points = 10
-            await self.add_score(message.guild, message.author.id, points, scope="daily")
+    
+            # Update correct answers
+            await self.config.user(message.author).correct_answers.set(user_stats["correct_answers"] + 1)
+    
+            # Update streak
+            new_streak = user_stats["streak"] + 1
+            await self.config.user(message.author).streak.set(new_streak)
+            if new_streak > user_stats["highest_streak"]:
+                await self.config.user(message.author).highest_streak.set(new_streak)
+    
+            # Add points
+            await self.add_score(message.guild, message.author.id, points)
+            await self.config.user(message.author).points.set(user_stats["points"] + points)
+    
             await message.add_reaction("✅")
             await state.channel.send(
                 f"🎉 Correct, {message.author.mention}! (+{points} points)\n"
@@ -457,10 +525,13 @@ class Trivia(commands.Cog):
             )
             state.question = None  # Clear the question for the next round
             state.answers = []  # Reset answers to avoid repetition
-
+    
             # Trigger the next question immediately
             if state.active:
                 state.task = asyncio.create_task(self.run_trivia(message.guild, state.channel))
+        else:
+            # Reset streak for incorrect answers
+            await self.config.user(message.author).streak.set(0)
 
 
 def setup(bot):
