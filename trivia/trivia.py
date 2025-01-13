@@ -406,7 +406,7 @@ class Trivia(commands.Cog):
                 state.reset()
                 return
         
-    async def _handle_question_round(self, channel, guild, state):
+    async def _handle_question_round(self, channel, guild):
         """Handle a single question round."""
         try:
             if not state.question:
