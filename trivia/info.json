@@ -1,9 +1,0 @@
-{
-    "name": "Trivia",
-    "author": ["Ult"],
-    "description": "A trivia cog with GitHub integration and genre-based questions.",
-    "install_msg": "Thank you for installing the Trivia cog! Use `[p]trivia start` to get started.",
-    "short": "A trivia game.",
-    "requirements": [],
-    "tags": ["fun", "trivia", "game"]
-}
