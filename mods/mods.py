@@ -36,27 +36,27 @@ class Moderation(commands.Cog):
             "{member}, this is your warning! Don't make Zoro mad!",
         ]
 
-    @commands.command()
+    @commands.command(name="boot")
     @commands.has_permissions(kick_members=True)
-    async def kick(self, ctx, member: Member, *, reason: str = None):
+    async def custom_kick(self, ctx, member: Member, *, reason: str = None):
         """Kick a member from the server."""
         await member.kick(reason=reason)
         message = random.choice(self.kick_messages).format(member=member.mention)
         await ctx.send(message)
         await self.log_action(ctx, "Kick", member, reason)
 
-    @commands.command()
+    @commands.command(name="banish")
     @commands.has_permissions(ban_members=True)
-    async def ban(self, ctx, member: Member, *, reason: str = None):
+    async def custom_ban(self, ctx, member: Member, *, reason: str = None):
         """Ban a member from the server."""
         await member.ban(reason=reason)
         message = random.choice(self.ban_messages).format(member=member.mention)
         await ctx.send(message)
         await self.log_action(ctx, "Ban", member, reason)
 
-    @commands.command()
+    @commands.command(name="silence")
     @commands.has_permissions(manage_roles=True)
-    async def mute(self, ctx, member: Member, duration: int, *, reason: str = None):
+    async def custom_mute(self, ctx, member: Member, duration: int, *, reason: str = None):
         """Mute a member for a specified duration (in minutes)."""
         mute_role = discord.utils.get(ctx.guild.roles, name="Muted")
         if not mute_role:
@@ -71,17 +71,17 @@ class Moderation(commands.Cog):
         await member.remove_roles(mute_role)
         await ctx.send(f"{member.mention} has been unmuted.")
 
-    @commands.command()
+    @commands.command(name="timeout")
     @commands.has_permissions(manage_roles=True)
-    async def timeout(self, ctx, member: Member, duration: int, *, reason: str = None):
+    async def custom_timeout(self, ctx, member: Member, duration: int, *, reason: str = None):
         """Timeout a member for a specified duration (in minutes)."""
         await member.timeout(duration=timedelta(minutes=duration), reason=reason)
         await ctx.send(f"{member.mention} has been timed out for {duration} minutes.")
         await self.log_action(ctx, "Timeout", member, reason)
 
-    @commands.command()
+    @commands.command(name="caution")
     @commands.has_permissions(manage_roles=True)
-    async def warn(self, ctx, member: Member, *, reason: str = None):
+    async def custom_warn(self, ctx, member: Member, *, reason: str = None):
         """Warn a member and escalate warnings."""
         guild_id = ctx.guild.id
         warnings = await self.config.guild(ctx.guild).warnings()
@@ -92,7 +92,7 @@ class Moderation(commands.Cog):
 
         level = warnings[str(member.id)]
         if level >= 3:
-            await self.mute(ctx, member, duration=10, reason="Automatic mute due to 3 warnings")
+            await self.custom_mute(ctx, member, duration=10, reason="Automatic mute due to 3 warnings")
             level = 3
 
         message = random.choice(self.warn_messages).format(member=member.mention)
