@@ -110,6 +110,18 @@ class Moderation(commands.Cog):
                 await log_channel.send(embed=embed)
         await ctx.send(f"{message}\n", embed=embed)
 
+    @commands.command(name="unquiet")
+    @commands.has_permissions(manage_roles=True)
+    async def custom_unmute(self, ctx, member: Member):
+        """Unmute a member."""
+        mute_role = discord.utils.get(ctx.guild.roles, name="Muted")
+        if mute_role in member.roles:
+            await member.remove_roles(mute_role)
+            await ctx.send(f"{member.mention} has been unmuted.")
+            await self.log_action(ctx, "Unmute", member)
+        else:
+            await ctx.send(f"{member.mention} is not muted.")
+
     @commands.command()
     @commands.has_permissions(administrator=True)
     async def setlogchannel(self, ctx, channel: TextChannel):
