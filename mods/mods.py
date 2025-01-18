@@ -12,7 +12,10 @@ class Moderation(commands.Cog):
         self.config = Config.get_conf(self, identifier=1234567890)
         default_guild = {
             "log_channel": None,
-            "warnings": {}
+            "warnings": {},
+            "mutes": {},
+            "kicks": {},
+            "timeouts": {}
         }
         self.config.register_guild(**default_guild)
         self.kick_messages = [
@@ -44,6 +47,7 @@ class Moderation(commands.Cog):
         message = random.choice(self.kick_messages).format(member=member.mention)
         await ctx.send(message)
         await self.log_action(ctx, "Kick", member, reason)
+        await self.increment_stat(ctx.guild.id, member.id, "kicks")
 
     @commands.command(name="banish")
     @commands.has_permissions(ban_members=True)
@@ -67,6 +71,7 @@ class Moderation(commands.Cog):
         message = random.choice(self.mute_messages).format(member=member.mention)
         await ctx.send(f"{message} for {duration} minutes.")
         await self.log_action(ctx, "Mute", member, reason)
+        await self.increment_stat(ctx.guild.id, member.id, "mutes")
         await self.bot.wait_for("timeout", timeout=duration * 60)
         await member.remove_roles(mute_role)
         await ctx.send(f"{member.mention} has been unmuted.")
@@ -78,6 +83,7 @@ class Moderation(commands.Cog):
         await member.timeout(duration=timedelta(minutes=duration), reason=reason)
         await ctx.send(f"{member.mention} has been timed out for {duration} minutes.")
         await self.log_action(ctx, "Timeout", member, reason)
+        await self.increment_stat(ctx.guild.id, member.id, "timeouts")
 
     @commands.command(name="caution")
     @commands.has_permissions(manage_roles=True)
@@ -129,6 +135,33 @@ class Moderation(commands.Cog):
         await self.config.guild(ctx.guild).log_channel.set(channel.id)
         await ctx.send(f"Log channel set to {channel.mention}")
 
+    @commands.command()
+    async def cautions(self, ctx, member: Member):
+        """Show how many cautions/mutes a user has."""
+        warnings = await self.config.guild(ctx.guild).warnings()
+        mutes = await self.config.guild(ctx.guild).mutes()
+        warning_count = warnings.get(str(member.id), 0)
+        mute_count = mutes.get(str(member.id), 0)
+        await ctx.send(f"{member.mention} has {warning_count} warnings and {mute_count} mutes.")
+
+    @commands.command()
+    async def history(self, ctx, member: Member):
+        """Show the history of mutes, warns, kicks, and timeouts for a user."""
+        warnings = await self.config.guild(ctx.guild).warnings()
+        mutes = await self.config.guild(ctx.guild).mutes()
+        kicks = await self.config.guild(ctx.guild).kicks()
+        timeouts = await self.config.guild(ctx.guild).timeouts()
+        warning_count = warnings.get(str(member.id), 0)
+        mute_count = mutes.get(str(member.id), 0)
+        kick_count = kicks.get(str(member.id), 0)
+        timeout_count = timeouts.get(str(member.id), 0)
+        embed = Embed(title=f"{member.name}'s History", color=0x00ff00)
+        embed.add_field(name="Warnings", value=warning_count)
+        embed.add_field(name="Mutes", value=mute_count)
+        embed.add_field(name="Kicks", value=kick_count)
+        embed.add_field(name="Timeouts", value=timeout_count)
+        await ctx.send(embed=embed)
+
     async def log_action(self, ctx, action: str, member: Member, reason: str = None):
         """Log moderation actions to the log channel."""
         embed = Embed(title=action, description=f"A member was {action.lower()}ed.", color=0xff0000)
@@ -142,6 +175,14 @@ class Moderation(commands.Cog):
             log_channel = self.bot.get_channel(log_channel_id)
             if log_channel:
                 await log_channel.send(embed=embed)
+
+    async def increment_stat(self, guild_id: int, member_id: int, stat: str):
+        """Increment a specific stat for a member."""
+        stats = await self.config.guild_from_id(guild_id).get_raw(stat, default={})
+        if str(member_id) not in stats:
+            stats[str(member_id)] = 0
+        stats[str(member_id)] += 1
+        await self.config.guild_from_id(guild_id).set_raw(stat, value=stats)
 
 def setup(bot):
     bot.add_cog(Moderation(bot))
