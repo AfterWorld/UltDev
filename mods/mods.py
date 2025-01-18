@@ -71,7 +71,7 @@ class Moderation(commands.Cog):
         await member.remove_roles(mute_role)
         await ctx.send(f"{member.mention} has been unmuted.")
 
-    @commands.command(name="timeout")
+    @commands.command(name="corner")
     @commands.has_permissions(manage_roles=True)
     async def custom_timeout(self, ctx, member: Member, duration: int, *, reason: str = None):
         """Timeout a member for a specified duration (in minutes)."""
