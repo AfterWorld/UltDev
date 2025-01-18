@@ -19,24 +19,29 @@ class Moderation(commands.Cog):
         }
         self.config.register_guild(**default_guild)
         self.kick_messages = [
-            "You've been kicked out of the crew, {member}!",
+            "You've been booted from the crew, {member}!",
             "Looks like {member} couldn't handle the Grand Line!",
             "{member} has been sent flying like Luffy's punch!",
         ]
         self.ban_messages = [
-            "{member} has been banned from the Grand Line!",
-            "No more adventures for {member}, they've been banned!",
+            "{member} has been banished from the Grand Line!",
+            "No more adventures for {member}, they've been banished!",
             "{member} has been sent to Impel Down!",
         ]
         self.mute_messages = [
             "{member} has been silenced by the Sea Prism Stone!",
-            "Shh! {member} has been muted!",
-            "{member} can't speak now, they've been muted!",
+            "Shh! {member} has been quieted!",
+            "{member} can't speak now, they've been quieted!",
         ]
         self.warn_messages = [
-            "{member}, you've been warned! Watch out for the next one!",
-            "Careful, {member}! You've received a warning!",
-            "{member}, this is your warning! Don't make Zoro mad!",
+            "{member}, you've been cautioned! Watch out for the next one!",
+            "Careful, {member}! You've received a caution!",
+            "{member}, this is your caution! Don't make Zoro mad!",
+        ]
+        self.timeout_messages = [
+            "{member} has been sent to the corner!",
+            "{member} is in timeout!",
+            "{member} has been put in the corner for a while!",
         ]
 
     @commands.command(name="boot")
@@ -81,7 +86,8 @@ class Moderation(commands.Cog):
     async def custom_timeout(self, ctx, member: Member, duration: int, *, reason: str = None):
         """Timeout a member for a specified duration (in minutes)."""
         await member.timeout(duration=timedelta(minutes=duration), reason=reason)
-        await ctx.send(f"{member.mention} has been timed out for {duration} minutes.")
+        message = random.choice(self.timeout_messages).format(member=member.mention)
+        await ctx.send(f"{message} for {duration} minutes.")
         await self.log_action(ctx, "Timeout", member, reason)
         await self.increment_stat(ctx.guild.id, member.id, "timeouts")
 
@@ -102,11 +108,11 @@ class Moderation(commands.Cog):
             level = 3
 
         message = random.choice(self.warn_messages).format(member=member.mention)
-        embed = Embed(title=f"Level {level} Warning", description="A member got a warning.", color=0xff0000)
+        embed = Embed(title=f"Level {level} Caution", description="A member got a caution.", color=0xff0000)
         embed.add_field(name="Member", value=member.mention)
         embed.add_field(name="Moderator", value=ctx.author.mention)
         embed.add_field(name="Reason", value=reason)
-        embed.add_field(name="Status", value=f"The member now has {level} warnings ({level} warns)")
+        embed.add_field(name="Status", value=f"The member now has {level} cautions ({level} cautions)")
         embed.set_footer(text=datetime.now().strftime("%m/%d/%Y %I:%M %p"))
 
         log_channel_id = await self.config.guild(ctx.guild).log_channel()
@@ -142,7 +148,13 @@ class Moderation(commands.Cog):
         mutes = await self.config.guild(ctx.guild).mutes()
         warning_count = warnings.get(str(member.id), 0)
         mute_count = mutes.get(str(member.id), 0)
-        await ctx.send(f"{member.mention} has {warning_count} warnings and {mute_count} mutes.")
+
+        embed = Embed(title=f"{member.name}'s Cautions", color=0xff0000)
+        embed.add_field(name="Warnings", value=warning_count)
+        embed.add_field(name="Mutes", value=mute_count)
+        embed.set_footer(text=datetime.now().strftime("%m/%d/%Y %I:%M %p"))
+
+        await ctx.send(embed=embed)
 
     @commands.command()
     async def history(self, ctx, member: Member):
