@@ -174,6 +174,18 @@ class Moderation(commands.Cog):
         embed.add_field(name="Timeouts", value=timeout_count)
         await ctx.send(embed=embed)
 
+    @commands.command(name="clearcautions")
+    @commands.has_permissions(manage_roles=True)
+    async def clear_warnings(self, ctx, member: Member):
+        """Clear all warnings from a user."""
+        warnings = await self.config.guild(ctx.guild).warnings()
+        if str(member.id) in warnings:
+            warnings[str(member.id)] = 0
+            await self.config.guild(ctx.guild).warnings.set(warnings)
+            await ctx.send(f"All warnings for {member.mention} have been cleared.")
+        else:
+            await ctx.send(f"{member.mention} has no warnings.")
+
     async def log_action(self, ctx, action: str, member: Member, reason: str = None):
         """Log moderation actions to the log channel."""
         embed = Embed(title=action, description=f"A member was {action.lower()}ed.", color=0xff0000)
