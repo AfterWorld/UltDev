@@ -54,7 +54,7 @@ class Moderation(commands.Cog):
         await ctx.send(message)
         await self.log_action(ctx, "Ban", member, reason)
 
-    @commands.command(name="silence")
+    @commands.command(name="quiet")
     @commands.has_permissions(manage_roles=True)
     async def custom_mute(self, ctx, member: Member, duration: int, *, reason: str = None):
         """Mute a member for a specified duration (in minutes)."""
