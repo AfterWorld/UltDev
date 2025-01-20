@@ -1,6 +1,7 @@
 import discord
 from redbot.core import commands, Config
 import random
+from datetime import datetime, timedelta
 
 class OPWelcome(commands.Cog):
     def __init__(self, bot):
@@ -13,6 +14,8 @@ class OPWelcome(commands.Cog):
             "default_role": None,
             "welcome_image": None,
             "log_channel": None,
+            "join_count": 0,
+            "leave_count": 0,
         }
         self.config.register_guild(**default_guild)
         self.op_facts = [
@@ -81,9 +84,19 @@ class OPWelcome(commands.Cog):
         await ctx.send(f"Default role set to {role.name}")
 
     @welcome.command()
-    async def setimage(self, ctx, url: str):
+    async def setimage(self, ctx):
         """Set a custom welcome image."""
-        await self.config.guild(ctx.guild).welcome_image.set(url)
+        if not ctx.message.attachments:
+            await ctx.send("Please attach an image file.")
+            return
+
+        attachment = ctx.message.attachments[0]
+        if not attachment.filename.lower().endswith(("png", "jpg", "jpeg", "gif")):
+            await ctx.send("Invalid file type. Please upload an image file.")
+            return
+
+        await attachment.save(f"data/{ctx.guild.id}_welcome_image.{attachment.filename.split('.')[-1]}")
+        await self.config.guild(ctx.guild).welcome_image.set(f"data/{ctx.guild.id}_welcome_image.{attachment.filename.split('.')[-1]}")
         await ctx.send("Custom welcome image set.")
 
     @welcome.command()
@@ -91,6 +104,13 @@ class OPWelcome(commands.Cog):
         """Set the log channel for welcome messages."""
         await self.config.guild(ctx.guild).log_channel.set(channel.id)
         await ctx.send(f"Log channel set to {channel.mention}")
+
+    @welcome.command()
+    async def stats(self, ctx):
+        """Show join and leave statistics."""
+        join_count = await self.config.guild(ctx.guild).join_count()
+        leave_count = await self.config.guild(ctx.guild).leave_count()
+        await ctx.send(f"Join Count: {join_count}\nLeave Count: {leave_count}")
 
     @commands.Cog.listener()
     async def on_member_join(self, member):
@@ -123,7 +143,7 @@ class OPWelcome(commands.Cog):
 
         welcome_image = await self.config.guild(guild).welcome_image()
         if welcome_image:
-            embed.set_image(url=welcome_image)
+            embed.set_image(url=f"attachment://{welcome_image.split('/')[-1]}")
 
         if rules_channel and roles_channel:
             embed.add_field(
@@ -153,10 +173,19 @@ class OPWelcome(commands.Cog):
         embed.set_footer(text=f"You're our {guild.member_count}th crew member!")
 
         try:
-            await channel.send(embed=embed)
-            await member.send(embed=embed)  # Send the same embed as a DM
+            if welcome_image:
+                file = discord.File(welcome_image, filename=welcome_image.split('/')[-1])
+                await channel.send(embed=embed, file=file)
+                await member.send(embed=embed, file=file)  # Send the same embed as a DM
+            else:
+                await channel.send(embed=embed)
+                await member.send(embed=embed)  # Send the same embed as a DM
         except discord.Forbidden:
             await guild.owner.send(f"I don't have permission to send messages in {channel.mention}")
+
+        # Increment join count
+        join_count = await self.config.guild(guild).join_count()
+        await self.config.guild(guild).join_count.set(join_count + 1)
 
         # Assign default role
         default_role_id = await self.config.guild(guild).default_role()
@@ -171,6 +200,19 @@ class OPWelcome(commands.Cog):
             log_channel = guild.get_channel(log_channel_id)
             if log_channel:
                 await log_channel.send(f"Welcome message sent for {member.mention}")
+
+    @commands.Cog.listener()
+    async def on_member_remove(self, member):
+        guild = member.guild
+        leave_count = await self.config.guild(guild).leave_count()
+        await self.config.guild(guild).leave_count.set(leave_count + 1)
+
+        # Log the leave message
+        log_channel_id = await self.config.guild(guild).log_channel()
+        if log_channel_id:
+            log_channel = guild.get_channel(log_channel_id)
+            if log_channel:
+                await log_channel.send(f"{member.mention} has left the server.")
 
 async def setup(bot):
     await bot.add_cog(OPWelcome(bot))
