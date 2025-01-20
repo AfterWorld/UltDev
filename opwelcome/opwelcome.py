@@ -96,10 +96,11 @@ class OPWelcome(commands.Cog):
             await ctx.send("Invalid file type. Please upload an image, GIF, or video file.")
             return
 
-        # Ensure the data directory exists
-        os.makedirs("data", exist_ok=True)
+        # Ensure the data directory exists within the bot's data path
+        data_path = os.path.join(self.bot.data_path, "opwelcome")
+        os.makedirs(data_path, exist_ok=True)
 
-        file_path = f"data/{ctx.guild.id}_welcome_media.{attachment.filename.split('.')[-1]}"
+        file_path = os.path.join(data_path, f"{ctx.guild.id}_welcome_media.{attachment.filename.split('.')[-1]}")
         await attachment.save(file_path)
         await self.config.guild(ctx.guild).welcome_image.set(file_path)
         await ctx.send("Custom welcome media set.")
