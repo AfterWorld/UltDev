@@ -9,6 +9,10 @@ class OPWelcome(commands.Cog):
         default_guild = {
             "welcome_channel": None,
             "welcome_enabled": False,
+            "custom_message": None,
+            "default_role": None,
+            "welcome_image": None,
+            "log_channel": None,
         }
         self.config.register_guild(**default_guild)
         self.op_facts = [
@@ -64,6 +68,30 @@ class OPWelcome(commands.Cog):
         state = "enabled" if not current else "disabled"
         await ctx.send(f"Welcome message {state}.")
 
+    @welcome.command()
+    async def setmessage(self, ctx, *, message: str):
+        """Set a custom welcome message."""
+        await self.config.guild(ctx.guild).custom_message.set(message)
+        await ctx.send("Custom welcome message set.")
+
+    @welcome.command()
+    async def setrole(self, ctx, role: discord.Role):
+        """Set a default role for new members."""
+        await self.config.guild(ctx.guild).default_role.set(role.id)
+        await ctx.send(f"Default role set to {role.name}")
+
+    @welcome.command()
+    async def setimage(self, ctx, url: str):
+        """Set a custom welcome image."""
+        await self.config.guild(ctx.guild).welcome_image.set(url)
+        await ctx.send("Custom welcome image set.")
+
+    @welcome.command()
+    async def setlogchannel(self, ctx, channel: discord.TextChannel):
+        """Set the log channel for welcome messages."""
+        await self.config.guild(ctx.guild).log_channel.set(channel.id)
+        await ctx.send(f"Log channel set to {channel.mention}")
+
     @commands.Cog.listener()
     async def on_member_join(self, member):
         guild = member.guild
@@ -81,13 +109,21 @@ class OPWelcome(commands.Cog):
         rules_channel = guild.get_channel(590972222366023718)
         roles_channel = guild.get_channel(597528644432166948)
 
+        custom_message = await self.config.guild(guild).custom_message()
+        if not custom_message:
+            custom_message = f"Ahoy, {member.mention}! You've just embarked on a grand adventure!"
+
         embed = discord.Embed(
             title=f"🏴‍☠️ Welcome to the {guild.name} Crew! 🏴‍☠️",
-            description=f"Ahoy, {member.mention if member.mention else member.name}! You've just embarked on a grand adventure!",
+            description=custom_message,
             color=discord.Color.blue()
         )
 
         embed.set_thumbnail(url=member.display_avatar.url)
+
+        welcome_image = await self.config.guild(guild).welcome_image()
+        if welcome_image:
+            embed.set_image(url=welcome_image)
 
         if rules_channel and roles_channel:
             embed.add_field(
@@ -118,8 +154,23 @@ class OPWelcome(commands.Cog):
 
         try:
             await channel.send(embed=embed)
+            await member.send(embed=embed)  # Send the same embed as a DM
         except discord.Forbidden:
             await guild.owner.send(f"I don't have permission to send messages in {channel.mention}")
+
+        # Assign default role
+        default_role_id = await self.config.guild(guild).default_role()
+        if default_role_id:
+            default_role = guild.get_role(default_role_id)
+            if default_role:
+                await member.add_roles(default_role)
+
+        # Log the welcome message
+        log_channel_id = await self.config.guild(guild).log_channel()
+        if log_channel_id:
+            log_channel = guild.get_channel(log_channel_id)
+            if log_channel:
+                await log_channel.send(f"Welcome message sent for {member.mention}")
 
 async def setup(bot):
     await bot.add_cog(OPWelcome(bot))
