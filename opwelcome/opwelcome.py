@@ -119,6 +119,77 @@ class OPWelcome(commands.Cog):
         leave_count = await self.config.guild(ctx.guild).leave_count()
         await ctx.send(f"Join Count: {join_count}\nLeave Count: {leave_count}")
 
+    @welcome.command()
+    async def preview(self, ctx):
+        """Preview the welcome message."""
+        guild = ctx.guild
+
+        channel_id = await self.config.guild(guild).welcome_channel()
+        if not channel_id:
+            await ctx.send("Welcome channel is not set.")
+            return
+
+        channel = guild.get_channel(channel_id)
+        if not channel:
+            await ctx.send("Welcome channel is not found.")
+            return
+
+        rules_channel = guild.get_channel(590972222366023718)
+        roles_channel = guild.get_channel(597528644432166948)
+
+        custom_message = await self.config.guild(guild).custom_message()
+        if not custom_message:
+            custom_message = "Ahoy! You've just embarked on a grand adventure!"
+
+        embed = discord.Embed(
+            title=f"🏴‍☠️ Welcome to the {guild.name} Crew! 🏴‍☠️",
+            description=custom_message,
+            color=discord.Color.blue()
+        )
+
+        embed.set_thumbnail(url=guild.icon_url)
+
+        welcome_image = await self.config.guild(guild).welcome_image()
+        if welcome_image:
+            embed.set_image(url=f"attachment://{welcome_image.split('/')[-1]}")
+
+        if rules_channel and roles_channel:
+            embed.add_field(
+                name="📜 First Steps on Your Journey",
+                value=f"Please check out the {rules_channel.mention} and {roles_channel.mention} channels.",
+                inline=False
+            )
+
+        embed.add_field(
+            name="💡 Did You Know?",
+            value=random.choice(self.op_facts),
+            inline=False
+        )
+
+        embed.add_field(
+            name="🛠️ Role Assignment",
+            value="Head over to the roles channel to assign yourself roles!",
+            inline=False
+        )
+
+        embed.add_field(
+            name="📢 Message from the Admins",
+            value="Welcome to our server! We hope you have a great time here. If you have any questions, feel free to ask!",
+            inline=False
+        )
+
+        embed.set_footer(text=f"You're our {guild.member_count}th crew member!")
+
+        try:
+            if welcome_image:
+                with open(welcome_image, 'rb') as file:
+                    discord_file = discord.File(file, filename=welcome_image.split('/')[-1])
+                    await ctx.send(embed=embed, file=discord_file)
+            else:
+                await ctx.send(embed=embed)
+        except Exception as e:
+            await ctx.send(f"An error occurred while sending the preview: {e}")
+
     @commands.Cog.listener()
     async def on_member_join(self, member):
         guild = member.guild
