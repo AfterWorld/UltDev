@@ -3,6 +3,7 @@ from discord.ext import commands as discord_commands
 from discord import Embed, Member, TextChannel
 from datetime import datetime, timedelta
 import random
+import discord
 
 class Moderation(commands.Cog):
     """Custom moderation cog for Discord Redbot."""
