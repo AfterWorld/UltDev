@@ -534,9 +534,9 @@ class OnePieceInfo(commands.Cog):
         user_message = "Sending the owner a request to accept the invite..."
         await ctx.send(user_message)
 
-        # Check if the bot can send a DM to the user
+        # Check if the bot can create a DM channel with the user
         try:
-            await ctx.author.send("Checking if you can receive DMs...")
+            await ctx.author.create_dm()
         except discord.Forbidden:
             await ctx.send("You need to enable DMs to receive the invite link.")
             return
