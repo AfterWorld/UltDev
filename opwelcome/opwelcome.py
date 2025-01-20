@@ -147,7 +147,8 @@ class OPWelcome(commands.Cog):
             color=discord.Color.blue()
         )
 
-        embed.set_thumbnail(url=guild.icon_url)
+        if guild.icon:
+            embed.set_thumbnail(url=guild.icon.url)
 
         welcome_image = await self.config.guild(guild).welcome_image()
         if welcome_image:
