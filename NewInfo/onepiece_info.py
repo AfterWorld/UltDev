@@ -327,7 +327,7 @@ class OnePieceInfo(commands.Cog):
 
     @commands.command(name="global_message")
     @commands.is_owner()
-    async def global_broadcast(self, ctx, *, message: str):
+    async def global_message(self, ctx, *, message: str):
         """
         Send a global message to all servers the bot is on, 
         with careful rate limit management.
@@ -351,6 +351,25 @@ class OnePieceInfo(commands.Cog):
             "Echoing through every sea and island!"
         ]
         broadcast_embed.set_footer(text=random.choice(broadcast_phrases))
+
+        # Send a preview of the broadcast to the command invoker
+        preview_message = await ctx.send("Here is a preview of the broadcast message:", embed=broadcast_embed)
+        await preview_message.add_reaction("✅")
+        await preview_message.add_reaction("❌")
+
+        def check(reaction, user):
+            return user == ctx.author and str(reaction.emoji) in ["✅", "❌"] and reaction.message.id == preview_message.id
+
+        try:
+            reaction, _ = await self.bot.wait_for('reaction_add', timeout=60.0, check=check)
+
+            if str(reaction.emoji) == "❌":
+                await ctx.send("Broadcast cancelled.")
+                return
+
+        except asyncio.TimeoutError:
+            await ctx.send("Broadcast preview timed out.")
+            return
 
         # Track broadcast statistics
         successful_broadcasts = 0
@@ -384,11 +403,8 @@ class OnePieceInfo(commands.Cog):
                 broadcasts_this_minute = 0
 
             try:
-                # Find the first channel where bot can send messages
-                target_channel = next((
-                    channel for channel in guild.text_channels 
-                    if channel.permissions_for(guild.me).send_messages
-                ), None)
+                # Find the #sunnyupdates channel
+                target_channel = discord.utils.get(guild.text_channels, name="sunnyupdates")
 
                 if target_channel:
                     await target_channel.send(embed=broadcast_embed)
@@ -443,7 +459,7 @@ class OnePieceInfo(commands.Cog):
         if not ctx.guild.me.guild_permissions.add_reactions:
             await ctx.send("⚠️ Warning: I lack permission to add reactions. Some interactive features may be limited.")
 
-    @commands.command(name="broadcast_permission_check")
+    @commands.command(name="broadcastcheck")
     @commands.is_owner()
     async def check_broadcast_permissions(self, ctx):
         """
@@ -470,6 +486,71 @@ class OnePieceInfo(commands.Cog):
         
         for chunk in chunks:
             await ctx.send("\n".join(chunk))
+    
+    @commands.command(name="broadcast_setup")
+    @commands.is_owner()
+    async def broadcast_setup(self, ctx):
+        """
+        Request permission from server owners to send broadcast messages.
+        """
+        for guild in self.bot.guilds:
+            owner = guild.owner
+            if owner:
+                try:
+                    # Prepare the embed for the server owner
+                    embed = discord.Embed(
+                        title="Broadcast Permission Request",
+                        description=(
+                            f"The bot owner requests permission to send broadcast messages in your server **{guild.name}**.\n\n"
+                            "If accepted, a channel named `#sunnyupdates` will be created where broadcast messages will be posted.\n"
+                            "These messages will not include `@everyone` or `@here` mentions.\n\n"
+                            "If you deny this request, the bot owner may visit the server to understand the issue."
+                        ),
+                        color=discord.Color.gold()
+                    )
+                    embed.set_footer(text="Do you allow or deny this request?")
+
+                    # Send the embed to the server owner
+                    request_message = await owner.send(embed=embed)
+
+                    # Add reactions for the owner to accept or deny the request
+                    await request_message.add_reaction("✅")
+                    await request_message.add_reaction("❌")
+
+                    def check(reaction, user):
+                        return user == owner and str(reaction.emoji) in ["✅", "❌"] and reaction.message.id == request_message.id
+
+                    try:
+                        reaction, _ = await self.bot.wait_for('reaction_add', timeout=60.0, check=check)
+
+                        if str(reaction.emoji) == "✅":
+                            # Owner accepted the request
+                            await self.create_broadcast_channel(guild)
+                            await owner.send(f"Your request has been accepted! A channel named `#sunnyupdates` has been created in **{guild.name}**.")
+                        else:
+                            # Owner denied the request
+                            await owner.send("Your request has been denied. The bot owner may visit the server to understand the issue.")
+                    except asyncio.TimeoutError:
+                        await owner.send("Your request timed out.")
+                except discord.Forbidden:
+                    pass  # Unable to send DM to the owner
+
+async def create_broadcast_channel(self, guild):
+    """
+    Create a broadcast channel in the specified guild.
+    """
+    # Check if the channel already exists
+    existing_channel = discord.utils.get(guild.text_channels, name="sunnyupdates")
+    if existing_channel:
+        return
+
+    # Create the channel with appropriate permissions
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(read_messages=True, send_messages=False),
+        guild.me: discord.PermissionOverwrite(send_messages=True),
+        guild.owner: discord.PermissionOverwrite(send_messages=True)
+    }
+    await guild.create_text_channel(name="sunnyupdates", overwrites=overwrites)
 
     @commands.command()
     async def ping(self, ctx):
@@ -584,19 +665,56 @@ class OnePieceInfo(commands.Cog):
         
     @commands.command()
     async def invite(self, ctx):
-        """Send a custom invite message to the user and the bot owner."""
-        user_message = "Thank you for inviting me! Here is your invite link: [Invite Link](https://discord.com/oauth2/authorize?client_id=YOUR_CLIENT_ID&scope=bot&permissions=8)"
-        owner_message = f"{ctx.author.mention} has requested an invite link."
+        """Send a custom invite request to the bot owner."""
+        user_message = "Sending the owner a request to accept the invite..."
+        await ctx.send(user_message)
 
-        # Send message to the user
-        await ctx.author.send(user_message)
+        # Check if the bot can send a DM to the user
+        try:
+            await ctx.author.send("Checking if you can receive DMs...")
+        except discord.Forbidden:
+            await ctx.send("You need to enable DMs to receive the invite link.")
+            return
 
-        # Send message to the bot owner
+        # Prepare the embed for the bot owner
+        embed = discord.Embed(
+            title="Invite Request",
+            description=f"{ctx.author.mention} has requested to invite the bot to their server.",
+            color=discord.Color.gold()
+        )
+        embed.add_field(name="User", value=ctx.author.mention, inline=True)
+        embed.add_field(name="Server", value=ctx.guild.name, inline=True)
+        embed.set_footer(text="Do you allow or deny this request?")
+
+        # Send the embed to the bot owner
         owner = (await self.bot.application_info()).owner
-        await owner.send(owner_message)
+        try:
+            request_message = await owner.send(embed=embed)
+        except discord.Forbidden:
+            await ctx.send("Unable to send a request to the bot owner. Please try again later.")
+            return
 
-        await ctx.send("I've sent you a DM with the invite link!")
+        # Add reactions for the owner to accept or deny the request
+        await request_message.add_reaction("✅")
+        await request_message.add_reaction("❌")
 
+        def check(reaction, user):
+            return user == owner and str(reaction.emoji) in ["✅", "❌"] and reaction.message.id == request_message.id
+
+        try:
+            reaction, _ = await self.bot.wait_for('reaction_add', timeout=60.0, check=check)
+            
+            if str(reaction.emoji) == "✅":
+                # Owner accepted the invite request
+                invite_link = "https://discord.com/oauth2/authorize?client_id=YOUR_CLIENT_ID&scope=bot&permissions=8"
+                await ctx.author.send(f"Your invite request has been accepted! Here is your invite link: [Invite Link]({invite_link})")
+                await ctx.author.send("For inviting this bot, the server owner does have permissions to come to the server to check to see if the server isn't trying to abuse the bot.")
+            else:
+                # Owner denied the invite request
+                await ctx.author.send("Your invite request has been denied.")
+        except asyncio.TimeoutError:
+            await ctx.author.send("Your invite request timed out.")
+        
     @commands.command()
     async def userinfo(self, ctx, *, user: discord.Member = None):
         """Display user info (themed as a Vivre Card)."""
