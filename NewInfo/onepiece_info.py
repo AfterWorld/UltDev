@@ -11,6 +11,7 @@ import asyncio
 import random
 from datetime import datetime, timezone
 import textwrap
+import time
 
 # Global dictionary to store original commands
 original_commands = {}
