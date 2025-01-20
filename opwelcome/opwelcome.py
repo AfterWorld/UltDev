@@ -1,6 +1,7 @@
 import discord
 from redbot.core import commands, Config
 import random
+import os
 from datetime import datetime, timedelta
 
 class OPWelcome(commands.Cog):
@@ -95,8 +96,12 @@ class OPWelcome(commands.Cog):
             await ctx.send("Invalid file type. Please upload an image, GIF, or video file.")
             return
 
-        await attachment.save(f"data/{ctx.guild.id}_welcome_media.{attachment.filename.split('.')[-1]}")
-        await self.config.guild(ctx.guild).welcome_image.set(f"data/{ctx.guild.id}_welcome_media.{attachment.filename.split('.')[-1]}")
+        # Ensure the data directory exists
+        os.makedirs("data", exist_ok=True)
+
+        file_path = f"data/{ctx.guild.id}_welcome_media.{attachment.filename.split('.')[-1]}"
+        await attachment.save(file_path)
+        await self.config.guild(ctx.guild).welcome_image.set(file_path)
         await ctx.send("Custom welcome media set.")
 
     @welcome.command()
