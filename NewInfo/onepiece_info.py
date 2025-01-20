@@ -551,17 +551,22 @@ class OnePieceInfo(commands.Cog):
         embed.add_field(name="Server", value=ctx.guild.name, inline=True)
         embed.set_footer(text="Do you allow or deny this request?")
 
-        # Send the embed to the bot owner
+        # Get the bot owner and the specific channel
         owner = (await self.bot.application_info()).owner
+        channel = self.bot.get_channel(748451591958429809)
+        if not channel:
+            await ctx.send("Unable to find the request channel. Please try again later.")
+            return
+
         try:
-            request_message = await owner.send(embed=embed)
+            request_message = await channel.send(content=f"{owner.mention}", embed=embed)
         except discord.Forbidden:
             await ctx.send("Unable to send a request to the bot owner. Please try again later.")
-            logging.error("Bot does not have permission to send a DM to the owner.")
+            logging.error("Bot does not have permission to send a message in the request channel.")
             return
         except Exception as e:
             await ctx.send("An unexpected error occurred while sending the request to the bot owner.")
-            logging.error(f"Unexpected error while sending a DM to the owner: {e}")
+            logging.error(f"Unexpected error while sending a message in the request channel: {e}")
             return
 
         # Add reactions for the owner to accept or deny the request
