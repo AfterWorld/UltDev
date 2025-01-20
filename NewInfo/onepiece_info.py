@@ -325,140 +325,6 @@ class OnePieceInfo(commands.Cog):
             except asyncio.TimeoutError:
                 pass
 
-    @commands.command(name="global_message")
-    @commands.is_owner()
-    async def global_message(self, ctx, *, message: str):
-        """
-        Send a global message to all servers the bot is on, 
-        with careful rate limit management.
-        """
-        # Validate message length
-        if len(message) > 1000:
-            return await ctx.send("🏴‍☠️ Message too long! Keep it under 1000 characters, Captain!")
-
-        # Prepare the broadcast embed
-        broadcast_embed = discord.Embed(
-            title="🏴‍☠️ Straw Hat Global Broadcast 🌊", 
-            description=f"**Incoming Message from the Pirate King's Crew:**\n\n{message}",
-            color=discord.Color.gold()
-        )
-        
-        # Add some One Piece flair
-        broadcast_phrases = [
-            "By the power of the Gomu Gomu no Mi!",
-            "Transmitted through the Grand Line's Den Den Mushi Network!",
-            "Delivered by the Thousand Sunny's Eternal Pose!",
-            "Echoing through every sea and island!"
-        ]
-        broadcast_embed.set_footer(text=random.choice(broadcast_phrases))
-
-        # Send a preview of the broadcast to the command invoker
-        preview_message = await ctx.send("Here is a preview of the broadcast message:", embed=broadcast_embed)
-        await preview_message.add_reaction("✅")
-        await preview_message.add_reaction("❌")
-
-        def check(reaction, user):
-            return user == ctx.author and str(reaction.emoji) in ["✅", "❌"] and reaction.message.id == preview_message.id
-
-        try:
-            reaction, _ = await self.bot.wait_for('reaction_add', timeout=60.0, check=check)
-
-            if str(reaction.emoji) == "❌":
-                await ctx.send("Broadcast cancelled.")
-                return
-
-        except asyncio.TimeoutError:
-            await ctx.send("Broadcast preview timed out.")
-            return
-
-        # Track broadcast statistics
-        successful_broadcasts = 0
-        failed_broadcasts = 0
-        rate_limited_broadcasts = 0
-
-        # Progress message
-        progress_message = await ctx.send("🌊 Preparing to sail across the seas...")
-
-        # Sort guilds by member count to prioritize larger servers
-        sorted_guilds = sorted(self.bot.guilds, key=lambda g: g.member_count, reverse=True)
-
-        # Rate limiting variables
-        MAX_BROADCASTS_PER_MINUTE = 10  # Discord recommendation
-        COOLDOWN_SECONDS = 60
-        broadcasts_this_minute = 0
-        start_time = time.time()
-
-        for guild in sorted_guilds:
-            # Rate limit check
-            current_time = time.time()
-            if current_time - start_time >= COOLDOWN_SECONDS:
-                # Reset counters if a minute has passed
-                broadcasts_this_minute = 0
-                start_time = current_time
-
-            if broadcasts_this_minute >= MAX_BROADCASTS_PER_MINUTE:
-                # Wait if we've hit the rate limit
-                await asyncio.sleep(5)  # Brief pause
-                start_time = time.time()
-                broadcasts_this_minute = 0
-
-            try:
-                # Find the #sunnyupdates channel
-                target_channel = discord.utils.get(guild.text_channels, name="sunnyupdates")
-
-                if target_channel:
-                    await target_channel.send(embed=broadcast_embed)
-                    successful_broadcasts += 1
-                    broadcasts_this_minute += 1
-
-                    # Update progress periodically
-                    if successful_broadcasts % 5 == 0:
-                        await progress_message.edit(
-                            content=f"🏴‍☠️ Broadcast Progress: {successful_broadcasts} islands reached..."
-                        )
-
-            except discord.errors.Forbidden:
-                # No permission to send in any channel
-                failed_broadcasts += 1
-            except discord.errors.HTTPException as e:
-                if e.status == 429:  # Rate limit error
-                    rate_limited_broadcasts += 1
-                    await asyncio.sleep(e.retry_after or 5)  # Respect Discord's suggested wait time
-                else:
-                    failed_broadcasts += 1
-            except Exception:
-                failed_broadcasts += 1
-
-            # Add a small delay between broadcasts to be extra careful
-            await asyncio.sleep(0.5)
-
-        # Final summary message
-        await progress_message.edit(
-            content=(
-                f"🏴‍☠️ Broadcast Voyage Complete!\n"
-                f"✅ Successfully reached {successful_broadcasts} islands\n"
-                f"❌ Failed to reach {failed_broadcasts} territories\n"
-                f"⏳ Rate Limited: {rate_limited_broadcasts} attempts"
-            )
-        )
-
-        # Optional: Log detailed results
-        logging.info(
-            f"Global Broadcast Results: "
-            f"Successful: {successful_broadcasts}, "
-            f"Failed: {failed_broadcasts}, "
-            f"Rate Limited: {rate_limited_broadcasts}"
-        )
-
-    @island_details.before_invoke
-    async def prepare_island_details_reactions(self, ctx):
-        """
-        Ensure bot has necessary permissions for reaction handling
-        This method will run before island_details command
-        """
-        if not ctx.guild.me.guild_permissions.add_reactions:
-            await ctx.send("⚠️ Warning: I lack permission to add reactions. Some interactive features may be limited.")
-
     @commands.command(name="broadcastcheck")
     @commands.is_owner()
     async def check_broadcast_permissions(self, ctx):
@@ -535,22 +401,22 @@ class OnePieceInfo(commands.Cog):
                 except discord.Forbidden:
                     pass  # Unable to send DM to the owner
 
-async def create_broadcast_channel(self, guild):
-    """
-    Create a broadcast channel in the specified guild.
-    """
-    # Check if the channel already exists
-    existing_channel = discord.utils.get(guild.text_channels, name="sunnyupdates")
-    if existing_channel:
-        return
+    async def create_broadcast_channel(self, guild):
+        """
+        Create a broadcast channel in the specified guild.
+        """
+        # Check if the channel already exists
+        existing_channel = discord.utils.get(guild.text_channels, name="sunnyupdates")
+        if existing_channel:
+            return
 
-    # Create the channel with appropriate permissions
-    overwrites = {
-        guild.default_role: discord.PermissionOverwrite(read_messages=True, send_messages=False),
-        guild.me: discord.PermissionOverwrite(send_messages=True),
-        guild.owner: discord.PermissionOverwrite(send_messages=True)
-    }
-    await guild.create_text_channel(name="sunnyupdates", overwrites=overwrites)
+        # Create the channel with appropriate permissions
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(read_messages=True, send_messages=False),
+            guild.me: discord.PermissionOverwrite(send_messages=True),
+            guild.owner: discord.PermissionOverwrite(send_messages=True)
+        }
+        await guild.create_text_channel(name="sunnyupdates", overwrites=overwrites)
 
     @commands.command()
     async def ping(self, ctx):
@@ -763,6 +629,87 @@ async def create_broadcast_channel(self, guild):
         embed.set_footer(text=random.choice(quotes))
 
         await ctx.send(embed=embed)
+    
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        # Check if the message is from the bot owner and in the #sunnyupdates channel
+        if message.author.id == self.bot.owner_id and message.channel.name == "sunnyupdates":
+            # Prepare the broadcast embed
+            broadcast_embed = discord.Embed(
+                title="🏴‍☠️ Straw Hat Global Broadcast 🌊", 
+                description=message.content,
+                color=discord.Color.gold()
+            )
+            
+            # Add some One Piece flair
+            broadcast_phrases = [
+                "By the power of the Gomu Gomu no Mi!",
+                "Transmitted through the Grand Line's Den Den Mushi Network!",
+                "Delivered by the Thousand Sunny's Eternal Pose!",
+                "Echoing through every sea and island!"
+            ]
+            broadcast_embed.set_footer(text=random.choice(broadcast_phrases))
+
+            # Track broadcast statistics
+            successful_broadcasts = 0
+            failed_broadcasts = 0
+            rate_limited_broadcasts = 0
+
+            # Sort guilds by member count to prioritize larger servers
+            sorted_guilds = sorted(self.bot.guilds, key=lambda g: g.member_count, reverse=True)
+
+            # Rate limiting variables
+            MAX_BROADCASTS_PER_MINUTE = 10  # Discord recommendation
+            COOLDOWN_SECONDS = 60
+            broadcasts_this_minute = 0
+            start_time = time.time()
+
+            for guild in sorted_guilds:
+                # Rate limit check
+                current_time = time.time()
+                if current_time - start_time >= COOLDOWN_SECONDS:
+                    # Reset counters if a minute has passed
+                    broadcasts_this_minute = 0
+                    start_time = current_time
+
+                if broadcasts_this_minute >= MAX_BROADCASTS_PER_MINUTE:
+                    # Wait if we've hit the rate limit
+                    await asyncio.sleep(5)  # Brief pause
+                    start_time = time.time()
+                    broadcasts_this_minute = 0
+
+                try:
+                    # Find the #sunnyupdates channel
+                    target_channel = discord.utils.get(guild.text_channels, name="sunnyupdates")
+
+                    if target_channel:
+                        await target_channel.send(embed=broadcast_embed)
+                        successful_broadcasts += 1
+                        broadcasts_this_minute += 1
+
+                except discord.errors.Forbidden:
+                    # No permission to send in any channel
+                    failed_broadcasts += 1
+                except discord.errors.HTTPException as e:
+                    if e.status == 429:  # Rate limit error
+                        rate_limited_broadcasts += 1
+                        await asyncio.sleep(e.retry_after or 5)  # Respect Discord's suggested wait time
+                    else:
+                        failed_broadcasts += 1
+                except Exception:
+                    failed_broadcasts += 1
+
+                # Add a small delay between broadcasts to be extra careful
+                await asyncio.sleep(0.5)
+
+            # Log detailed results
+            logging.info(
+                f"Global Broadcast Results: "
+                f"Successful: {successful_broadcasts}, "
+                f"Failed: {failed_broadcasts}, "
+                f"Rate Limited: {rate_limited_broadcasts}"
+            )
+    
 
 async def setup(bot: Red):
     global original_commands
