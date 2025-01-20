@@ -180,14 +180,21 @@ class OPWelcome(commands.Cog):
 
         try:
             if welcome_image:
-                file = discord.File(welcome_image, filename=welcome_image.split('/')[-1])
-                await channel.send(embed=embed, file=file)
-                await member.send(embed=embed, file=file)  # Send the same embed as a DM
+                with open(welcome_image, 'rb') as file:
+                    discord_file = discord.File(file, filename=welcome_image.split('/')[-1])
+                    await channel.send(embed=embed, file=discord_file)
+                    try:
+                        await member.send(embed=embed, file=discord_file)  # Send the same embed as a DM
+                    except discord.Forbidden:
+                        await guild.owner.send(f"I don't have permission to send messages to {member.mention}")
             else:
                 await channel.send(embed=embed)
-                await member.send(embed=embed)  # Send the same embed as a DM
-        except discord.Forbidden:
-            await guild.owner.send(f"I don't have permission to send messages in {channel.mention}")
+                try:
+                    await member.send(embed=embed)  # Send the same embed as a DM
+                except discord.Forbidden:
+                    await guild.owner.send(f"I don't have permission to send messages to {member.mention}")
+        except Exception as e:
+            await guild.owner.send(f"An error occurred while sending the welcome message: {e}")
 
         # Increment join count
         join_count = await self.config.guild(guild).join_count()
@@ -207,18 +214,18 @@ class OPWelcome(commands.Cog):
             if log_channel:
                 await log_channel.send(f"Welcome message sent for {member.mention}")
 
-    @commands.Cog.listener()
-    async def on_member_remove(self, member):
-        guild = member.guild
-        leave_count = await self.config.guild(guild).leave_count()
-        await self.config.guild(guild).leave_count.set(leave_count + 1)
+        @commands.Cog.listener()
+        async def on_member_remove(self, member):
+            guild = member.guild
+            leave_count = await self.config.guild(guild).leave_count()
+            await self.config.guild(guild).leave_count.set(leave_count + 1)
 
-        # Log the leave message
-        log_channel_id = await self.config.guild(guild).log_channel()
-        if log_channel_id:
-            log_channel = guild.get_channel(log_channel_id)
-            if log_channel:
-                await log_channel.send(f"{member.mention} has left the server.")
+            # Log the leave message
+            log_channel_id = await self.config.guild(guild).log_channel()
+            if log_channel_id:
+                log_channel = guild.get_channel(log_channel_id)
+                if log_channel:
+                    await log_channel.send(f"{member.mention} has left the server.")
 
-async def setup(bot):
-    await bot.add_cog(OPWelcome(bot))
+        async def setup(bot):
+            await bot.add_cog(OPWelcome(bot))
