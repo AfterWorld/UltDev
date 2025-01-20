@@ -214,8 +214,8 @@ class OPWelcome(commands.Cog):
             if log_channel:
                 await log_channel.send(f"Welcome message sent for {member.mention}")
 
-        @commands.Cog.listener()
-        async def on_member_remove(self, member):
+    @commands.Cog.listener()
+    async def on_member_remove(self, member):
             guild = member.guild
             leave_count = await self.config.guild(guild).leave_count()
             await self.config.guild(guild).leave_count.set(leave_count + 1)
