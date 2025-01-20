@@ -384,7 +384,7 @@ class OnePieceInfo(commands.Cog):
                     await request_message.add_reaction("❌")
 
                     def check(reaction, user):
-                        return user == owner and str(reaction.emoji) in ["✅", "❌"] and reaction.message.id == request_message.id
+                        return user == owner and str(reaction.emoji) in {"✅", "❌"} and reaction.message.id == request_message.id
 
                     try:
                         reaction, _ = await self.bot.wait_for('reaction_add', timeout=60.0, check=check)
@@ -406,8 +406,7 @@ class OnePieceInfo(commands.Cog):
         Create a broadcast channel in the specified guild.
         """
         # Check if the channel already exists
-        existing_channel = discord.utils.get(guild.text_channels, name="sunnyupdates")
-        if existing_channel:
+        if existing_channel := discord.utils.get(guild.text_channels, name="sunnyupdates"):
             return
 
         # Create the channel with appropriate permissions
@@ -558,6 +557,11 @@ class OnePieceInfo(commands.Cog):
             request_message = await owner.send(embed=embed)
         except discord.Forbidden:
             await ctx.send("Unable to send a request to the bot owner. Please try again later.")
+            logging.error("Bot does not have permission to send a DM to the owner.")
+            return
+        except Exception as e:
+            await ctx.send("An unexpected error occurred while sending the request to the bot owner.")
+            logging.error(f"Unexpected error while sending a DM to the owner: {e}")
             return
 
         # Add reactions for the owner to accept or deny the request
@@ -632,9 +636,7 @@ class OnePieceInfo(commands.Cog):
     
     @commands.Cog.listener()
     async def on_message(self, message):
-        # Check if the message is from the bot owner and in the #sunnyupdates channel
-        if message.author.id == self.bot.owner_id and message.channel.name == "sunnyupdates":
-            # Prepare the broadcast embed
+        if message.author.id != self.bot.owner_id or message.channel.name != "sunnyupdates":
             broadcast_embed = discord.Embed(
                 title="🏴‍☠️ Straw Hat Global Broadcast 🌊", 
                 description=message.content,
