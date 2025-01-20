@@ -217,16 +217,16 @@ class OPWelcome(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_remove(self, member):
-            guild = member.guild
-            leave_count = await self.config.guild(guild).leave_count()
-            await self.config.guild(guild).leave_count.set(leave_count + 1)
+        guild = member.guild
+        leave_count = await self.config.guild(guild).leave_count()
+        await self.config.guild(guild).leave_count.set(leave_count + 1)
 
-            # Log the leave message
-            log_channel_id = await self.config.guild(guild).log_channel()
-            if log_channel_id:
-                log_channel = guild.get_channel(log_channel_id)
-                if log_channel:
-                    await log_channel.send(f"{member.mention} has left the server.")
+        # Log the leave message
+        log_channel_id = await self.config.guild(guild).log_channel()
+        if log_channel_id:
+            log_channel = guild.get_channel(log_channel_id)
+            if log_channel:
+                await log_channel.send(f"{member.mention} has left the server.")
 
-        async def setup(bot):
-            await bot.add_cog(OPWelcome(bot))
+async def setup(bot):
+    await bot.add_cog(OPWelcome(bot))
