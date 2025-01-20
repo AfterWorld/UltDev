@@ -96,8 +96,8 @@ class OPWelcome(commands.Cog):
             await ctx.send("Invalid file type. Please upload an image, GIF, or video file.")
             return
 
-        # Ensure the data directory exists within the bot's data path
-        data_path = os.path.join(self.bot.data_path, "opwelcome")
+        # Ensure the data directory exists within the specified path
+        data_path = "/home/adam/.local/share/Red-DiscordBot/data/sunny/cogs/OPWelcome/setimage/"
         os.makedirs(data_path, exist_ok=True)
 
         file_path = os.path.join(data_path, f"{ctx.guild.id}_welcome_media.{attachment.filename.split('.')[-1]}")
