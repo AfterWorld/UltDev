@@ -577,7 +577,9 @@ class OnePieceInfo(commands.Cog):
             return user == owner and str(reaction.emoji) in ["✅", "❌"] and reaction.message.id == request_message.id
 
         try:
+            logging.info("Waiting for the owner's reaction...")
             reaction, _ = await self.bot.wait_for('reaction_add', timeout=60.0, check=check)
+            logging.info(f"Owner reacted with: {reaction.emoji}")
             
             if str(reaction.emoji) == "✅":
                 # Owner accepted the invite request
@@ -589,6 +591,7 @@ class OnePieceInfo(commands.Cog):
                 await ctx.author.send("Your invite request has been denied.")
         except asyncio.TimeoutError:
             await ctx.author.send("Your invite request timed out.")
+            logging.info("Invite request timed out.")
         
     @commands.command()
     async def userinfo(self, ctx, *, user: discord.Member = None):
