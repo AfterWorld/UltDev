@@ -3,6 +3,7 @@ from redbot.core import commands, Config
 import random
 import os
 from datetime import datetime, timedelta
+import time
 
 class OPWelcome(commands.Cog):
     def __init__(self, bot):
