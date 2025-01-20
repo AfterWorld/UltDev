@@ -581,6 +581,21 @@ class OnePieceInfo(commands.Cog):
         embed.set_footer(text="May the winds of adventure guide your ship to this island!")
         
         await ctx.send(embed=embed)
+        
+    @commands.command()
+    async def invite(self, ctx):
+        """Send a custom invite message to the user and the bot owner."""
+        user_message = "Thank you for inviting me! Here is your invite link: [Invite Link](https://discord.com/oauth2/authorize?client_id=YOUR_CLIENT_ID&scope=bot&permissions=8)"
+        owner_message = f"{ctx.author.mention} has requested an invite link."
+
+        # Send message to the user
+        await ctx.author.send(user_message)
+
+        # Send message to the bot owner
+        owner = (await self.bot.application_info()).owner
+        await owner.send(owner_message)
+
+        await ctx.send("I've sent you a DM with the invite link!")
 
     @commands.command()
     async def userinfo(self, ctx, *, user: discord.Member = None):
@@ -636,7 +651,7 @@ async def setup(bot: Red):
     cog = OnePieceInfo(bot)
 
     # Store and replace original commands
-    command_names = ["info", "serverinfo", "userinfo", "ping"]
+    command_names = ["info", "serverinfo", "userinfo", "ping", "invite"]
     for cmd_name in command_names:
         original_cmd = bot.get_command(cmd_name)
         if original_cmd:
