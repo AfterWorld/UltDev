@@ -85,19 +85,19 @@ class OPWelcome(commands.Cog):
 
     @welcome.command()
     async def setimage(self, ctx):
-        """Set a custom welcome image."""
+        """Set a custom welcome media (image, GIF, video)."""
         if not ctx.message.attachments:
-            await ctx.send("Please attach an image file.")
+            await ctx.send("Please attach a media file.")
             return
 
         attachment = ctx.message.attachments[0]
-        if not attachment.filename.lower().endswith(("png", "jpg", "jpeg", "gif")):
-            await ctx.send("Invalid file type. Please upload an image file.")
+        if not attachment.filename.lower().endswith(("png", "jpg", "jpeg", "gif", "mp4", "mov", "webm")):
+            await ctx.send("Invalid file type. Please upload an image, GIF, or video file.")
             return
 
-        await attachment.save(f"data/{ctx.guild.id}_welcome_image.{attachment.filename.split('.')[-1]}")
-        await self.config.guild(ctx.guild).welcome_image.set(f"data/{ctx.guild.id}_welcome_image.{attachment.filename.split('.')[-1]}")
-        await ctx.send("Custom welcome image set.")
+        await attachment.save(f"data/{ctx.guild.id}_welcome_media.{attachment.filename.split('.')[-1]}")
+        await self.config.guild(ctx.guild).welcome_image.set(f"data/{ctx.guild.id}_welcome_media.{attachment.filename.split('.')[-1]}")
+        await ctx.send("Custom welcome media set.")
 
     @welcome.command()
     async def setlogchannel(self, ctx, channel: discord.TextChannel):
