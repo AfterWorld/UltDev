@@ -74,6 +74,12 @@ class Moderation(commands.Cog):
             mute_role = await ctx.guild.create_role(name="Muted")
             for channel in ctx.guild.channels:
                 await channel.set_permissions(mute_role, speak=False, send_messages=False)
+        
+        # Store the member's roles
+        roles = [role for role in member.roles if role != ctx.guild.default_role]
+        await self.config.member(member).set_raw("roles_before_mute", value=[role.id for role in roles])
+        
+        await member.remove_roles(*roles, reason="Mute")
         await member.add_roles(mute_role, reason=reason)
         message = random.choice(self.mute_messages).format(member=member.mention)
         await ctx.send(f"{message} for {duration} minutes.")
@@ -89,18 +95,44 @@ class Moderation(commands.Cog):
         mute_role = discord.utils.get(ctx.guild.roles, name="Muted")
         if mute_role in member.roles:
             await member.remove_roles(mute_role)
-            await ctx.send(f"{member.mention} has been unmuted.")
+            
+            # Restore the member's roles
+            roles_before_mute = await self.config.member(member).get_raw("roles_before_mute", default=[])
+            roles = [ctx.guild.get_role(role_id) for role_id in roles_before_mute if ctx.guild.get_role(role_id)]
+            await member.add_roles(*roles, reason="Unmute")
+            
+            await ctx.send(f"{member.mention} has been unmuted and their roles have been restored.")
 
     @commands.command(name="corner")
     @commands.has_permissions(manage_roles=True)
     async def custom_timeout(self, ctx, member: Member, duration: int, *, reason: str = None):
         """Timeout a member for a specified duration (in minutes)."""
         until = datetime.utcnow() + timedelta(minutes=duration)
+        
+        # Store the member's roles
+        roles = [role for role in member.roles if role != ctx.guild.default_role]
+        await self.config.member(member).set_raw("roles_before_timeout", value=[role.id for role in roles])
+        
+        await member.remove_roles(*roles, reason="Timeout")
         await member.edit(timed_out_until=until, reason=reason)
         message = random.choice(self.timeout_messages).format(member=member.mention)
         await ctx.send(f"{message} for {duration} minutes.")
         await self.log_action(ctx, "Timeout", member, reason)
         await self.increment_stat(ctx.guild.id, member.id, "timeouts")
+        
+        # Start a background task to restore roles after the timeout duration
+        self.bot.loop.create_task(self.restore_roles_after_timeout(ctx, member, duration))
+
+    async def restore_roles_after_timeout(self, ctx, member: Member, duration: int):
+        """Restore roles to a member after a specified delay."""
+        await asyncio.sleep(duration * 60)
+        
+        # Restore the member's roles
+        roles_before_timeout = await self.config.member(member).get_raw("roles_before_timeout", default=[])
+        roles = [ctx.guild.get_role(role_id) for role_id in roles_before_timeout if ctx.guild.get_role(role_id)]
+        await member.add_roles(*roles, reason="Timeout ended")
+        
+        await ctx.send(f"{member.mention}'s timeout has ended and their roles have been restored.")
 
     @commands.command(name="caution")
     @commands.has_permissions(manage_roles=True)
