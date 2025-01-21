@@ -95,7 +95,8 @@ class Moderation(commands.Cog):
     @commands.has_permissions(manage_roles=True)
     async def custom_timeout(self, ctx, member: Member, duration: int, *, reason: str = None):
         """Timeout a member for a specified duration (in minutes)."""
-        await member.timeout(duration=timedelta(minutes=duration), reason=reason)
+        until = datetime.utcnow() + timedelta(minutes=duration)
+        await member.edit(timed_out_until=until, reason=reason)
         message = random.choice(self.timeout_messages).format(member=member.mention)
         await ctx.send(f"{message} for {duration} minutes.")
         await self.log_action(ctx, "Timeout", member, reason)
