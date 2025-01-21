@@ -80,11 +80,16 @@ class Moderation(commands.Cog):
         await self.log_action(ctx, "Mute", member, reason)
         await self.increment_stat(ctx.guild.id, member.id, "mutes")
         
-        # Use asyncio.sleep to wait for the specified duration
+        # Start a background task to unmute the member after the specified duration
+        self.bot.loop.create_task(self.unmute_after_delay(ctx, member, duration))
+
+    async def unmute_after_delay(self, ctx, member: Member, duration: int):
+        """Unmute a member after a specified delay."""
         await asyncio.sleep(duration * 60)
-        
-        await member.remove_roles(mute_role)
-        await ctx.send(f"{member.mention} has been unmuted.")
+        mute_role = discord.utils.get(ctx.guild.roles, name="Muted")
+        if mute_role in member.roles:
+            await member.remove_roles(mute_role)
+            await ctx.send(f"{member.mention} has been unmuted.")
 
     @commands.command(name="corner")
     @commands.has_permissions(manage_roles=True)
