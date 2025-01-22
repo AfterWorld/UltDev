@@ -317,17 +317,51 @@ class QOTD(commands.Cog):
         used_questions = await self.config.guild(ctx.guild).used_questions()
         if not used_questions:
             await ctx.send("No questions have been posted yet.")
-        else:
-            history = []
-            for theme, questions in used_questions.items():
-                history.append(f"**{theme.capitalize()}**")
+            return
+
+        themes = ["general", "onepiece", "anime"]
+        pages = []
+
+        for theme in themes:
+            if theme in used_questions:
+                questions = used_questions[theme]
+                history = [f"**{theme.capitalize()}**"]
                 for question in questions[-5:]:
                     history.append(f"- {question}")
-            history_text = "\n".join(history)
-            pages = list(pagify(history_text, delims=["\n"], page_length=1000))
-            for page in pages[:3]:  # Limit to 3 pages
-                embed = discord.Embed(description=page, color=discord.Color.blue())
-                await ctx.send(embed=embed)
+                history_text = "\n".join(history)
+                pages.append(history_text)
+
+        if not pages:
+            await ctx.send("No questions have been posted yet.")
+            return
+
+        current_page = 0
+
+        embed = discord.Embed(description=pages[current_page], color=discord.Color.blue())
+        message = await ctx.send(embed=embed)
+
+        await message.add_reaction("⬅️")
+        await message.add_reaction("➡️")
+
+        def check(reaction, user):
+            return user == ctx.author and str(reaction.emoji) in ["⬅️", "➡️"] and reaction.message.id == message.id
+
+        while True:
+            try:
+                reaction, user = await self.bot.wait_for("reaction_add", timeout=60.0, check=check)
+
+                if str(reaction.emoji) == "➡️":
+                    current_page = (current_page + 1) % len(pages)
+                elif str(reaction.emoji) == "⬅️":
+                    current_page = (current_page - 1) % len(pages)
+
+                embed.description = pages[current_page]
+                await message.edit(embed=embed)
+                await message.remove_reaction(reaction, user)
+            except asyncio.TimeoutError:
+                break
+
+        await message.clear_reactions()
 
     @qotd.command()
     async def timer(self, ctx):
