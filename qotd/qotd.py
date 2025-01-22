@@ -256,6 +256,8 @@ class QOTD(commands.Cog):
         """Begin the QOTD posting every 12 hours."""
         self.qotd_started = True
         await ctx.send("QOTD posting has begun. A question will be posted every 12 hours.")
+        # Post a question immediately
+        await self.post_random_qotd(ctx.guild)
 
     async def add_question_to_github(self, ctx, theme, question):
         """Add a question to the GitHub .txt file."""
