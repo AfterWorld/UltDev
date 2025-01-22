@@ -7,7 +7,6 @@ import json
 import base64
 from datetime import datetime, timedelta
 
-
 class QOTD(commands.Cog):
     """A Question of the Day system with themes, GitHub integration, restricted reactions, and user submissions."""
 
@@ -21,7 +20,6 @@ class QOTD(commands.Cog):
             "used_questions": {},  # Used questions for each theme
             "submissions": {},  # User submissions by theme
             "github_token": None,  # GitHub API token for writing to repo
-            "ping_role": None,  # Role to ping when posting QOTD
             "user_cooldowns": {},  # Track user cooldowns for submitting questions
         }
         self.config.register_guild(**default_guild)
@@ -48,11 +46,11 @@ class QOTD(commands.Cog):
         while True:
             if self.qotd_started:  # Only run if QOTD has begun
                 for guild in self.bot.guilds:
-                    await self.post_qotd(guild)
+                    await self.post_random_qotd(guild)
             await asyncio.sleep(43200)  # Wait 12 hours
 
-    async def post_qotd(self, guild):
-        """Post a QOTD in the configured channel for the guild."""
+    async def post_random_qotd(self, guild):
+        """Post a random QOTD from any theme in the configured channel for the guild."""
         channel_id = await self.config.guild(guild).channel_id()
         if not channel_id:
             return  # No channel set for this guild
@@ -61,20 +59,19 @@ class QOTD(commands.Cog):
         if not channel:
             return  # Channel not found
 
-        theme = await self.config.guild(guild).theme()
-        ping_role_id = await self.config.guild(guild).ping_role()
-        role_mention = f"<@&{ping_role_id}>" if ping_role_id else ""
+        themes = ["general", "onepiece", "anime"]
+        random.shuffle(themes)  # Shuffle themes to pick randomly
 
-        questions, used_questions = await self.load_questions(guild, theme)
-        if not questions:
-            await channel.send(f"No more questions available for the `{theme}` theme.")
-            return
-
-        question = random.choice(questions)
-        embed = self.create_embed(question, theme)
-        await channel.send(content=role_mention, embed=embed)
-
-        await self.mark_question_used(guild, theme, question)
+        for theme in themes:
+            questions, used_questions = await self.load_questions(guild, theme)
+            if questions:
+                question = random.choice(questions)
+                embed = self.create_embed(question, theme)
+                await channel.send(embed=embed)
+                await self.mark_question_used(guild, theme, question)
+                break
+        else:
+            await channel.send("No more questions available for any theme.")
 
     async def load_questions(self, guild, theme):
         """Load questions from GitHub for the specified theme."""
@@ -164,13 +161,6 @@ class QOTD(commands.Cog):
         await ctx.send(f"Review channel set to {channel.mention}.")
 
     @qotd.command()
-    @commands.admin_or_permissions(manage_guild=True)
-    async def setrole(self, ctx, role: discord.Role):
-        """Set a role to be pinged when a QOTD is posted."""
-        await self.config.guild(ctx.guild).ping_role.set(role.id)
-        await ctx.send(f"Ping role set to {role.mention}.")
-
-    @qotd.command()
     async def submit(self, ctx, theme: str, *, question: str):
         """Submit a question for admin approval."""
         current_time = datetime.utcnow()
@@ -254,6 +244,13 @@ class QOTD(commands.Cog):
         submissions[theme] = []
         await self.config.guild(ctx.guild).submissions.set(submissions)
 
+    @qotd.command()
+    @commands.admin_or_permissions(manage_guild=True)
+    async def begin(self, ctx):
+        """Begin the QOTD posting every 12 hours."""
+        self.qotd_started = True
+        await ctx.send("QOTD posting has begun. A question will be posted every 12 hours.")
+
     async def add_question_to_github(self, ctx, theme, question):
         """Add a question to the GitHub .txt file."""
         token = await self.config.guild(ctx.guild).github_token()
@@ -299,7 +296,6 @@ class QOTD(commands.Cog):
                     await ctx.send(f"The question has been successfully added to `{theme}`.")
                 else:
                     await ctx.send("Error: Could not update the GitHub repository.")
-
 
 def setup(bot):
     bot.add_cog(QOTD(bot))
