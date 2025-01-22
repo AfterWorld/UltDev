@@ -9,7 +9,6 @@ import base64
 from datetime import datetime, timedelta
 import logging
 import os
-from discord.utils import pagify
 
 # Initialize logger
 logger = logging.getLogger("red.qotd")
