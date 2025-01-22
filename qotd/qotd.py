@@ -6,6 +6,14 @@ import asyncio
 import json
 import base64
 from datetime import datetime, timedelta
+import logging
+
+# Initialize logger
+logger = logging.getLogger("red.qotd")
+logger.setLevel(logging.INFO)
+handler = logging.FileHandler(filename="qotd.log", encoding="utf-8", mode="w")
+handler.setFormatter(logging.Formatter("%(asctime)s:%(levelname)s:%(name)s: %(message)s"))
+logger.addHandler(handler)
 
 class QOTD(commands.Cog):
     """A Question of the Day system with themes, GitHub integration, restricted reactions, and user submissions."""
@@ -21,6 +29,7 @@ class QOTD(commands.Cog):
             "submissions": {},  # User submissions by theme
             "github_token": None,  # GitHub API token for writing to repo
             "user_cooldowns": {},  # Track user cooldowns for submitting questions
+            "scheduled_times": [],  # List of scheduled times for QOTD postings
         }
         self.config.register_guild(**default_guild)
         self.github_base_url = "https://raw.githubusercontent.com/AfterWorld/UltDev/main/qotd/themes/"
@@ -41,43 +50,52 @@ class QOTD(commands.Cog):
     # AUTOMATIC QOTD POSTING
     # ==============================
     async def qotd_task(self):
-        """Automatically post a QOTD every 12 hours."""
+        """Automatically post a QOTD at scheduled times."""
         await self.bot.wait_until_ready()
         while True:
             if self.qotd_started:  # Only run if QOTD has begun
+                current_time = datetime.utcnow().time()
                 for guild in self.bot.guilds:
-                    await self.post_random_qotd(guild)
-            await asyncio.sleep(43200)  # Wait 12 hours
+                    scheduled_times = await self.config.guild(guild).scheduled_times()
+                    for scheduled_time in scheduled_times:
+                        scheduled_time = datetime.strptime(scheduled_time, "%H:%M").time()
+                        if current_time.hour == scheduled_time.hour and current_time.minute == scheduled_time.minute:
+                            await self.post_random_qotd(guild)
+            await asyncio.sleep(60)  # Check every minute
 
     async def post_random_qotd(self, guild):
         """Post a random QOTD from any theme in the configured channel for the guild."""
-        channel_id = await self.config.guild(guild).channel_id()
-        if not channel_id:
-            return  # No channel set for this guild
+        try:
+            channel_id = await self.config.guild(guild).channel_id()
+            if not channel_id:
+                return  # No channel set for this guild
 
-        channel = guild.get_channel(channel_id)
-        if not channel:
-            return  # Channel not found
+            channel = guild.get_channel(channel_id)
+            if not channel:
+                return  # Channel not found
 
-        themes = ["general", "onepiece", "anime"]
-        random.shuffle(themes)  # Shuffle themes to pick randomly
+            themes = ["general", "onepiece", "anime"]
+            random.shuffle(themes)  # Shuffle themes to pick randomly
 
-        for theme in themes:
-            questions, used_questions = await self.load_questions(guild, theme)
-            if questions:
-                question = random.choice(questions)
-                embed = self.create_embed(question, theme)
-                await channel.send(embed=embed)
-                await self.mark_question_used(guild, theme, question)
-                
-                # Send a message to the specific channel
-                log_channel = self.bot.get_channel(748451591958429809)
-                if log_channel:
-                    current_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-                    await log_channel.send(f"Question delivered at {current_time}: {question}")
-                break
-        else:
-            await channel.send("No more questions available for any theme.")
+            for theme in themes:
+                questions, used_questions = await self.load_questions(guild, theme)
+                if questions:
+                    question = random.choice(questions)
+                    embed = self.create_embed(question, theme)
+                    await channel.send(embed=embed)
+                    await self.mark_question_used(guild, theme, question)
+                    
+                    # Send a message to the specific channel
+                    log_channel = self.bot.get_channel(748451591958429809)
+                    if log_channel:
+                        current_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                        await log_channel.send(f"Question delivered at {current_time}: {question}")
+                    break
+            else:
+                await channel.send("No more questions available for any theme.")
+        except Exception as e:
+            logger.error(f"Error posting QOTD: {e}")
+            await channel.send("An error occurred while posting the QOTD. Please check the logs for more details.")
 
     async def load_questions(self, guild, theme):
         """Load questions from GitHub for the specified theme."""
@@ -89,12 +107,12 @@ class QOTD(commands.Cog):
             async with aiohttp.ClientSession() as session:
                 async with session.get(url) as response:
                     if response.status != 200:
-                        print(f"Error: Could not fetch questions for theme '{theme}' from {url} (Status {response.status}).")
+                        logger.error(f"Error: Could not fetch questions for theme '{theme}' from {url} (Status {response.status}).")
                         return [], used_questions
                     content = await response.text()
                     questions = [line.strip() for line in content.split("\n") if line.strip()]
         except Exception as e:
-            print(f"Error fetching questions from GitHub: {e}")
+            logger.error(f"Error fetching questions from GitHub: {e}")
             return [], used_questions
 
         # Exclude used questions
@@ -165,6 +183,34 @@ class QOTD(commands.Cog):
         """Set the channel for reviewing submitted questions."""
         await self.config.guild(ctx.guild).review_channel_id.set(channel.id)
         await ctx.send(f"Review channel set to {channel.mention}.")
+
+    @qotd.command()
+    @commands.admin_or_permissions(manage_guild=True)
+    async def schedule(self, ctx, time: str):
+        """Schedule a time for QOTD postings (format: HH:MM)."""
+        try:
+            datetime.strptime(time, "%H:%M")
+            scheduled_times = await self.config.guild(ctx.guild).scheduled_times()
+            if time in scheduled_times:
+                await ctx.send(f"The time `{time}` is already scheduled.")
+            else:
+                scheduled_times.append(time)
+                await self.config.guild(ctx.guild).scheduled_times.set(scheduled_times)
+                await ctx.send(f"QOTD posting scheduled for `{time}`.")
+        except ValueError:
+            await ctx.send("Invalid time format. Please use HH:MM format.")
+
+    @qotd.command()
+    @commands.admin_or_permissions(manage_guild=True)
+    async def unschedule(self, ctx, time: str):
+        """Remove a scheduled time for QOTD postings (format: HH:MM)."""
+        scheduled_times = await self.config.guild(ctx.guild).scheduled_times()
+        if time not in scheduled_times:
+            await ctx.send(f"The time `{time}` is not scheduled.")
+        else:
+            scheduled_times.remove(time)
+            await self.config.guild(ctx.guild).scheduled_times.set(scheduled_times)
+            await ctx.send(f"QOTD posting unscheduled for `{time}`.")
 
     @qotd.command()
     async def submit(self, ctx, theme: str, *, question: str):
@@ -253,11 +299,22 @@ class QOTD(commands.Cog):
     @qotd.command()
     @commands.admin_or_permissions(manage_guild=True)
     async def begin(self, ctx):
-        """Begin the QOTD posting every 12 hours."""
+        """Begin the QOTD posting at scheduled times."""
         self.qotd_started = True
-        await ctx.send("QOTD posting has begun. A question will be posted every 12 hours.")
+        await ctx.send("QOTD posting has begun. Questions will be posted at scheduled times.")
         # Post a question immediately
         await self.post_random_qotd(ctx.guild)
+
+    @qotd.command()
+    @commands.admin_or_permissions(manage_guild=True)
+    async def history(self, ctx, theme: str):
+        """View the history of posted questions for a theme."""
+        used_questions = await self.config.guild(ctx.guild).used_questions()
+        if theme not in used_questions or not used_questions[theme]:
+            await ctx.send(f"No questions have been posted for the `{theme}` theme.")
+        else:
+            history = "\n".join(used_questions[theme])
+            await ctx.send(f"History of questions for `{theme}` theme:\n{history}")
 
     async def add_question_to_github(self, ctx, theme, question):
         """Add a question to the GitHub .txt file."""
