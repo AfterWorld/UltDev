@@ -38,6 +38,7 @@ class QOTD(commands.Cog):
         self.qotd_started = False  # Tracks whether QOTD has begun
         self.allowed_reactions = ["👍", "👎"]  # Allowed reactions for admin review
         self.bg_task = self.bot.loop.create_task(self.qotd_task())
+        self.next_post_time = None  # Track the next post time
 
     async def red_delete_data_for_user(self, **kwargs):
         """Handle data deletion requests."""
@@ -62,6 +63,7 @@ class QOTD(commands.Cog):
                         scheduled_time = datetime.strptime(scheduled_time, "%H:%M").time()
                         if current_time.hour == scheduled_time.hour and current_time.minute == scheduled_time.minute:
                             await self.post_random_qotd(guild)
+                            self.next_post_time = datetime.utcnow() + timedelta(hours=12)
             await asyncio.sleep(60)  # Check every minute
 
     async def post_random_qotd(self, guild):
@@ -305,17 +307,29 @@ class QOTD(commands.Cog):
         await ctx.send("QOTD posting has begun. Questions will be posted at scheduled times.")
         # Post a question immediately
         await self.post_random_qotd(ctx.guild)
+        self.next_post_time = datetime.utcnow() + timedelta(hours=12)
 
     @qotd.command()
     @commands.admin_or_permissions(manage_guild=True)
-    async def history(self, ctx, theme: str):
-        """View the history of posted questions for a theme."""
+    async def history(self, ctx):
+        """View the history of posted questions for all themes."""
         used_questions = await self.config.guild(ctx.guild).used_questions()
-        if theme not in used_questions or not used_questions[theme]:
-            await ctx.send(f"No questions have been posted for the `{theme}` theme.")
+        if not used_questions:
+            await ctx.send("No questions have been posted yet.")
         else:
-            history = "\n".join(used_questions[theme])
-            await ctx.send(f"History of questions for `{theme}` theme:\n{history}")
+            history = "\n".join([f"{theme}: {question}" for theme, questions in used_questions.items() for question in questions])
+            await ctx.send(f"History of questions:\n{history}")
+
+    @qotd.command()
+    async def timer(self, ctx):
+        """Check when the next question will be posted."""
+        if self.next_post_time:
+            remaining_time = self.next_post_time - datetime.utcnow()
+            hours, remainder = divmod(remaining_time.seconds, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            await ctx.send(f"The next question will be posted in {hours} hours, {minutes} minutes, and {seconds} seconds.")
+        else:
+            await ctx.send("QOTD posting has not been started yet. Use `.qotd begin` to start.")
 
     async def add_question_to_github(self, ctx, theme, question):
         """Add a question to the GitHub .txt file."""
