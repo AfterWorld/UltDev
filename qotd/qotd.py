@@ -8,6 +8,7 @@ import base64
 from datetime import datetime, timedelta
 import logging
 import os
+from discord.utils import pagify
 
 # Initialize logger
 logger = logging.getLogger("red.qotd")
@@ -317,8 +318,16 @@ class QOTD(commands.Cog):
         if not used_questions:
             await ctx.send("No questions have been posted yet.")
         else:
-            history = "\n".join([f"{theme}: {question}" for theme, questions in used_questions.items() for question in questions])
-            await ctx.send(f"History of questions:\n{history}")
+            history = []
+            for theme, questions in used_questions.items():
+                history.append(f"**{theme.capitalize()}**")
+                for question in questions[-5:]:
+                    history.append(f"- {question}")
+            history_text = "\n".join(history)
+            pages = list(pagify(history_text, delims=["\n"], page_length=1000))
+            for page in pages[:3]:  # Limit to 3 pages
+                embed = discord.Embed(description=page, color=discord.Color.blue())
+                await ctx.send(embed=embed)
 
     @qotd.command()
     async def timer(self, ctx):
