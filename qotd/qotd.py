@@ -1,5 +1,6 @@
 import discord
 from redbot.core import commands, Config
+from redbot.core.utils.chat_formatting import pagify
 import random
 import aiohttp
 import asyncio
