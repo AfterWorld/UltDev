@@ -69,6 +69,12 @@ class QOTD(commands.Cog):
                 embed = self.create_embed(question, theme)
                 await channel.send(embed=embed)
                 await self.mark_question_used(guild, theme, question)
+                
+                # Send a message to the specific channel
+                log_channel = self.bot.get_channel(748451591958429809)
+                if log_channel:
+                    current_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                    await log_channel.send(f"Question delivered at {current_time}: {question}")
                 break
         else:
             await channel.send("No more questions available for any theme.")
