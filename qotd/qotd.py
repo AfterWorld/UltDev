@@ -53,19 +53,32 @@ class QOTD(commands.Cog):
     # AUTOMATIC QOTD POSTING
     # ==============================
     async def qotd_task(self):
-        """Automatically post a QOTD at scheduled times."""
+        """Background task to post QOTD at scheduled times."""
         await self.bot.wait_until_ready()
         while True:
-            if self.qotd_started:  # Only run if QOTD has begun
-                current_time = datetime.utcnow().time()
-                for guild in self.bot.guilds:
-                    scheduled_times = await self.config.guild(guild).scheduled_times()
-                    for scheduled_time in scheduled_times:
-                        scheduled_time = datetime.strptime(scheduled_time, "%H:%M").time()
-                        if current_time.hour == scheduled_time.hour and current_time.minute == scheduled_time.minute:
-                            await self.post_random_qotd(guild)
-                            self.next_post_time = datetime.utcnow() + timedelta(hours=12)
-            await asyncio.sleep(60)  # Check every minute
+            now = datetime.utcnow()
+            guilds = await self.config.all_guilds()
+            for guild_id, data in guilds.items():
+                channel_id = data["channel_id"]
+                scheduled_times = data["scheduled_times"]
+                if not channel_id or not scheduled_times:
+                    continue
+
+                for scheduled_time in scheduled_times:
+                    post_time = datetime.strptime(scheduled_time, "%H:%M").replace(year=now.year, month=now.month, day=now.day)
+                    if post_time < now:
+                        post_time += timedelta(days=1)
+
+                    if self.next_post_time is None or post_time < self.next_post_time:
+                        self.next_post_time = post_time
+
+            if self.next_post_time:
+                sleep_time = (self.next_post_time - now).total_seconds()
+                await asyncio.sleep(sleep_time)
+                await self.post_qotd()
+                self.next_post_time = None
+            else:
+                await asyncio.sleep(60)  # Check again in 1 minute
 
     async def post_random_qotd(self, guild):
         """Post a random QOTD from any theme in the configured channel for the guild."""
@@ -102,22 +115,16 @@ class QOTD(commands.Cog):
             await channel.send("An error occurred while posting the QOTD. Please check the logs for more details.")
 
     async def load_questions(self, guild, theme):
-        """Load questions from GitHub for the specified theme."""
+        """Load questions from the GitHub repository."""
         url = f"{self.github_base_url}{theme}.txt"
-        used_questions = await self.config.guild(guild).used_questions()
-        used_questions = used_questions.get(theme, [])
-
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url) as response:
-                    if response.status != 200:
-                        logger.error(f"Error: Could not fetch questions for theme '{theme}' from {url} (Status {response.status}).")
-                        return [], used_questions
-                    content = await response.text()
-                    questions = [line.strip() for line in content.split("\n") if line.strip()]
-        except Exception as e:
-            logger.error(f"Error fetching questions from GitHub: {e}")
-            return [], used_questions
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                if response.status != 200:
+                    return [], []
+                content = await response.text()
+                questions = content.split("\n")
+                used_questions = await self.config.guild(guild).used_questions.get_raw(theme, default=[])
+                return questions, used_questions
 
         # Exclude used questions
         questions = [q for q in questions if q not in used_questions]
