@@ -210,13 +210,21 @@ class OPWelcome(commands.Cog):
 
         custom_message = await self.config.guild(guild).custom_message()
         if not custom_message:
-            custom_message = f"Ahoy, {member.mention}! You've just embarked on a grand adventure!"
+            custom_message = "Ahoy, <user>! You've just embarked on a grand adventure!"
+
+
+        custom_message = (
+            custom_message.replace("<user>", member.mention)
+            .replace("{member}", member.mention)
+            .replace("{username}", member.name)
+            .replace("{server}", guild.name)
+    )
 
         embed = discord.Embed(
             title=f"🏴‍☠️ Welcome to the {guild.name} Crew! 🏴‍☠️",
             description=custom_message,
             color=discord.Color.blue()
-        )
+    )
 
         embed.set_thumbnail(url=member.display_avatar.url)
 
@@ -229,25 +237,25 @@ class OPWelcome(commands.Cog):
                 name="📜 First Steps on Your Journey",
                 value=f"Please check out the {rules_channel.mention} and {roles_channel.mention} channels.",
                 inline=False
-            )
+        )
 
         embed.add_field(
             name="💡 Did You Know?",
             value=random.choice(self.op_facts),
             inline=False
-        )
+    )
 
         embed.add_field(
             name="🛠️ Role Assignment",
             value="Head over to the roles channel to assign yourself roles!",
             inline=False
-        )
+    )
 
         embed.add_field(
             name="📢 Message from the Admins",
             value="Welcome to our server! We hope you have a great time here. If you have any questions, feel free to ask!",
             inline=False
-        )
+    )
 
         embed.set_footer(text=f"You're our {guild.member_count}th crew member!")
 
@@ -269,23 +277,24 @@ class OPWelcome(commands.Cog):
         except Exception as e:
             await guild.owner.send(f"An error occurred while sending the welcome message: {e}")
 
-        # Increment join count
+    # Increment join count
         join_count = await self.config.guild(guild).join_count()
         await self.config.guild(guild).join_count.set(join_count + 1)
 
-        # Assign default role
+    # Assign default role
         default_role_id = await self.config.guild(guild).default_role()
         if default_role_id:
             default_role = guild.get_role(default_role_id)
             if default_role:
                 await member.add_roles(default_role)
 
-        # Log the welcome message
+    # Log the welcome message
         log_channel_id = await self.config.guild(guild).log_channel()
         if log_channel_id:
             log_channel = guild.get_channel(log_channel_id)
             if log_channel:
                 await log_channel.send(f"Welcome message sent for {member.mention}")
+
 
     @commands.Cog.listener()
     async def on_member_remove(self, member):
