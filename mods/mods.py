@@ -19,7 +19,12 @@ class Moderation(commands.Cog):
             "kicks": {},
             "timeouts": {}
         }
+        default_member = {
+            "original_roles": [],
+            "muted_until": None
+        }
         self.config.register_guild(**default_guild)
+        self.config.register_member(**default_member)
         self.kick_messages = [
             "You've been booted from the crew, {member}!",
             "Looks like {member} couldn't handle the Grand Line!",
@@ -238,7 +243,11 @@ class Moderation(commands.Cog):
                 if str(reaction.emoji) == "✅":
                     # Store original roles to restore later
                     original_roles = [role.id for role in conflict_roles]
-                    await self.config.member(member).set_raw("original_roles", value=original_roles)
+                    await self.config.member(member).original_roles.set(original_roles)
+                    
+                    # Set muted_until time
+                    muted_until = datetime.utcnow() + timedelta(minutes=duration)
+                    await self.config.member(member).muted_until.set(muted_until.timestamp())
                     
                     # Remove conflicting roles
                     await member.remove_roles(*conflict_roles, reason="Temporarily removed for mute")
@@ -267,8 +276,38 @@ class Moderation(commands.Cog):
         mute_role = await self.get_mute_role(ctx)
         
         if mute_role and mute_role in member.roles:
-            await member.remove_roles(mute_role)
+            await self.restore_member_roles(ctx, member)
             await ctx.send(f"{member.mention} has been unmuted.")
+
+    async def restore_member_roles(self, ctx, member: Member):
+        """Restore a member's roles after unmuting them."""
+        # Get the configured mute role
+        mute_role = await self.get_mute_role(ctx)
+        
+        # Remove mute role
+        if mute_role and mute_role in member.roles:
+            await member.remove_roles(mute_role)
+        
+        # Check if we need to restore any roles
+        original_role_ids = await self.config.member(member).original_roles()
+        if original_role_ids:
+            roles_to_restore = []
+            for role_id in original_role_ids:
+                role = ctx.guild.get_role(role_id)
+                if role and role not in member.roles:
+                    roles_to_restore.append(role)
+            
+            if roles_to_restore:
+                try:
+                    await member.add_roles(*roles_to_restore, reason="Restoring roles after unmute")
+                    await self.log_action(ctx, "Role Restoration", member, 
+                                        f"Restored roles: {', '.join([r.name for r in roles_to_restore])}")
+                except Exception as e:
+                    await ctx.send(f"⚠️ Failed to restore some roles for {member.mention}: {str(e)}")
+            
+            # Clear the stored roles
+            await self.config.member(member).original_roles.set([])
+            await self.config.member(member).muted_until.set(None)
 
     @commands.command(name="corner")
     @commands.has_permissions(manage_roles=True)
@@ -310,6 +349,25 @@ class Moderation(commands.Cog):
                     await ctx.send("Failed to set up a mute role. Please try setting it up manually with `setupmute`.")
                     return
             
+            # Check and store conflicting roles automatically for auto-mutes
+            conflict_roles = []
+            for role in member.roles:
+                if role == mute_role or role.is_default():
+                    continue
+                    
+                if role.permissions.administrator or role.permissions.send_messages or role.permissions.speak:
+                    conflict_roles.append(role)
+            
+            if conflict_roles:
+                original_roles = [role.id for role in conflict_roles]
+                await self.config.member(member).original_roles.set(original_roles)
+                
+                # Set muted_until time
+                muted_until = datetime.utcnow() + timedelta(minutes=30)
+                await self.config.member(member).muted_until.set(muted_until.timestamp())
+                
+                await member.remove_roles(*conflict_roles, reason="Temporarily removed for auto-mute")
+                
             await member.add_roles(mute_role, reason="Automatic mute due to 3 warnings")
             self.bot.loop.create_task(self.unmute_after_delay(ctx, member, 30))
             await ctx.send(f"{member.mention} has been automatically muted for 30 minutes due to reaching 3 warnings.")
@@ -336,7 +394,7 @@ class Moderation(commands.Cog):
         mute_role = await self.get_mute_role(ctx)
         
         if mute_role and mute_role in member.roles:
-            await member.remove_roles(mute_role)
+            await self.restore_member_roles(ctx, member)
             await ctx.send(f"{member.mention} has been unmuted.")
             await self.log_action(ctx, "Unmute", member)
         else:
