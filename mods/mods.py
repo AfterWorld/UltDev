@@ -132,43 +132,69 @@ class Moderation(commands.Cog):
                                              add_reactions=False,
                                              create_public_threads=False,
                                              create_private_threads=False,
-                                             send_messages_in_threads=False,
-                                             connect=False)
+                                             send_messages_in_threads=False)
             
             # Then handle any channels that don't have a category
             for channel in [c for c in ctx.guild.channels if c.category is None]:
-                if isinstance(channel, discord.TextChannel):
-                    await channel.set_permissions(mute_role, 
-                                                send_messages=False, 
-                                                add_reactions=False,
-                                                create_public_threads=False,
-                                                create_private_threads=False,
-                                                send_messages_in_threads=False)
-                elif isinstance(channel, discord.VoiceChannel):
-                    await channel.set_permissions(mute_role,
-                                                speak=False,
-                                                connect=False)
-                else:
-                    # For other channel types, apply general restrictions
-                    await channel.set_permissions(mute_role,
-                                                send_messages=False,
-                                                speak=False,
-                                                add_reactions=False,
-                                                connect=False)
-            
-            # Also go through each text channel explicitly to ensure permissions are set
-            for text_channel in ctx.guild.text_channels:
-                await text_channel.set_permissions(mute_role,
-                                                 send_messages=False,
-                                                 add_reactions=False,
-                                                 create_public_threads=False,
-                                                 create_private_threads=False,
-                                                 send_messages_in_threads=False)
+                await channel.set_permissions(mute_role, 
+                                             send_messages=False, 
+                                             speak=False, 
+                                             add_reactions=False,
+                                             create_public_threads=False,
+                                             create_private_threads=False,
+                                             send_messages_in_threads=False)
                 
-            await status_msg.edit(content=f"✅ Mute role setup complete! The role {mute_role.mention} has been configured for all categories and channels.")
+            await status_msg.edit(content=f"✅ Mute role setup complete! The role {mute_role.mention} has been configured for all categories and standalone channels.")
         except Exception as e:
             await status_msg.edit(content=f"⚠️ Partially completed mute role setup. Error: {str(e)}")
     
+    @commands.command(name="checkmute")
+    @commands.has_permissions(administrator=True)
+    async def check_mute_conflicts(self, ctx, member: Member = None):
+        """Check for roles that might conflict with the mute role for a specific member or across the server."""
+        mute_role = await self.get_mute_role(ctx)
+        
+        if not mute_role:
+            await ctx.send("No mute role is set up. Please run `setupmute` first.")
+            return
+            
+        conflict_roles = []
+        
+        if member:
+            # Check if the specific member has conflicting roles
+            await ctx.send(f"Checking for roles that might conflict with mute role for {member.display_name}...")
+            
+            for role in member.roles:
+                if role == mute_role or role.is_default():
+                    continue
+                    
+                # Check for explicit permission overrides that would allow communication
+                if role.permissions.administrator or role.permissions.send_messages or role.permissions.speak:
+                    conflict_roles.append(role)
+            
+            if conflict_roles:
+                roles_list = ", ".join([f"`{role.name}`" for role in conflict_roles])
+                await ctx.send(f"⚠️ Warning: {member.mention} has roles that might override mute restrictions: {roles_list}")
+            else:
+                await ctx.send(f"✅ No conflicting roles found for {member.mention}.")
+        else:
+            # Check for roles across the server that might conflict
+            await ctx.send("Checking for roles across the server that might conflict with the mute role...")
+            
+            for role in ctx.guild.roles:
+                if role == mute_role or role.is_default():
+                    continue
+                    
+                # Check for explicit permission overrides that would allow communication
+                if role.permissions.administrator or role.permissions.send_messages or role.permissions.speak:
+                    conflict_roles.append(role)
+            
+            if conflict_roles:
+                roles_list = ", ".join([f"`{role.name}`" for role in conflict_roles])
+                await ctx.send(f"⚠️ Warning: The following roles might override mute restrictions: {roles_list}")
+            else:
+                await ctx.send("✅ No potentially conflicting roles found in the server.")
+            
     @commands.command(name="quiet")
     @commands.has_permissions(manage_roles=True)
     async def custom_mute(self, ctx, member: Member, duration: int = 30, *, reason: str = None):
@@ -184,7 +210,45 @@ class Moderation(commands.Cog):
                 await ctx.send("Failed to set up a mute role. Please try setting it up manually with `setupmute`.")
                 return
         
-        # Apply mute role without removing other roles
+        # Check for potentially conflicting roles
+        conflict_roles = []
+        for role in member.roles:
+            if role == mute_role or role.is_default():
+                continue
+                
+            # Check for explicit permission overrides that would allow communication
+            if role.permissions.administrator or role.permissions.send_messages or role.permissions.speak:
+                conflict_roles.append(role)
+        
+        # If conflicts found, ask if user wants to remove those roles
+        if conflict_roles:
+            roles_list = ", ".join([f"`{role.name}`" for role in conflict_roles])
+            msg = await ctx.send(f"⚠️ {member.mention} has roles that might conflict with mute: {roles_list}\n"
+                               f"React with ✅ to temporarily remove these roles during mute, or ❌ to keep them.")
+            
+            await msg.add_reaction("✅")
+            await msg.add_reaction("❌")
+            
+            def check(reaction, user):
+                return user == ctx.author and str(reaction.emoji) in ["✅", "❌"] and reaction.message.id == msg.id
+            
+            try:
+                reaction, user = await self.bot.wait_for("reaction_add", timeout=30.0, check=check)
+                
+                if str(reaction.emoji) == "✅":
+                    # Store original roles to restore later
+                    original_roles = [role.id for role in conflict_roles]
+                    await self.config.member(member).set_raw("original_roles", value=original_roles)
+                    
+                    # Remove conflicting roles
+                    await member.remove_roles(*conflict_roles, reason="Temporarily removed for mute")
+                    await ctx.send(f"Removed potentially conflicting roles from {member.mention} during mute.")
+                else:
+                    await ctx.send(f"Keeping all roles for {member.mention}. Note that the mute may not be fully effective.")
+            except asyncio.TimeoutError:
+                await ctx.send("No response received. Proceeding with mute but keeping all roles.")
+        
+        # Apply mute role
         await member.add_roles(mute_role, reason=reason)
         
         message = random.choice(self.mute_messages).format(member=member.mention)
