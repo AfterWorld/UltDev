@@ -120,11 +120,22 @@ class Moderation(commands.Cog):
                 await ctx.send(f"Failed to create mute role: {str(e)}")
                 return
         
-        # Set up permissions for all channels
-        status_msg = await ctx.send("Setting up channel permissions for the mute role... This may take a moment.")
+        # Set up permissions for all categories and channels without categories
+        status_msg = await ctx.send("Setting up permissions for the mute role... This may take a moment.")
         
         try:
-            for channel in ctx.guild.channels:
+            # First set permissions for all categories
+            for category in ctx.guild.categories:
+                await category.set_permissions(mute_role, 
+                                             send_messages=False, 
+                                             speak=False, 
+                                             add_reactions=False,
+                                             create_public_threads=False,
+                                             create_private_threads=False,
+                                             send_messages_in_threads=False)
+            
+            # Then handle any channels that don't have a category
+            for channel in [c for c in ctx.guild.channels if c.category is None]:
                 await channel.set_permissions(mute_role, 
                                              send_messages=False, 
                                              speak=False, 
@@ -133,7 +144,7 @@ class Moderation(commands.Cog):
                                              create_private_threads=False,
                                              send_messages_in_threads=False)
                 
-            await status_msg.edit(content=f"✅ Mute role setup complete! The role {mute_role.mention} has been configured for all channels.")
+            await status_msg.edit(content=f"✅ Mute role setup complete! The role {mute_role.mention} has been configured for all categories and standalone channels.")
         except Exception as e:
             await status_msg.edit(content=f"⚠️ Partially completed mute role setup. Error: {str(e)}")
     
