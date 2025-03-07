@@ -132,19 +132,40 @@ class Moderation(commands.Cog):
                                              add_reactions=False,
                                              create_public_threads=False,
                                              create_private_threads=False,
-                                             send_messages_in_threads=False)
+                                             send_messages_in_threads=False,
+                                             connect=False)
             
             # Then handle any channels that don't have a category
             for channel in [c for c in ctx.guild.channels if c.category is None]:
-                await channel.set_permissions(mute_role, 
-                                             send_messages=False, 
-                                             speak=False, 
-                                             add_reactions=False,
-                                             create_public_threads=False,
-                                             create_private_threads=False,
-                                             send_messages_in_threads=False)
+                if isinstance(channel, discord.TextChannel):
+                    await channel.set_permissions(mute_role, 
+                                                send_messages=False, 
+                                                add_reactions=False,
+                                                create_public_threads=False,
+                                                create_private_threads=False,
+                                                send_messages_in_threads=False)
+                elif isinstance(channel, discord.VoiceChannel):
+                    await channel.set_permissions(mute_role,
+                                                speak=False,
+                                                connect=False)
+                else:
+                    # For other channel types, apply general restrictions
+                    await channel.set_permissions(mute_role,
+                                                send_messages=False,
+                                                speak=False,
+                                                add_reactions=False,
+                                                connect=False)
+            
+            # Also go through each text channel explicitly to ensure permissions are set
+            for text_channel in ctx.guild.text_channels:
+                await text_channel.set_permissions(mute_role,
+                                                 send_messages=False,
+                                                 add_reactions=False,
+                                                 create_public_threads=False,
+                                                 create_private_threads=False,
+                                                 send_messages_in_threads=False)
                 
-            await status_msg.edit(content=f"✅ Mute role setup complete! The role {mute_role.mention} has been configured for all categories and standalone channels.")
+            await status_msg.edit(content=f"✅ Mute role setup complete! The role {mute_role.mention} has been configured for all categories and channels.")
         except Exception as e:
             await status_msg.edit(content=f"⚠️ Partially completed mute role setup. Error: {str(e)}")
     
