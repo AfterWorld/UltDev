@@ -448,53 +448,122 @@ class Moderation(commands.Cog):
         
         try:
             if action == "mute":
-                # Find or create mute role
-                mute_role = await self.get_mute_role(ctx.guild)
+                # Get the mute role
+                mute_role_id = await self.config.guild(ctx.guild).mute_role()
+                if not mute_role_id:
+                    await self.safe_send_message(ctx.channel, "Mute role not found. Please set up a mute role with !setupmute")
+                    return
+                
+                mute_role = ctx.guild.get_role(mute_role_id)
                 if not mute_role:
-                    await self.safe_send_message(ctx.channel, "Mute role not found. Please set up a mute role.")
+                    await self.safe_send_message(ctx.channel, "Mute role not found. Please set up a mute role with !setupmute")
                     return
                 
                 # Store member's current roles (except @everyone)
-                current_roles = [role for role in member.roles if not role.is_default()]
+                current_roles = [role.id for role in member.roles if not role.is_default()]
                 
                 # Store original roles to restore later
-                await self.config.member(member).original_roles.set([role.id for role in current_roles])
+                await self.config.member(member).original_roles.set(current_roles)
                 
-                # Set muted_until time
+                # Set muted_until time if duration provided
                 if duration:
                     muted_until = datetime.utcnow() + timedelta(minutes=duration)
                     await self.config.member(member).muted_until.set(muted_until.timestamp())
                 
                 # Remove all roles and add mute role
-                if current_roles:
-                    await member.remove_roles(*current_roles, reason=f"Applying mute: {reason}")
-                await member.add_roles(mute_role, reason=reason)
+                try:
+                    # First remove all roles except @everyone
+                    roles_to_remove = [role for role in member.roles if not role.is_default()]
+                    if roles_to_remove:
+                        await member.remove_roles(*roles_to_remove, reason=f"Applying mute: {reason}")
+                    
+                    # Then add the mute role 
+                    await member.add_roles(mute_role, reason=reason)
+                    
+                    await self.safe_send_message(ctx.channel, f"{member.mention} has been muted for {duration} minutes due to: {reason}")
+                except discord.Forbidden:
+                    await self.safe_send_message(ctx.channel, "I don't have permission to manage roles for this member.")
+                    return
+                except Exception as e:
+                    await self.safe_send_message(ctx.channel, f"Error applying mute: {str(e)}")
+                    return
                 
-                await self.safe_send_message(ctx.channel, f"{member.mention} has been muted due to: {reason}")
+                # Log the mute action
+                await self.log_action(ctx.guild, "Auto-Mute", member, self.bot.user, reason,
+                                    extra_fields=[{"name": "Duration", "value": f"{duration} minutes"}])
                 
+                # Set up automatic unmute if duration provided
                 if duration:
-                    # Schedule unmute
                     self.bot.loop.create_task(self.unmute_after_delay(ctx.guild, member, duration, reason))
             
             elif action == "timeout":
                 until = datetime.utcnow() + timedelta(minutes=duration)
                 await member.timeout(until=until, reason=reason)
                 await self.safe_send_message(ctx.channel, f"{member.mention} has been timed out for {duration} minutes due to: {reason}")
+                await self.log_action(ctx.guild, "Auto-Timeout", member, self.bot.user, reason,
+                                    extra_fields=[{"name": "Duration", "value": f"{duration} minutes"}])
             
             elif action == "kick":
                 await member.kick(reason=reason)
                 await self.safe_send_message(ctx.channel, f"{member.mention} has been kicked due to: {reason}")
+                await self.log_action(ctx.guild, "Auto-Kick", member, self.bot.user, reason)
             
             elif action == "ban":
                 await member.ban(reason=reason)
                 await self.safe_send_message(ctx.channel, f"{member.mention} has been banned due to: {reason}")
-            
-            # Log the automated action
-            await self.log_action(ctx.guild, f"Auto-{action.capitalize()}", member, self.bot.user, reason,
-                                 extra_fields=[{"name": "Duration", "value": f"{duration} minutes"} if duration else None])
+                await self.log_action(ctx.guild, "Auto-Ban", member, self.bot.user, reason)
                 
         except Exception as e:
             await self.safe_send_message(ctx.channel, f"Failed to apply automatic {action}: {str(e)}")
+            print(f"Error in apply_threshold_action: {e}")
+
+    @commands.command(name="quiet")
+    @commands.has_permissions(manage_roles=True)
+    async def mute_member(self, ctx, member: Member, duration: int = 30, *, reason: str = None):
+        """Mute a member for the specified duration (in minutes)."""
+        try:
+            # Get mute role
+            mute_role_id = await self.config.guild(ctx.guild).mute_role()
+            if not mute_role_id:
+                return await ctx.send("Mute role not set up. Please use !setupmute first.")
+            
+            mute_role = ctx.guild.get_role(mute_role_id)
+            if not mute_role:
+                return await ctx.send("Mute role not found. Please use !setupmute to create a new one.")
+            
+            # Store member's current roles (except @everyone)
+            current_roles = [role.id for role in member.roles if not role.is_default()]
+            
+            # Store original roles to restore later
+            await self.config.member(member).original_roles.set(current_roles)
+            
+            # Set muted_until time
+            muted_until = datetime.utcnow() + timedelta(minutes=duration)
+            await self.config.member(member).muted_until.set(muted_until.timestamp())
+            
+            # First remove all roles except @everyone
+            roles_to_remove = [role for role in member.roles if not role.is_default()]
+            if roles_to_remove:
+                await member.remove_roles(*roles_to_remove, reason=f"Manual mute: {reason}")
+            
+            # Then add the mute role
+            await member.add_roles(mute_role, reason=f"Manual mute: {reason}")
+            
+            # Confirm and log
+            await ctx.send(f"{member.mention} has been muted for {duration} minutes. Reason: {reason or 'No reason provided'}")
+            
+            # Log action
+            await self.log_action(ctx.guild, "Mute", member, ctx.author, reason,
+                                extra_fields=[{"name": "Duration", "value": f"{duration} minutes"}])
+            
+            # Schedule unmute
+            self.bot.loop.create_task(self.unmute_after_delay(ctx.guild, member, duration, reason))
+            
+        except discord.Forbidden:
+            await ctx.send("I don't have permission to manage roles for this member.")
+        except Exception as e:
+            await ctx.send(f"Error applying mute: {str(e)}")
+            print(f"Error in mute_member command: {e}")
 
     async def get_mute_role(self, guild):
         """Get the mute role for the guild or create one if it doesn't exist."""
@@ -574,7 +643,7 @@ class Moderation(commands.Cog):
             # Get original roles
             original_role_ids = await self.config.member(member).original_roles()
             
-            # Remove mute role first if they have it
+            # First remove mute role if they have it
             if mute_role and mute_role in member.roles:
                 await member.remove_roles(mute_role, reason="Unmuting member")
             
@@ -583,7 +652,7 @@ class Moderation(commands.Cog):
                 roles_to_restore = []
                 for role_id in original_role_ids:
                     role = guild.get_role(role_id)
-                    if role and role != mute_role and role not in member.roles:
+                    if role and role != mute_role:
                         roles_to_restore.append(role)
                 
                 if roles_to_restore:
@@ -593,7 +662,7 @@ class Moderation(commands.Cog):
             await self.config.member(member).original_roles.set([])
             await self.config.member(member).muted_until.set(None)
             
-            # Get a channel to send notification
+            # Log the unmute action
             log_channel_id = await self.config.guild(guild).log_channel()
             if log_channel_id:
                 log_channel = guild.get_channel(log_channel_id)
