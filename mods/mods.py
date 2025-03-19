@@ -3,6 +3,8 @@ from discord import Embed, Member, TextChannel
 from datetime import datetime, timedelta
 import discord
 import asyncio
+import time
+from collections import deque
 
 class Moderation(commands.Cog):
     """Enhanced moderation cog with point-based warning system."""
@@ -25,14 +27,89 @@ class Moderation(commands.Cog):
             "members": {}  # Store member warnings and history here
         }
         
+        # Add member_roles default for storing roles during mute
+        default_member = {
+            "original_roles": [],
+            "muted_until": None
+        }
+        
         self.config.register_guild(**default_guild)
+        self.config.register_member(**default_member)
+        
+        # Rate limiting protection
+        self.rate_limit = {
+            "message_queue": {},  # Per-channel message queue
+            "command_cooldown": {},  # Per-guild command cooldown
+            "global_cooldown": deque(maxlen=10),  # Global command timestamps
+        }
         
         # Background task for expiring warnings
         self.warning_cleanup_task = self.bot.loop.create_task(self.check_expired_warnings())
+        
+        # Background task for unmuting users
+        self.unmute_check_task = self.bot.loop.create_task(self.check_mutes())
     
     def cog_unload(self):
         """Called when the cog is unloaded."""
         self.warning_cleanup_task.cancel()
+        self.unmute_check_task.cancel()
+
+    async def check_mutes(self):
+        """Background task to check and remove expired mutes."""
+        await self.bot.wait_until_ready()
+        while not self.bot.is_closed():
+            try:
+                # Check all guilds for muted members
+                for guild in self.bot.guilds:
+                    # Get the mute role
+                    mute_role_id = await self.config.guild(guild).mute_role()
+                    if not mute_role_id:
+                        continue
+                        
+                    mute_role = guild.get_role(mute_role_id)
+                    if not mute_role:
+                        continue
+                    
+                    # Get all members and check their mute status
+                    guild_data = await self.config.guild(guild).all()
+                    members_data = guild_data.get("members", {})
+                    current_time = datetime.utcnow().timestamp()
+                    
+                    for member_id, member_data in members_data.items():
+                        # Skip if no mute end time
+                        muted_until = member_data.get("muted_until")
+                        if not muted_until:
+                            continue
+                            
+                        # Check if mute has expired
+                        if current_time > muted_until:
+                            try:
+                                # Get member
+                                member = guild.get_member(int(member_id))
+                                if not member:
+                                    continue
+                                
+                                # Check if they still have the mute role
+                                if mute_role in member.roles:
+                                    # Restore original roles
+                                    await self.restore_member_roles(guild, member)
+                                    
+                                    # Log unmute
+                                    await self.log_action(
+                                        guild, 
+                                        "Auto-Unmute", 
+                                        member, 
+                                        self.bot.user, 
+                                        "Temporary mute duration expired"
+                                    )
+                            except Exception as e:
+                                print(f"Error during automatic unmute check: {e}")
+            
+            except Exception as e:
+                print(f"Error in mute check task: {e}")
+            
+            # Check every minute
+            await asyncio.sleep(60)
 
     async def check_expired_warnings(self):
         """Background task to check and remove expired warnings."""
@@ -80,7 +157,7 @@ class Moderation(commands.Cog):
                                         )
                                         embed.add_field(name="Current Points", value=str(total_points))
                                         embed.set_footer(text=datetime.utcnow().strftime("%m/%d/%Y %I:%M %p"))
-                                        await log_channel.send(embed=embed)
+                                        await self.safe_send_message(log_channel, embed=embed)
                     
                     # Save updated data back to config
                     await self.config.guild(guild).members.set(members_data)
@@ -90,6 +167,85 @@ class Moderation(commands.Cog):
             
             # Check every 6 hours
             await asyncio.sleep(21600)
+
+    async def safe_send_message(self, channel, content=None, *, embed=None, file=None):
+        """
+        Rate-limited message sending to avoid hitting Discord's API limits.
+        
+        This function queues messages and sends them with a delay if too many
+        messages are being sent to the same channel in a short period.
+        """
+        if not channel:
+            return None
+            
+        channel_id = str(channel.id)
+        
+        # Initialize queue for this channel if it doesn't exist
+        if channel_id not in self.rate_limit["message_queue"]:
+            self.rate_limit["message_queue"][channel_id] = {
+                "queue": [],
+                "last_send": 0,
+                "processing": False
+            }
+            
+        # Add message to queue
+        message_data = {"content": content, "embed": embed, "file": file}
+        self.rate_limit["message_queue"][channel_id]["queue"].append(message_data)
+        
+        # Start processing queue if not already running
+        if not self.rate_limit["message_queue"][channel_id]["processing"]:
+            self.rate_limit["message_queue"][channel_id]["processing"] = True
+            return await self.process_message_queue(channel)
+            
+        return None
+
+    async def process_message_queue(self, channel):
+        """Process the message queue for a channel with rate limiting."""
+        channel_id = str(channel.id)
+        queue_data = self.rate_limit["message_queue"][channel_id]
+        
+        try:
+            while queue_data["queue"]:
+                # Get the next message
+                message_data = queue_data["queue"][0]
+                
+                # Check if we need to delay sending (rate limit prevention)
+                current_time = time.time()
+                time_since_last = current_time - queue_data["last_send"]
+                
+                # If less than 1 second since last message, wait
+                if time_since_last < 1:
+                    await asyncio.sleep(1 - time_since_last)
+                
+                # Send the message
+                try:
+                    await channel.send(
+                        content=message_data["content"],
+                        embed=message_data["embed"],
+                        file=message_data["file"]
+                    )
+                    queue_data["last_send"] = time.time()
+                except discord.HTTPException as e:
+                    if e.status == 429:  # Rate limit hit
+                        retry_after = e.retry_after if hasattr(e, 'retry_after') else 5
+                        print(f"Rate limit hit, waiting {retry_after} seconds")
+                        await asyncio.sleep(retry_after)
+                        continue  # Try again without removing from queue
+                    else:
+                        print(f"Error sending message: {e}")
+                
+                # Remove sent message from queue
+                queue_data["queue"].pop(0)
+                
+                # Small delay between messages
+                await asyncio.sleep(0.5)
+        
+        except Exception as e:
+            print(f"Error processing message queue: {e}")
+        
+        finally:
+            # Mark queue as not processing
+            queue_data["processing"] = False
 
     @commands.group(name="cautionset")
     @commands.admin_or_permissions(administrator=True)
@@ -245,7 +401,7 @@ class Moderation(commands.Cog):
         embed.set_footer(text=datetime.utcnow().strftime("%m/%d/%Y %I:%M %p"))
         
         # Send warning in channel and log
-        await ctx.send(f"{member.mention} has been cautioned.", embed=embed)
+        await self.safe_send_message(ctx.channel, f"{member.mention} has been cautioned.", embed=embed)
         
         # Log the warning
         await self.log_action(ctx.guild, "Warning", member, ctx.author, warning["reason"], 
@@ -295,11 +451,26 @@ class Moderation(commands.Cog):
                 # Find or create mute role
                 mute_role = await self.get_mute_role(ctx.guild)
                 if not mute_role:
-                    await ctx.send("Mute role not found. Please set up a mute role.")
+                    await self.safe_send_message(ctx.channel, "Mute role not found. Please set up a mute role.")
                     return
                 
+                # Store member's current roles (except @everyone)
+                current_roles = [role for role in member.roles if not role.is_default()]
+                
+                # Store original roles to restore later
+                await self.config.member(member).original_roles.set([role.id for role in current_roles])
+                
+                # Set muted_until time
+                if duration:
+                    muted_until = datetime.utcnow() + timedelta(minutes=duration)
+                    await self.config.member(member).muted_until.set(muted_until.timestamp())
+                
+                # Remove all roles and add mute role
+                if current_roles:
+                    await member.remove_roles(*current_roles, reason=f"Applying mute: {reason}")
                 await member.add_roles(mute_role, reason=reason)
-                await ctx.send(f"{member.mention} has been muted due to: {reason}")
+                
+                await self.safe_send_message(ctx.channel, f"{member.mention} has been muted due to: {reason}")
                 
                 if duration:
                     # Schedule unmute
@@ -308,22 +479,22 @@ class Moderation(commands.Cog):
             elif action == "timeout":
                 until = datetime.utcnow() + timedelta(minutes=duration)
                 await member.timeout(until=until, reason=reason)
-                await ctx.send(f"{member.mention} has been timed out for {duration} minutes due to: {reason}")
+                await self.safe_send_message(ctx.channel, f"{member.mention} has been timed out for {duration} minutes due to: {reason}")
             
             elif action == "kick":
                 await member.kick(reason=reason)
-                await ctx.send(f"{member.mention} has been kicked due to: {reason}")
+                await self.safe_send_message(ctx.channel, f"{member.mention} has been kicked due to: {reason}")
             
             elif action == "ban":
                 await member.ban(reason=reason)
-                await ctx.send(f"{member.mention} has been banned due to: {reason}")
+                await self.safe_send_message(ctx.channel, f"{member.mention} has been banned due to: {reason}")
             
             # Log the automated action
             await self.log_action(ctx.guild, f"Auto-{action.capitalize()}", member, self.bot.user, reason,
                                  extra_fields=[{"name": "Duration", "value": f"{duration} minutes"} if duration else None])
                 
         except Exception as e:
-            await ctx.send(f"Failed to apply automatic {action}: {str(e)}")
+            await self.safe_send_message(ctx.channel, f"Failed to apply automatic {action}: {str(e)}")
 
     async def get_mute_role(self, guild):
         """Get the mute role for the guild or create one if it doesn't exist."""
@@ -392,26 +563,64 @@ class Moderation(commands.Cog):
     async def unmute_after_delay(self, guild, member, duration, reason):
         """Unmute a member after a specified delay."""
         await asyncio.sleep(duration * 60)
-        
-        # Get the mute role
-        mute_role = await self.get_mute_role(guild)
+        await self.restore_member_roles(guild, member)
+
+    async def restore_member_roles(self, guild, member):
+        """Restore a member's roles after unmuting them."""
+        try:
+            # Get the mute role
+            mute_role = await self.get_mute_role(guild)
+            
+            # Get original roles
+            original_role_ids = await self.config.member(member).original_roles()
+            
+            # Remove mute role first if they have it
+            if mute_role and mute_role in member.roles:
+                await member.remove_roles(mute_role, reason="Unmuting member")
+            
+            # Restore original roles
+            if original_role_ids:
+                roles_to_restore = []
+                for role_id in original_role_ids:
+                    role = guild.get_role(role_id)
+                    if role and role != mute_role and role not in member.roles:
+                        roles_to_restore.append(role)
+                
+                if roles_to_restore:
+                    await member.add_roles(*roles_to_restore, reason="Restoring roles after unmute")
+            
+            # Clear stored data
+            await self.config.member(member).original_roles.set([])
+            await self.config.member(member).muted_until.set(None)
+            
+            # Get a channel to send notification
+            log_channel_id = await self.config.guild(guild).log_channel()
+            if log_channel_id:
+                log_channel = guild.get_channel(log_channel_id)
+                if log_channel:
+                    await self.safe_send_message(log_channel, f"{member.mention} has been unmuted.")
+            
+        except Exception as e:
+            print(f"Error restoring member roles: {e}")
+            # Try to get a channel to send the error
+            log_channel_id = await self.config.guild(guild).log_channel()
+            if log_channel_id:
+                log_channel = guild.get_channel(log_channel_id)
+                if log_channel:
+                    await self.safe_send_message(log_channel, f"Error unmuting {member.mention}: {str(e)}")
+
+    @commands.command(name="unquiet")
+    @commands.has_permissions(manage_roles=True)
+    async def custom_unmute(self, ctx, member: Member):
+        """Unmute a member."""
+        mute_role = await self.get_mute_role(ctx.guild)
         
         if mute_role and mute_role in member.roles:
-            try:
-                await member.remove_roles(mute_role, reason=f"Temporary mute expired: {reason}")
-                
-                # Get log channel
-                log_channel_id = await self.config.guild(guild).log_channel()
-                if log_channel_id:
-                    log_channel = guild.get_channel(log_channel_id)
-                    if log_channel:
-                        embed = Embed(title="Auto-Unmute", color=0x00ff00)
-                        embed.add_field(name="Member", value=member.mention)
-                        embed.add_field(name="Reason", value="Temporary mute duration expired")
-                        embed.set_footer(text=datetime.utcnow().strftime("%m/%d/%Y %I:%M %p"))
-                        await log_channel.send(embed=embed)
-            except Exception as e:
-                print(f"Error unmuting member {member.id}: {e}")
+            await self.restore_member_roles(ctx.guild, member)
+            await ctx.send(f"{member.mention} has been unmuted.")
+            await self.log_action(ctx.guild, "Unmute", member, ctx.author)
+        else:
+            await ctx.send(f"{member.mention} is not muted.")
 
     @commands.command(name="cautions")
     async def list_warnings(self, ctx, member: Member = None):
