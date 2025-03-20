@@ -934,7 +934,7 @@ class Prune(commands.Cog):
         """Lock all text channels except protected ones."""
         role = ctx.guild.get_role(role_id)
         if not role:
-            await ctx.send("❌ The required role does not exist. Please check the role IDs or configure them with `pruneset`.")
+            await ctx.send("❌ The required role does not exist.")
             return False
 
         # Get the protected channels list
@@ -1068,32 +1068,61 @@ class Prune(commands.Cog):
     @commands.mod()
     @commands.guild_only()
     @commands.command()
-    async def shield(self, ctx: commands.Context, action: str, level: Optional[int] = None):
+    async def shield(self, ctx: commands.Context, action: str, level_or_staff: Optional[str] = None):
         """
         Activate or deactivate server lockdown mode.
         
         Examples:
         - `.shield activate 5` - Only Level 5+ users can talk
         - `.shield activate 15` - Only Level 15+ users can talk
+        - `.shield activate staff` - Only staff can talk
         - `.shield deactivate` - End lockdown mode
         - `.shield status` - Check current lockdown status
         """
-        if action.lower() == "activate" and level in [5, 15]:
-            # Get the appropriate role
-            role_id = None
-            if level == 5:
-                role_id = await self.config.guild(ctx.guild).level_5_role()
-                if not role_id:
-                    await ctx.send("❌ Level 5 role not configured. Use `pruneset level5role` to set it.")
-                    return
-            else:  # level == 15
-                role_id = await self.config.guild(ctx.guild).level_15_role()
-                if not role_id:
-                    await ctx.send("❌ Level 15 role not configured. Use `pruneset level15role` to set it.")
-                    return
+        # Define the role IDs for different levels
+        level_roles = {
+            # Level roles
+            "1": 644731031701684226,   # @:moneybag: Chore Boy [LVL 1]
+            "5": 644731127738662922,   # @:moneybag: Petty Officer [LVL 5]
+            "10": 644731476977516544,  # @:moneybag: Chief Petty Officer [LVL 10]
+            "15": 644731543415291911,  # @:moneybag: Warrant Officer [LVL 15]
+            "20": 644731600382328843,  # @:moneybag: Lieutenant [LVL 20]
+            "25": 644731635509755906,  # @:moneybag: Captain [LVL 25]
+            "30": 644731658444079124,  # @:moneybag: Commodore [LVL 30]
+            "35": 644731682343223317,  # @:moneybag: Rear Admiral [LVL 35]
+            "40": 644731722415472650,  # @:moneybag: Vice Admiral [LVL 40]
+            "45": 655587092738342942,  # @:moneybag: Buggy's Right-hand [LVL 45]
+            "50": 655587094030450689,  # @:moneybag: Kidd's Right-Hand [LVL 50]
+            "55": 655587098144800769,  # @:moneybag: Law's Right-Hand [LVL 55]
+            "65": 655587096529993738,  # @:moneybag: Shanks's Right-Hand [LVL 65]
+            "70": 655587099579514919,  # @:moneybag: Luffy's Right-Hand [LVL 70]
+            "wg": 800825522653233195,  # @Worst Generation
+            "staff": 700014289418977341 # @staff
+        }
+        
+        if action.lower() == "activate":
+            if not level_or_staff:
+                return await ctx.send("❌ Please specify a level (e.g., `5`, `15`, `20`) or `staff`.")
+            
+            # Handle staff case
+            if level_or_staff.lower() == "staff":
+                role_id = level_roles.get("staff")
+                level_display = "Staff"
+            else:
+                # Handle level case
+                role_id = level_roles.get(level_or_staff)
+                level_display = f"Level {level_or_staff}+"
+                
+            if not role_id:
+                available_levels = ", ".join(sorted([k for k in level_roles.keys() if k != "staff" and k != "wg"], key=lambda x: int(x)))
+                return await ctx.send(f"❌ Invalid level. Available levels: {available_levels}, or use 'staff'.")
+            
+            role = ctx.guild.get_role(role_id)
+            if not role:
+                return await ctx.send(f"❌ Role with ID {role_id} not found. Please contact a server administrator.")
             
             # Initial message
-            status_msg = await ctx.send(f"🛡️ **Activating Lockdown:** Only users with `Level {level}+` can talk.")
+            status_msg = await ctx.send(f"🛡️ **Activating Lockdown:** Only users with `{level_display}` can talk.")
             
             # Lock the server
             success = await self.lock_channels(ctx, role_id)
@@ -1101,18 +1130,18 @@ class Prune(commands.Cog):
                 return
             
             # Update status
-            await status_msg.edit(content=f"🛡️ **Lockdown Activated:** Only users with `Level {level}+` can talk.")
+            await status_msg.edit(content=f"🛡️ **Lockdown Activated:** Only users with `{level_display}` can talk.")
             
             # Store lockdown state
             await self.config.guild(ctx.guild).lockdown_status.set(True)
-            await self.config.guild(ctx.guild).lockdown_level.set(level)
+            await self.config.guild(ctx.guild).lockdown_level.set(level_or_staff)
             
             # Send to staff channel if configured
             staff_channel_id = await self.config.guild(ctx.guild).staff_channel()
             if staff_channel_id:
                 staff_channel = ctx.guild.get_channel(staff_channel_id)
                 if staff_channel:
-                    await staff_channel.send(f"🛡️ **SERVER LOCKDOWN ACTIVATED**\n• Moderator: {ctx.author.mention}\n• Level: {level}+\n• All other users cannot send messages.")
+                    await staff_channel.send(f"🛡️ **SERVER LOCKDOWN ACTIVATED**\n• Moderator: {ctx.author.mention}\n• Access: {level_display}\n• All other users cannot send messages.")
         
         elif action.lower() == "deactivate":
             # Initial message
@@ -1143,12 +1172,18 @@ class Prune(commands.Cog):
             lockdown_level = await self.config.guild(ctx.guild).lockdown_level()
             
             if lockdown_status:
-                await ctx.send(f"🛡️ **Lockdown Status:** Active (Level {lockdown_level}+)")
+                # Format the display based on whether it's staff or a level
+                if lockdown_level == "staff":
+                    level_display = "Staff"
+                else:
+                    level_display = f"Level {lockdown_level}+"
+                    
+                await ctx.send(f"🛡️ **Lockdown Status:** Active ({level_display})")
             else:
                 await ctx.send("❌ **Lockdown Status:** Inactive")
         
         else:
-            await ctx.send("Usage: `.shield activate 5`, `.shield activate 15`, `.shield status`, or `.shield deactivate`")
+            await ctx.send("Usage: `.shield activate 5`, `.shield activate 15`, `.shield activate staff`, `.shield status`, or `.shield deactivate`")
 
 async def setup(bot: Red):
     cog = Prune(bot)
