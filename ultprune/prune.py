@@ -278,8 +278,118 @@ class Prune(commands.Cog):
     @commands.mod()
     @commands.guild_only()
     @commands.command()
-    async def prune(self, ctx: commands.Context, user: discord.Member, amount: int, 
-                   channel: Optional[discord.TextChannel] = None, *, keyword: Optional[str] = None):
+    async def prune(self, ctx: commands.Context, amount_or_user: Union[int, discord.Member], 
+                    amount_if_user: Optional[int] = None, 
+                    channel: Optional[discord.TextChannel] = None, 
+                    *, keyword: Optional[str] = None):
+        """
+        Delete messages from a channel.
+        
+        Examples:
+        - `.prune 15` - Delete the last 15 messages in the current channel
+        - `.prune @user 10` - Delete the last 10 messages from a specific user
+        - `.prune @user 20 #channel` - Delete the last 20 messages from a user in a specific channel
+        - `.prune @user 15 #channel keyword` - Delete messages containing the keyword
+        """
+        # If first parameter is a number, it's a simple purge
+        if isinstance(amount_or_user, int):
+            await self.simple_purge(ctx, amount_or_user)
+        
+        # If first parameter is a user, it's a targeted prune
+        elif isinstance(amount_or_user, discord.Member):
+            # If amount wasn't provided after the user, show error
+            if amount_if_user is None:
+                await ctx.send("Please specify the number of messages to delete.\nUsage: `.prune @user 10`")
+                return
+                
+            await self.targeted_prune(ctx, amount_or_user, amount_if_user, channel, keyword)
+        
+        else:
+            await ctx.send("Invalid parameters. Use `.prune 15` or `.prune @user 10`.")
+
+    async def simple_purge(self, ctx: commands.Context, amount: int):
+        """Delete a specific number of recent messages in a channel."""
+        if amount <= 0:
+            return await ctx.send("Amount must be a positive number.")
+            
+        if amount > 100:
+            return await ctx.send("For safety reasons, you can only delete up to 100 messages at once with this command.")
+            
+        # Show a typing indicator during potentially lengthy operation
+        async with ctx.typing():
+            # Skip the command message itself
+            messages_to_delete = []
+            
+            # Collect messages first
+            async for message in ctx.channel.history(limit=amount+1):  # +1 to include command message
+                if message.id != ctx.message.id:  # Skip the command message
+                    messages_to_delete.append(message)
+                    if len(messages_to_delete) >= amount:
+                        break
+                        
+            if not messages_to_delete:
+                return await ctx.send("No messages found to delete.")
+                
+            # Format for log upload
+            formatted_logs = "\n".join([
+                f"[{msg.created_at.strftime('%Y-%m-%d %H:%M:%S')}] {msg.author.name}: {msg.content}" 
+                for msg in messages_to_delete
+            ])
+            
+            # Upload to mclo.gs
+            log_title = f"Channel Purge - {ctx.channel.name}"
+            log_url = await self.upload_to_logs_service(formatted_logs, log_title)
+            
+            # Delete messages efficiently
+            deleted_count = await self.delete_messages_in_batches(ctx.channel, messages_to_delete)
+            
+            # Store logs by moderator instead of by author
+            log_entries = [
+                {
+                    "user_id": msg.author.id, 
+                    "user": msg.author.name, 
+                    "content": msg.content, 
+                    "timestamp": msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
+                } 
+                for msg in messages_to_delete
+            ]
+            
+            await self.store_log(ctx.guild.id, ctx.channel.id, log_entries)
+            
+        # Confirm deletion to user
+        success_msg = await ctx.send(f"Deleted {deleted_count} messages.")
+        
+        # Send to staff channel if configured
+        staff_channel_id = await self.config.guild(ctx.guild).staff_channel()
+        staff_role_id = await self.config.guild(ctx.guild).staff_role()
+        
+        if staff_channel_id:
+            staff_channel = ctx.guild.get_channel(staff_channel_id)
+            if staff_channel:
+                # Create a more detailed message for staff
+                staff_message = f"**Bulk Purge Log**\n"
+                staff_message += f"• Moderator: {ctx.author.mention} ({ctx.author.name})\n"
+                staff_message += f"• Channel: {ctx.channel.mention}\n"
+                staff_message += f"• Messages Deleted: {deleted_count}\n"
+                staff_message += f"• Log URL: {log_url}\n"
+                
+                # Add role mention if configured
+                if staff_role_id:
+                    role = ctx.guild.get_role(staff_role_id)
+                    if role:
+                        staff_message = f"{role.mention}\n" + staff_message
+                
+                await staff_channel.send(staff_message)
+                
+        # Auto-delete the success message after 5 seconds
+        await asyncio.sleep(5)
+        try:
+            await success_msg.delete()
+        except:
+            pass
+
+    async def targeted_prune(self, ctx: commands.Context, user: discord.Member, amount: int, 
+                           channel: Optional[discord.TextChannel] = None, keyword: Optional[str] = None):
         """Delete the last <amount> messages from <user> in a specific channel."""
         if amount <= 0:
             return await ctx.send("Amount must be a positive number.")
