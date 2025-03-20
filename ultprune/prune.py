@@ -612,6 +612,9 @@ class Prune(commands.Cog):
 
         # Use a typing indicator during this potentially lengthy operation
         async with ctx.typing():
+            # First, update progress message
+            status_msg = await ctx.send("🔒 Locking categories and syncing channels...")
+            
             # Process categories in parallel for better performance
             tasks = []
             for category in ctx.guild.categories:
@@ -631,20 +634,31 @@ class Prune(commands.Cog):
             if no_category_tasks:
                 await asyncio.gather(*no_category_tasks)
             
+            # Final success message
+            await status_msg.edit(content="✅ All categories and channels locked successfully!")
+            
         return True
 
     async def lock_single_category(self, category: discord.CategoryChannel, default_role: discord.Role, allowed_role: discord.Role):
-        """Lock a single category."""
+        """Lock a single category and ensure channels inherit the settings."""
         try:
-            # Update permissions for the default role
+            # Update permissions for the default role at category level
             overwrites = category.overwrites_for(default_role)
             overwrites.send_messages = False
             await category.set_permissions(default_role, overwrite=overwrites)
             
-            # Update permissions for the allowed role
+            # Update permissions for the allowed role at category level
             overwrites = category.overwrites_for(allowed_role)
             overwrites.send_messages = True
             await category.set_permissions(allowed_role, overwrite=overwrites)
+            
+            # Make sure all channels in this category have sync permissions enabled
+            for channel in category.channels:
+                if isinstance(channel, discord.TextChannel):
+                    # If the channel doesn't have synced permissions, sync them
+                    if not channel.permissions_synced:
+                        await channel.edit(sync_permissions=True)
+                        
         except Exception as e:
             # Continue even if one category fails
             pass
@@ -669,6 +683,9 @@ class Prune(commands.Cog):
         """Unlock all categories and channels not in categories."""
         # Use a typing indicator during this potentially lengthy operation
         async with ctx.typing():
+            # First, update progress message
+            status_msg = await ctx.send("🔓 Unlocking categories and syncing channels...")
+            
             # Process categories in parallel
             tasks = []
             for category in ctx.guild.categories:
@@ -687,16 +704,26 @@ class Prune(commands.Cog):
             
             if no_category_tasks:
                 await asyncio.gather(*no_category_tasks)
+                
+            # Final success message
+            await status_msg.edit(content="✅ All categories and channels unlocked successfully!")
         
         return True
 
     async def unlock_single_category(self, category: discord.CategoryChannel, default_role: discord.Role):
-        """Unlock a single category."""
+        """Unlock a single category and ensure channels inherit the settings."""
         try:
             # Reset permissions for the default role
             overwrites = category.overwrites_for(default_role)
             overwrites.send_messages = None  # Reset to default
             await category.set_permissions(default_role, overwrite=overwrites)
+            
+            # Make sure all channels in this category have sync permissions enabled
+            for channel in category.channels:
+                if isinstance(channel, discord.TextChannel):
+                    # If the channel doesn't have synced permissions, sync them
+                    if not channel.permissions_synced:
+                        await channel.edit(sync_permissions=True)
         except Exception as e:
             # Continue even if one category fails
             pass
