@@ -7,7 +7,7 @@ from redbot.core.utils.chat_formatting import box
 from typing import Optional, Union
 from collections import defaultdict
 
-class Prune(commands.Cog):
+class Skadosh(commands.Cog):
     """A cog to skadosh messages from a specific user with an optional keyword, channel selection, and uploads logs to mclo.gs."""
 
     def __init__(self, bot: Red):
@@ -109,4 +109,4 @@ class Prune(commands.Cog):
         await ctx.send(box(formatted_logs, lang="yaml"))
 
 async def setup(bot: Red):
-    await bot.add_cog(Prune(bot))
+    await bot.add_cog(Skadosh(bot))
