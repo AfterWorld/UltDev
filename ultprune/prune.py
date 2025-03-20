@@ -92,7 +92,18 @@ class Prune(commands.Cog):
                 1243539315523326024,  # talent
                 705907719466516541    # seas of bluestar
             ],
-            "original_permissions": {}  # Store original permissions for restoration
+            "protected_channels": [
+                708651385729712168,  # #chart-polls
+                1343122472790261851, # #0-players-online
+                804926342780813312,  # #starboard
+                1287263954099240960, # #art-competition
+                1336392905568555070, # #launch-test-do-not-enter
+                802966392294080522,  # #sports
+                793834515213582367,  # #movies-tv-series
+                1228063343198208080  # #op-anime-only
+            ],
+            "original_permissions": {},  # Store original permissions for restoration
+            "protected_channels_permissions": {}  # Store locked permissions for protected channels
         }
         self.config.register_guild(**default_guild)
         
@@ -105,13 +116,19 @@ class Prune(commands.Cog):
         # Rate limiting protection
         self.deletion_tasks = {}
         self.cooldowns = {}
+        
+        # Schedule permission check task for protected channels
+        self.permission_check_task = None
 
     async def initialize(self):
-        """Initialize the aiohttp session."""
+        """Initialize the aiohttp session and start background tasks."""
         self.session = aiohttp.ClientSession()
+        
+        # Start the permission check task
+        self.permission_check_task = self.bot.loop.create_task(self.check_protected_channels_task())
 
     async def cog_unload(self):
-        """Clean up the aiohttp session on unload."""
+        """Clean up the aiohttp session on unload and cancel tasks."""
         if self.session:
             await self.session.close()
             
@@ -119,7 +136,113 @@ class Prune(commands.Cog):
         for task in self.deletion_tasks.values():
             if not task.done():
                 task.cancel()
-
+                
+        # Cancel the permission check task
+        if self.permission_check_task:
+            self.permission_check_task.cancel()
+            
+    async def check_protected_channels_task(self):
+        """Background task to periodically check and restore protected channel permissions."""
+        await self.bot.wait_until_ready()
+        while not self.bot.is_closed():
+            try:
+                # For each guild the bot is in
+                for guild in self.bot.guilds:
+                    await self.check_protected_channels(guild)
+                    
+                # Check every 5 minutes
+                await asyncio.sleep(300)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                # Log error but don't stop the task
+                print(f"Error in check_protected_channels_task: {str(e)}")
+                await asyncio.sleep(300)
+                
+    async def check_protected_channels(self, guild):
+        """Check and restore permissions for protected channels in a guild."""
+        # Get the list of protected channel IDs
+        protected_channel_ids = await self.config.guild(guild).protected_channels()
+        if not protected_channel_ids:
+            return
+            
+        # Get the stored permissions for protected channels
+        protected_perms = await self.config.guild(guild).protected_channels_permissions()
+        
+        for channel_id in protected_channel_ids:
+            channel = guild.get_channel(channel_id)
+            if not channel or not isinstance(channel, discord.TextChannel):
+                continue
+                
+            # Check if we have stored permissions for this channel
+            key = str(channel_id)
+            if key not in protected_perms:
+                # Initial permission capture - storing the channel as locked
+                await self.capture_protected_channel_permissions(guild, channel)
+                continue
+                
+            # Check if permissions have changed and need to be restored
+            await self.check_and_restore_channel_permissions(guild, channel, protected_perms[key])
+            
+    async def capture_protected_channel_permissions(self, guild, channel):
+        """Store the current permissions for a protected channel."""
+        # Get current permissions for the default role
+        default_role = guild.default_role
+        overwrites = channel.overwrites_for(default_role)
+        
+        # Store these permissions
+        permissions_data = {
+            "send_messages": overwrites.send_messages,
+            "view_channel": overwrites.view_channel,
+            "add_reactions": overwrites.add_reactions,
+            "attach_files": overwrites.attach_files,
+            "embed_links": overwrites.embed_links
+        }
+        
+        # Save to the config
+        async with self.config.guild(guild).protected_channels_permissions() as perms:
+            perms[str(channel.id)] = permissions_data
+            
+        # Log to the staff channel that permissions were captured
+        await self.log_channel_protection(guild, channel, "Protected channel permissions have been captured")
+        
+    async def check_and_restore_channel_permissions(self, guild, channel, stored_permissions):
+        """Check if channel permissions have changed and restore if needed."""
+        default_role = guild.default_role
+        current_overwrites = channel.overwrites_for(default_role)
+        
+        # Check if any of the important permissions have changed
+        permissions_changed = False
+        for perm_name, stored_value in stored_permissions.items():
+            current_value = getattr(current_overwrites, perm_name, None)
+            if current_value != stored_value:
+                permissions_changed = True
+                break
+                
+        if not permissions_changed:
+            return
+            
+        # Permissions have changed - restore them
+        for perm_name, stored_value in stored_permissions.items():
+            setattr(current_overwrites, perm_name, stored_value)
+            
+        # Apply the restored permissions
+        await channel.set_permissions(default_role, overwrite=current_overwrites)
+        
+        # Log to the staff channel that permissions were restored
+        await self.log_channel_protection(guild, channel, "Protected channel permissions have been restored")
+        
+    async def log_channel_protection(self, guild, channel, message):
+        """Log channel protection actions to the staff channel."""
+        staff_channel_id = await self.config.guild(guild).staff_channel()
+        if not staff_channel_id:
+            return
+            
+        staff_channel = guild.get_channel(staff_channel_id)
+        if not staff_channel:
+            return
+            
+        await staff_channel.send(f"🔒 **Channel Protection**: {message} for {channel.mention}")
     async def upload_to_logs_service(self, content: str, title: str = "Prune logs") -> str:
         """Upload content to mclo.gs and return the URL."""
         # Add a title to the content
@@ -751,6 +874,99 @@ class Prune(commands.Cog):
         
         await ctx.send(f"Shield will now only affect these categories:\n{category_list}")
 
+    @pruneset.command(name="protectedchannels")
+    async def set_protected_channels(self, ctx: commands.Context, *channel_ids: int):
+        """Set which channel IDs should be protected from permission changes.
+        
+        Example: .pruneset protectedchannels 123456789 987654321
+        Leave empty to reset to default list.
+        """
+        if not channel_ids:
+            # Reset to defaults
+            default_channels = [
+                708651385729712168,  # #chart-polls
+                1343122472790261851, # #0-players-online
+                804926342780813312,  # #starboard
+                1287263954099240960, # #art-competition
+                1336392905568555070, # #launch-test-do-not-enter
+                802966392294080522,  # #sports
+                793834515213582367,  # #movies-tv-series
+                1228063343198208080  # #op-anime-only
+            ]
+            await self.config.guild(ctx.guild).protected_channels.set(default_channels)
+            
+            # Format channel names for display
+            channel_list = "\n".join([f"• {ctx.guild.get_channel(ch_id).mention if ctx.guild.get_channel(ch_id) else f'Unknown ({ch_id})'}" 
+                                    for ch_id in default_channels])
+            
+            await ctx.send(f"Reset to default protected channels list:\n{channel_list}")
+            
+            # Capture initial permissions
+            for ch_id in default_channels:
+                channel = ctx.guild.get_channel(ch_id)
+                if channel and isinstance(channel, discord.TextChannel):
+                    await self.capture_protected_channel_permissions(ctx.guild, channel)
+            
+            return
+            
+        # Validate that these are actual channel IDs
+        valid_ids = []
+        invalid_ids = []
+        for ch_id in channel_ids:
+            channel = ctx.guild.get_channel(ch_id)
+            if channel and isinstance(channel, discord.TextChannel):
+                valid_ids.append(ch_id)
+            else:
+                invalid_ids.append(ch_id)
+        
+        if invalid_ids:
+            await ctx.send(f"⚠️ Warning: {len(invalid_ids)} IDs are not valid text channels: {', '.join(str(i) for i in invalid_ids)}")
+        
+        if not valid_ids:
+            await ctx.send("❌ No valid channel IDs provided. Protected channels settings unchanged.")
+            return
+            
+        # Save the valid channel IDs
+        await self.config.guild(ctx.guild).protected_channels.set(valid_ids)
+        
+        # Format channel names for display
+        channel_list = "\n".join([f"• {ctx.guild.get_channel(ch_id).mention}" for ch_id in valid_ids])
+        
+        await ctx.send(f"These channels will now be protected from permission changes:\n{channel_list}")
+        
+        # Capture initial permissions for all new channels
+        for ch_id in valid_ids:
+            channel = ctx.guild.get_channel(ch_id)
+            await self.capture_protected_channel_permissions(ctx.guild, channel)
+            
+    @pruneset.command(name="checkprotected")
+    async def check_protected_now(self, ctx: commands.Context):
+        """Manually trigger a check of protected channel permissions."""
+        protected_channel_ids = await self.config.guild(ctx.guild).protected_channels()
+        
+        if not protected_channel_ids:
+            return await ctx.send("No protected channels are configured.")
+            
+        async with ctx.typing():
+            status_msg = await ctx.send("🔍 Checking protected channel permissions...")
+            await self.check_protected_channels(ctx.guild)
+            await status_msg.edit(content="✅ Protected channel permissions have been checked and restored if needed.")
+            
+    @pruneset.command(name="resetprotected")
+    async def reset_protected_permissions(self, ctx: commands.Context, channel: discord.TextChannel):
+        """Reset stored permissions for a protected channel.
+        
+        Use this if you intentionally want to change a protected channel's permissions.
+        """
+        protected_channel_ids = await self.config.guild(ctx.guild).protected_channels()
+        
+        if channel.id not in protected_channel_ids:
+            return await ctx.send(f"{channel.mention} is not a protected channel.")
+            
+        # Re-capture current permissions
+        await self.capture_protected_channel_permissions(ctx.guild, channel)
+        await ctx.send(f"✅ Current permissions for {channel.mention} have been captured as the new baseline.")
+
     @pruneset.command(name="settings")
     async def show_settings(self, ctx: commands.Context):
         """Show current prune settings."""
@@ -761,6 +977,7 @@ class Prune(commands.Cog):
         level_15_role_id = await self.config.guild(ctx.guild).level_15_role()
         lockdown_status = await self.config.guild(ctx.guild).lockdown_status()
         allowed_categories = await self.config.guild(ctx.guild).allowed_categories()
+        protected_channels = await self.config.guild(ctx.guild).protected_channels()
         
         staff_channel = ctx.guild.get_channel(staff_channel_id) if staff_channel_id else None
         staff_role = ctx.guild.get_role(staff_role_id) if staff_role_id else None
@@ -775,11 +992,12 @@ class Prune(commands.Cog):
         message += f"• Level 5 Role: {level_5_role.mention if level_5_role else 'Not set'}\n"
         message += f"• Level 15 Role: {level_15_role.mention if level_15_role else 'Not set'}\n"
         message += f"• Lockdown Status: {'Active' if lockdown_status else 'Inactive'}\n"
-        message += f"• Protected Categories: {len(allowed_categories)}"
+        message += f"• Protected Categories: {len(allowed_categories)}\n"
+        message += f"• Protected Channels: {len(protected_channels)}"
         
         await ctx.send(message)
         
-        # If there are too many categories to list in one message, show them in a separate message
+        # If there are categories to list, show them
         if allowed_categories:
             category_list = ""
             for cat_id in allowed_categories:
@@ -790,6 +1008,18 @@ class Prune(commands.Cog):
                     category_list += f"• Unknown Category (ID: {cat_id})\n"
                     
             await ctx.send(f"**Protected Categories:**\n{category_list}")
+            
+        # If there are protected channels to list, show them
+        if protected_channels:
+            channel_list = ""
+            for ch_id in protected_channels:
+                ch = ctx.guild.get_channel(ch_id)
+                if ch:
+                    channel_list += f"• {ch.mention} (ID: {ch.id})\n"
+                else:
+                    channel_list += f"• Unknown Channel (ID: {ch_id})\n"
+                    
+            await ctx.send(f"**Protected Channels:**\n{channel_list}")
 
     async def store_original_permissions(self, guild_id: int, category_id: int, default_role_id: int, permissions):
         """Store original permissions for a category to be restored later."""
