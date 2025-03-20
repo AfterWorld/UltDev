@@ -81,7 +81,18 @@ class Prune(commands.Cog):
             "level_5_role": None,   # Role ID for Level 5 lockdown
             "level_15_role": None,  # Role ID for Level 15 lockdown
             "lockdown_status": False,  # Is lockdown active
-            "lockdown_level": None  # Current lockdown level
+            "lockdown_level": None,  # Current lockdown level
+            "allowed_categories": [
+                1243536580212166666,  # grand line hq
+                1350967803435548712,  # media share
+                374126802836258817,   # one piece central
+                793834222284570664,   # ohara's library
+                802966896155688960,   # vega punk
+                1245221633518604359,  # games
+                1243539315523326024,  # talent
+                705907719466516541    # seas of bluestar
+            ],
+            "original_permissions": {}  # Store original permissions for restoration
         }
         self.config.register_guild(**default_guild)
         
@@ -577,6 +588,59 @@ class Prune(commands.Cog):
             await self.config.guild(ctx.guild).level_15_role.set(None)
             await ctx.send("Level 15 role configuration removed.")
 
+    @pruneset.command(name="categories")
+    async def set_lockdown_categories(self, ctx: commands.Context, *category_ids: int):
+        """Set which category IDs are affected by the shield command.
+        
+        Example: .pruneset categories 123456789 987654321
+        Leave empty to reset to default list.
+        """
+        if not category_ids:
+            # Reset to defaults
+            default_categories = [
+                1243536580212166666,  # grand line hq
+                1350967803435548712,  # media share
+                374126802836258817,   # one piece central
+                793834222284570664,   # ohara's library
+                802966896155688960,   # vega punk
+                1245221633518604359,  # games
+                1243539315523326024,  # talent
+                705907719466516541    # seas of bluestar
+            ]
+            await self.config.guild(ctx.guild).allowed_categories.set(default_categories)
+            
+            # Format category names for display
+            category_list = "\n".join([f"• {ctx.guild.get_channel(cat_id).name if ctx.guild.get_channel(cat_id) else f'Unknown ({cat_id})'}" 
+                                     for cat_id in default_categories])
+            
+            await ctx.send(f"Reset to default category list:\n{category_list}")
+            return
+            
+        # Validate that these are actual category IDs
+        valid_ids = []
+        invalid_ids = []
+        for cat_id in category_ids:
+            channel = ctx.guild.get_channel(cat_id)
+            if channel and isinstance(channel, discord.CategoryChannel):
+                valid_ids.append(cat_id)
+            else:
+                invalid_ids.append(cat_id)
+        
+        if invalid_ids:
+            await ctx.send(f"⚠️ Warning: {len(invalid_ids)} IDs are not valid categories: {', '.join(str(i) for i in invalid_ids)}")
+        
+        if not valid_ids:
+            await ctx.send("❌ No valid category IDs provided. Shield settings unchanged.")
+            return
+            
+        # Save the valid category IDs
+        await self.config.guild(ctx.guild).allowed_categories.set(valid_ids)
+        
+        # Format category names for display
+        category_list = "\n".join([f"• {ctx.guild.get_channel(cat_id).name}" for cat_id in valid_ids])
+        
+        await ctx.send(f"Shield will now only affect these categories:\n{category_list}")
+
     @pruneset.command(name="settings")
     async def show_settings(self, ctx: commands.Context):
         """Show current prune settings."""
@@ -586,6 +650,7 @@ class Prune(commands.Cog):
         level_5_role_id = await self.config.guild(ctx.guild).level_5_role()
         level_15_role_id = await self.config.guild(ctx.guild).level_15_role()
         lockdown_status = await self.config.guild(ctx.guild).lockdown_status()
+        allowed_categories = await self.config.guild(ctx.guild).allowed_categories()
         
         staff_channel = ctx.guild.get_channel(staff_channel_id) if staff_channel_id else None
         staff_role = ctx.guild.get_role(staff_role_id) if staff_role_id else None
@@ -599,43 +664,90 @@ class Prune(commands.Cog):
         message += f"• Silenced Role: {silenced_role.mention if silenced_role else 'Not set'}\n"
         message += f"• Level 5 Role: {level_5_role.mention if level_5_role else 'Not set'}\n"
         message += f"• Level 15 Role: {level_15_role.mention if level_15_role else 'Not set'}\n"
-        message += f"• Lockdown Status: {'Active' if lockdown_status else 'Inactive'}"
+        message += f"• Lockdown Status: {'Active' if lockdown_status else 'Inactive'}\n"
+        message += f"• Protected Categories: {len(allowed_categories)}"
         
         await ctx.send(message)
+        
+        # If there are too many categories to list in one message, show them in a separate message
+        if allowed_categories:
+            category_list = ""
+            for cat_id in allowed_categories:
+                cat = ctx.guild.get_channel(cat_id)
+                if cat:
+                    category_list += f"• {cat.name} (ID: {cat.id})\n"
+                else:
+                    category_list += f"• Unknown Category (ID: {cat_id})\n"
+                    
+            await ctx.send(f"**Protected Categories:**\n{category_list}")
+
+    async def store_original_permissions(self, guild_id: int, category_id: int, default_role_id: int, permissions):
+        """Store original permissions for a category to be restored later."""
+        async with self.config.guild_from_id(guild_id).original_permissions() as perms:
+            # Create a key combining category and role IDs
+            key = f"{category_id}:{default_role_id}"
+            
+            # Store the permissions
+            perms[key] = {
+                "send_messages": permissions.send_messages
+            }
+
+    async def get_original_permissions(self, guild_id: int, category_id: int, default_role_id: int):
+        """Get original permissions for a category."""
+        perms = await self.config.guild_from_id(guild_id).original_permissions()
+        key = f"{category_id}:{default_role_id}"
+        
+        if key in perms:
+            return perms[key]
+        return None
 
     async def lock_categories(self, ctx: commands.Context, role_id: int):
-        """Lock all categories for everyone except the specified role."""
+        """Lock specific categories for everyone except the specified role."""
         role = ctx.guild.get_role(role_id)
         if not role:
             await ctx.send("❌ The required role does not exist. Please check the role IDs or configure them with `pruneset`.")
             return False
 
+        # Get the allowed categories
+        allowed_category_ids = await self.config.guild(ctx.guild).allowed_categories()
+        
+        # Filter to get only valid category channels
+        valid_categories = []
+        for cat_id in allowed_category_ids:
+            cat = ctx.guild.get_channel(cat_id)
+            if cat and isinstance(cat, discord.CategoryChannel):
+                valid_categories.append(cat)
+        
+        if not valid_categories:
+            await ctx.send("❌ No valid categories found to lock. Please check category IDs.")
+            return False
+
         # Use a typing indicator during this potentially lengthy operation
         async with ctx.typing():
             # First, update progress message
-            status_msg = await ctx.send("🔒 Locking categories and syncing channels...")
+            status_msg = await ctx.send(f"🔒 Locking {len(valid_categories)} categories and syncing their channels...")
             
             # Process categories in parallel for better performance
             tasks = []
-            for category in ctx.guild.categories:
+            for category in valid_categories:
+                # Store original permissions before modifying
+                overwrites = category.overwrites_for(ctx.guild.default_role)
+                await self.store_original_permissions(
+                    ctx.guild.id, 
+                    category.id, 
+                    ctx.guild.default_role.id,
+                    overwrites
+                )
+                
+                # Lock the category
                 task = self.lock_single_category(category, ctx.guild.default_role, role)
                 tasks.append(task)
             
             # Wait for all category updates to complete
             await asyncio.gather(*tasks)
-            
-            # Also handle any channels not in a category
-            no_category_tasks = []
-            for channel in ctx.guild.text_channels:
-                if channel.category is None:  # Channel not in any category
-                    task = self.lock_single_channel(channel, ctx.guild.default_role, role)
-                    no_category_tasks.append(task)
-            
-            if no_category_tasks:
-                await asyncio.gather(*no_category_tasks)
-            
-            # Final success message
-            await status_msg.edit(content="✅ All categories and channels locked successfully!")
+                
+            # Final success message with count of affected categories
+            await status_msg.edit(content=f"✅ {len(valid_categories)} categories and their channels locked successfully!")
             
         return True
 
@@ -680,35 +792,80 @@ class Prune(commands.Cog):
             pass
 
     async def unlock_categories(self, ctx: commands.Context):
-        """Unlock all categories and channels not in categories."""
+        """Unlock specific categories by restoring original permissions."""
+        # Get the allowed categories
+        allowed_category_ids = await self.config.guild(ctx.guild).allowed_categories()
+        
+        # Get saved permissions
+        original_permissions = await self.config.guild(ctx.guild).original_permissions()
+        
+        # Filter to get only valid category channels
+        valid_categories = []
+        for cat_id in allowed_category_ids:
+            cat = ctx.guild.get_channel(cat_id)
+            if cat and isinstance(cat, discord.CategoryChannel):
+                valid_categories.append(cat)
+        
+        if not valid_categories:
+            await ctx.send("❌ No valid categories found to unlock. Please check category IDs.")
+            return False
+
         # Use a typing indicator during this potentially lengthy operation
         async with ctx.typing():
             # First, update progress message
-            status_msg = await ctx.send("🔓 Unlocking categories and syncing channels...")
+            status_msg = await ctx.send(f"🔓 Unlocking {len(valid_categories)} categories and restoring original permissions...")
             
             # Process categories in parallel
             tasks = []
-            for category in ctx.guild.categories:
-                task = self.unlock_single_category(category, ctx.guild.default_role)
+            for category in valid_categories:
+                # Get the original permissions
+                key = f"{category.id}:{ctx.guild.default_role.id}"
+                original_perms = original_permissions.get(key, None)
+                
+                # If we have original permissions, restore them
+                if original_perms:
+                    task = self.restore_category_permissions(category, ctx.guild.default_role, original_perms)
+                else:
+                    # Otherwise just reset to None (default)
+                    task = self.unlock_single_category(category, ctx.guild.default_role)
+                
                 tasks.append(task)
             
             # Wait for all category updates to complete
             await asyncio.gather(*tasks)
-            
-            # Also handle any channels not in a category
-            no_category_tasks = []
-            for channel in ctx.guild.text_channels:
-                if channel.category is None:  # Channel not in any category
-                    task = self.unlock_single_channel(channel, ctx.guild.default_role)
-                    no_category_tasks.append(task)
-            
-            if no_category_tasks:
-                await asyncio.gather(*no_category_tasks)
                 
+            # Clear stored permissions
+            await self.config.guild(ctx.guild).original_permissions.set({})
+            
             # Final success message
-            await status_msg.edit(content="✅ All categories and channels unlocked successfully!")
+            await status_msg.edit(content=f"✅ {len(valid_categories)} categories and their channels unlocked successfully!")
         
         return True
+
+    async def restore_category_permissions(self, category: discord.CategoryChannel, default_role: discord.Role, original_perms: dict):
+        """Restore original permissions for a category."""
+        try:
+            # Get current overwrites
+            overwrites = category.overwrites_for(default_role)
+            
+            # Restore original send_messages permission
+            if "send_messages" in original_perms:
+                overwrites.send_messages = original_perms["send_messages"]
+            else:
+                overwrites.send_messages = None
+                
+            # Apply the restored permissions
+            await category.set_permissions(default_role, overwrite=overwrites)
+            
+            # Make sure all channels in this category have sync permissions enabled
+            for channel in category.channels:
+                if isinstance(channel, discord.TextChannel):
+                    # If the channel doesn't have synced permissions, sync them
+                    if not channel.permissions_synced:
+                        await channel.edit(sync_permissions=True)
+        except Exception as e:
+            # Continue even if one category fails
+            pass
 
     async def unlock_single_category(self, category: discord.CategoryChannel, default_role: discord.Role):
         """Unlock a single category and ensure channels inherit the settings."""
