@@ -83,7 +83,7 @@ class Prune(commands.Cog):
             "lockdown_status": False,  # Is lockdown active
             "lockdown_level": None,  # Current lockdown level
             "protected_channels": [
-                # Protected from lockdowns
+                # Protected from lockdowns - Public Info Channels
                 708651385729712168,  # #polls
                 1343122472790261851, # #0-players-online
                 804926342780813312,  # #starboard
@@ -101,19 +101,54 @@ class Prune(commands.Cog):
                 1158862350288421025, # welcome
                 1342941591236640800, # opc-calendar
                 791251876871143424,  # game-news
-                688318774608265405   # #news
+                688318774608265405,  # #news
+                
+                # World Govt (Staff Channels)
+                1245278358212841513, # staff-guidelines
+                374144169200975873,  # staff-announcements
+                446381338195394592,  # staff-chat
+                657042293181644830,  # room-of-authority
+                1287233798542458890, # events-channel
+                1345122677328707784, # mc-staff
+                647895768715493437,  # test
+                748451591958429809,  # ults
+                1328272555731062828, # staffapps
+                
+                # Logs Channels
+                1245208777003634698, # ❗important-logs❗
+                797243926871277638,  # extendedlogs
+                663108140484657192,  # logs
+                802978426045726730,  # silenced
+                706497312154714172,  # 🔐-modlogs
+                1345059334501040139, # mc-logs
+                
+                # Miscellaneous Staff
+                644733907446792212,  # custom-commands
+                782600064370475060,  # discord-announcement
+                
+                # 10K Members Event
+                1302456376613671012, # 10k-member-event-🥳
+                
+                # Impel Down
+                1240104130454880316, # defender
+                1253856373381533806, # testnotify
+                
+                # Server Info
+                794882627953885234,  # elz-work-log
+                688324357378015252,  # server-info
+                688324397492207627,  # level-up-guide
+                688324320053035023,  # stats
+                793772405511684107,  # casino
+                801779804197355520   # economy
             ],
             "channel_permissions": {}  # Store permissions for channels
         }
         self.config.register_guild(**default_guild)
         
-        # In-memory cache with TTL and size limit
+        # Rest of initialization remains the same
         self.deleted_logs = TTLCache(ttl=86400, max_size=100)  # 24 hour TTL
-        
         self.logs_api_url = "https://api.mclo.gs/1/log"
         self.session = None
-        
-        # Rate limiting protection
         self.deletion_tasks = {}
         self.cooldowns = {}
 
@@ -719,6 +754,7 @@ class Prune(commands.Cog):
         if not channel_ids:
             # Reset to defaults
             default_channels = [
+                # Protected from lockdowns - Public Info Channels
                 708651385729712168,  # #polls
                 1343122472790261851, # #0-players-online
                 804926342780813312,  # #starboard
@@ -736,22 +772,88 @@ class Prune(commands.Cog):
                 1158862350288421025, # welcome
                 1342941591236640800, # opc-calendar
                 791251876871143424,  # game-news
-                688318774608265405   # #news
+                688318774608265405,  # #news
+                
+                # World Govt (Staff Channels)
+                1245278358212841513, # staff-guidelines
+                374144169200975873,  # staff-announcements
+                446381338195394592,  # staff-chat
+                657042293181644830,  # room-of-authority
+                1287233798542458890, # events-channel
+                1345122677328707784, # mc-staff
+                647895768715493437,  # test
+                748451591958429809,  # ults
+                1328272555731062828, # staffapps
+                
+                # Logs Channels
+                1245208777003634698, # ❗important-logs❗
+                797243926871277638,  # extendedlogs
+                663108140484657192,  # logs
+                802978426045726730,  # silenced
+                706497312154714172,  # 🔐-modlogs
+                1345059334501040139, # mc-logs
+                
+                # Miscellaneous Staff
+                644733907446792212,  # custom-commands
+                782600064370475060,  # discord-announcement
+                
+                # 10K Members Event
+                1302456376613671012, # 10k-member-event-🥳
+                
+                # Impel Down
+                1240104130454880316, # defender
+                1253856373381533806, # testnotify
+                
+                # Server Info
+                794882627953885234,  # elz-work-log
+                688324357378015252,  # server-info
+                688324397492207627,  # level-up-guide
+                688324320053035023,  # stats
+                793772405511684107,  # casino
+                801779804197355520   # economy
             ]
             await self.config.guild(ctx.guild).protected_channels.set(default_channels)
             
-            # Format channel names for display
-            channel_list = ""
-            for ch_id in default_channels:
-                ch = ctx.guild.get_channel(ch_id)
-                if ch:
-                    channel_list += f"• {ch.mention}\n"
-                else:
-                    channel_list += f"• Unknown Channel (ID: {ch_id})\n"
+            # Show a summary instead of listing all channels
+            await ctx.send(f"✅ Reset to default protected channels list with {len(default_channels)} channels.")
+            await ctx.send("The list includes essential info channels, staff channels, logs, and server info channels.")
             
-            await ctx.send(f"Reset to default protected channels list:\n{channel_list}")
+            # Ask if they want to see the full list
+            confirm_msg = await ctx.send("Would you like to see the complete list of protected channels? (yes/no)")
+            
+            def check(m):
+                return m.author == ctx.author and m.channel == ctx.channel and m.content.lower() in ["yes", "no", "y", "n"]
+            
+            try:
+                msg = await self.bot.wait_for("message", check=check, timeout=30.0)
+                if msg.content.lower() in ["yes", "y"]:
+                    # Format channel names for display in chunks to avoid message size limits
+                    chunks = []
+                    current_chunk = "**Protected Channels:**\n"
+                    
+                    for ch_id in default_channels:
+                        ch = ctx.guild.get_channel(ch_id)
+                        channel_text = f"• {ch.mention if ch else f'Unknown Channel (ID: {ch_id})'}\n"
+                        
+                        # Check if adding this would exceed Discord's message limit
+                        if len(current_chunk) + len(channel_text) > 1900:
+                            chunks.append(current_chunk)
+                            current_chunk = "**Protected Channels (continued):**\n"
+                        
+                        current_chunk += channel_text
+                    
+                    if current_chunk:
+                        chunks.append(current_chunk)
+                        
+                    # Send each chunk as a separate message
+                    for chunk in chunks:
+                        await ctx.send(chunk)
+            except asyncio.TimeoutError:
+                await confirm_msg.edit(content="Timed out. You can view settings with `pruneset settings`.")
+            
             return
             
+        # Rest of the code for custom channel IDs remains the same
         # Validate that these are actual channel IDs
         valid_ids = []
         invalid_ids = []
