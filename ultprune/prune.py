@@ -82,28 +82,28 @@ class Prune(commands.Cog):
             "level_15_role": None,  # Role ID for Level 15 lockdown
             "lockdown_status": False,  # Is lockdown active
             "lockdown_level": None,  # Current lockdown level
-            "allowed_categories": [
-                1243536580212166666,  # grand line hq
-                1350967803435548712,  # media share
-                374126802836258817,   # one piece central
-                793834222284570664,   # ohara's library
-                802966896155688960,   # vega punk
-                1245221633518604359,  # games
-                1243539315523326024,  # talent
-                705907719466516541    # seas of bluestar
-            ],
             "protected_channels": [
-                708651385729712168,  # #chart-polls
+                # Protected from lockdowns
+                708651385729712168,  # #polls
                 1343122472790261851, # #0-players-online
                 804926342780813312,  # #starboard
                 1287263954099240960, # #art-competition
                 1336392905568555070, # #launch-test-do-not-enter
                 802966392294080522,  # #sports
                 793834515213582367,  # #movies-tv-series
-                1228063343198208080  # #op-anime-only
+                1228063343198208080, # #op-anime-only
+                597837630872485911,  # #announcements
+                590972222366023718,  # #rules-and-info
+                655589140573847582,  # one-piece-updates
+                597528644432166948,  # #roles
+                374144563482198026,  # #flyingpandatv-content
+                1312008589061132288, # #server-partners
+                1158862350288421025, # welcome
+                1342941591236640800, # opc-calendar
+                791251876871143424,  # game-news
+                688318774608265405   # #news
             ],
-            "original_permissions": {},  # Store original permissions for restoration
-            "protected_channels_permissions": {}  # Store locked permissions for protected channels
+            "channel_permissions": {}  # Store permissions for channels
         }
         self.config.register_guild(**default_guild)
         
@@ -116,19 +116,13 @@ class Prune(commands.Cog):
         # Rate limiting protection
         self.deletion_tasks = {}
         self.cooldowns = {}
-        
-        # Schedule permission check task for protected channels
-        self.permission_check_task = None
 
     async def initialize(self):
-        """Initialize the aiohttp session and start background tasks."""
+        """Initialize the aiohttp session."""
         self.session = aiohttp.ClientSession()
-        
-        # Start the permission check task
-        self.permission_check_task = self.bot.loop.create_task(self.check_protected_channels_task())
 
     async def cog_unload(self):
-        """Clean up the aiohttp session on unload and cancel tasks."""
+        """Clean up the aiohttp session on unload."""
         if self.session:
             await self.session.close()
             
@@ -136,113 +130,7 @@ class Prune(commands.Cog):
         for task in self.deletion_tasks.values():
             if not task.done():
                 task.cancel()
-                
-        # Cancel the permission check task
-        if self.permission_check_task:
-            self.permission_check_task.cancel()
-            
-    async def check_protected_channels_task(self):
-        """Background task to periodically check and restore protected channel permissions."""
-        await self.bot.wait_until_ready()
-        while not self.bot.is_closed():
-            try:
-                # For each guild the bot is in
-                for guild in self.bot.guilds:
-                    await self.check_protected_channels(guild)
-                    
-                # Check every 5 minutes
-                await asyncio.sleep(300)
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                # Log error but don't stop the task
-                print(f"Error in check_protected_channels_task: {str(e)}")
-                await asyncio.sleep(300)
-                
-    async def check_protected_channels(self, guild):
-        """Check and restore permissions for protected channels in a guild."""
-        # Get the list of protected channel IDs
-        protected_channel_ids = await self.config.guild(guild).protected_channels()
-        if not protected_channel_ids:
-            return
-            
-        # Get the stored permissions for protected channels
-        protected_perms = await self.config.guild(guild).protected_channels_permissions()
-        
-        for channel_id in protected_channel_ids:
-            channel = guild.get_channel(channel_id)
-            if not channel or not isinstance(channel, discord.TextChannel):
-                continue
-                
-            # Check if we have stored permissions for this channel
-            key = str(channel_id)
-            if key not in protected_perms:
-                # Initial permission capture - storing the channel as locked
-                await self.capture_protected_channel_permissions(guild, channel)
-                continue
-                
-            # Check if permissions have changed and need to be restored
-            await self.check_and_restore_channel_permissions(guild, channel, protected_perms[key])
-            
-    async def capture_protected_channel_permissions(self, guild, channel):
-        """Store the current permissions for a protected channel."""
-        # Get current permissions for the default role
-        default_role = guild.default_role
-        overwrites = channel.overwrites_for(default_role)
-        
-        # Store these permissions
-        permissions_data = {
-            "send_messages": overwrites.send_messages,
-            "view_channel": overwrites.view_channel,
-            "add_reactions": overwrites.add_reactions,
-            "attach_files": overwrites.attach_files,
-            "embed_links": overwrites.embed_links
-        }
-        
-        # Save to the config
-        async with self.config.guild(guild).protected_channels_permissions() as perms:
-            perms[str(channel.id)] = permissions_data
-            
-        # Log to the staff channel that permissions were captured
-        await self.log_channel_protection(guild, channel, "Protected channel permissions have been captured")
-        
-    async def check_and_restore_channel_permissions(self, guild, channel, stored_permissions):
-        """Check if channel permissions have changed and restore if needed."""
-        default_role = guild.default_role
-        current_overwrites = channel.overwrites_for(default_role)
-        
-        # Check if any of the important permissions have changed
-        permissions_changed = False
-        for perm_name, stored_value in stored_permissions.items():
-            current_value = getattr(current_overwrites, perm_name, None)
-            if current_value != stored_value:
-                permissions_changed = True
-                break
-                
-        if not permissions_changed:
-            return
-            
-        # Permissions have changed - restore them
-        for perm_name, stored_value in stored_permissions.items():
-            setattr(current_overwrites, perm_name, stored_value)
-            
-        # Apply the restored permissions
-        await channel.set_permissions(default_role, overwrite=current_overwrites)
-        
-        # Log to the staff channel that permissions were restored
-        await self.log_channel_protection(guild, channel, "Protected channel permissions have been restored")
-        
-    async def log_channel_protection(self, guild, channel, message):
-        """Log channel protection actions to the staff channel."""
-        staff_channel_id = await self.config.guild(guild).staff_channel()
-        if not staff_channel_id:
-            return
-            
-        staff_channel = guild.get_channel(staff_channel_id)
-        if not staff_channel:
-            return
-            
-        await staff_channel.send(f"🔒 **Channel Protection**: {message} for {channel.mention}")
+
     async def upload_to_logs_service(self, content: str, title: str = "Prune logs") -> str:
         """Upload content to mclo.gs and return the URL."""
         # Add a title to the content
@@ -821,62 +709,9 @@ class Prune(commands.Cog):
             await self.config.guild(ctx.guild).level_15_role.set(None)
             await ctx.send("Level 15 role configuration removed.")
 
-    @pruneset.command(name="categories")
-    async def set_lockdown_categories(self, ctx: commands.Context, *category_ids: int):
-        """Set which category IDs are affected by the shield command.
-        
-        Example: .pruneset categories 123456789 987654321
-        Leave empty to reset to default list.
-        """
-        if not category_ids:
-            # Reset to defaults
-            default_categories = [
-                1243536580212166666,  # grand line hq
-                1350967803435548712,  # media share
-                374126802836258817,   # one piece central
-                793834222284570664,   # ohara's library
-                802966896155688960,   # vega punk
-                1245221633518604359,  # games
-                1243539315523326024,  # talent
-                705907719466516541    # seas of bluestar
-            ]
-            await self.config.guild(ctx.guild).allowed_categories.set(default_categories)
-            
-            # Format category names for display
-            category_list = "\n".join([f"• {ctx.guild.get_channel(cat_id).name if ctx.guild.get_channel(cat_id) else f'Unknown ({cat_id})'}" 
-                                     for cat_id in default_categories])
-            
-            await ctx.send(f"Reset to default category list:\n{category_list}")
-            return
-            
-        # Validate that these are actual category IDs
-        valid_ids = []
-        invalid_ids = []
-        for cat_id in category_ids:
-            channel = ctx.guild.get_channel(cat_id)
-            if channel and isinstance(channel, discord.CategoryChannel):
-                valid_ids.append(cat_id)
-            else:
-                invalid_ids.append(cat_id)
-        
-        if invalid_ids:
-            await ctx.send(f"⚠️ Warning: {len(invalid_ids)} IDs are not valid categories: {', '.join(str(i) for i in invalid_ids)}")
-        
-        if not valid_ids:
-            await ctx.send("❌ No valid category IDs provided. Shield settings unchanged.")
-            return
-            
-        # Save the valid category IDs
-        await self.config.guild(ctx.guild).allowed_categories.set(valid_ids)
-        
-        # Format category names for display
-        category_list = "\n".join([f"• {ctx.guild.get_channel(cat_id).name}" for cat_id in valid_ids])
-        
-        await ctx.send(f"Shield will now only affect these categories:\n{category_list}")
-
     @pruneset.command(name="protectedchannels")
     async def set_protected_channels(self, ctx: commands.Context, *channel_ids: int):
-        """Set which channel IDs should be protected from permission changes.
+        """Set which channel IDs should be protected from lockdowns.
         
         Example: .pruneset protectedchannels 123456789 987654321
         Leave empty to reset to default list.
@@ -884,29 +719,37 @@ class Prune(commands.Cog):
         if not channel_ids:
             # Reset to defaults
             default_channels = [
-                708651385729712168,  # #chart-polls
+                708651385729712168,  # #polls
                 1343122472790261851, # #0-players-online
                 804926342780813312,  # #starboard
                 1287263954099240960, # #art-competition
                 1336392905568555070, # #launch-test-do-not-enter
                 802966392294080522,  # #sports
                 793834515213582367,  # #movies-tv-series
-                1228063343198208080  # #op-anime-only
+                1228063343198208080, # #op-anime-only
+                597837630872485911,  # #announcements
+                590972222366023718,  # #rules-and-info
+                655589140573847582,  # one-piece-updates
+                597528644432166948,  # #roles
+                374144563482198026,  # #flyingpandatv-content
+                1312008589061132288, # #server-partners
+                1158862350288421025, # welcome
+                1342941591236640800, # opc-calendar
+                791251876871143424,  # game-news
+                688318774608265405   # #news
             ]
             await self.config.guild(ctx.guild).protected_channels.set(default_channels)
             
             # Format channel names for display
-            channel_list = "\n".join([f"• {ctx.guild.get_channel(ch_id).mention if ctx.guild.get_channel(ch_id) else f'Unknown ({ch_id})'}" 
-                                    for ch_id in default_channels])
+            channel_list = ""
+            for ch_id in default_channels:
+                ch = ctx.guild.get_channel(ch_id)
+                if ch:
+                    channel_list += f"• {ch.mention}\n"
+                else:
+                    channel_list += f"• Unknown Channel (ID: {ch_id})\n"
             
             await ctx.send(f"Reset to default protected channels list:\n{channel_list}")
-            
-            # Capture initial permissions
-            for ch_id in default_channels:
-                channel = ctx.guild.get_channel(ch_id)
-                if channel and isinstance(channel, discord.TextChannel):
-                    await self.capture_protected_channel_permissions(ctx.guild, channel)
-            
             return
             
         # Validate that these are actual channel IDs
@@ -932,40 +775,7 @@ class Prune(commands.Cog):
         # Format channel names for display
         channel_list = "\n".join([f"• {ctx.guild.get_channel(ch_id).mention}" for ch_id in valid_ids])
         
-        await ctx.send(f"These channels will now be protected from permission changes:\n{channel_list}")
-        
-        # Capture initial permissions for all new channels
-        for ch_id in valid_ids:
-            channel = ctx.guild.get_channel(ch_id)
-            await self.capture_protected_channel_permissions(ctx.guild, channel)
-            
-    @pruneset.command(name="checkprotected")
-    async def check_protected_now(self, ctx: commands.Context):
-        """Manually trigger a check of protected channel permissions."""
-        protected_channel_ids = await self.config.guild(ctx.guild).protected_channels()
-        
-        if not protected_channel_ids:
-            return await ctx.send("No protected channels are configured.")
-            
-        async with ctx.typing():
-            status_msg = await ctx.send("🔍 Checking protected channel permissions...")
-            await self.check_protected_channels(ctx.guild)
-            await status_msg.edit(content="✅ Protected channel permissions have been checked and restored if needed.")
-            
-    @pruneset.command(name="resetprotected")
-    async def reset_protected_permissions(self, ctx: commands.Context, channel: discord.TextChannel):
-        """Reset stored permissions for a protected channel.
-        
-        Use this if you intentionally want to change a protected channel's permissions.
-        """
-        protected_channel_ids = await self.config.guild(ctx.guild).protected_channels()
-        
-        if channel.id not in protected_channel_ids:
-            return await ctx.send(f"{channel.mention} is not a protected channel.")
-            
-        # Re-capture current permissions
-        await self.capture_protected_channel_permissions(ctx.guild, channel)
-        await ctx.send(f"✅ Current permissions for {channel.mention} have been captured as the new baseline.")
+        await ctx.send(f"These channels will now be protected from lockdowns:\n{channel_list}")
 
     @pruneset.command(name="settings")
     async def show_settings(self, ctx: commands.Context):
@@ -976,7 +786,6 @@ class Prune(commands.Cog):
         level_5_role_id = await self.config.guild(ctx.guild).level_5_role()
         level_15_role_id = await self.config.guild(ctx.guild).level_15_role()
         lockdown_status = await self.config.guild(ctx.guild).lockdown_status()
-        allowed_categories = await self.config.guild(ctx.guild).allowed_categories()
         protected_channels = await self.config.guild(ctx.guild).protected_channels()
         
         staff_channel = ctx.guild.get_channel(staff_channel_id) if staff_channel_id else None
@@ -992,131 +801,91 @@ class Prune(commands.Cog):
         message += f"• Level 5 Role: {level_5_role.mention if level_5_role else 'Not set'}\n"
         message += f"• Level 15 Role: {level_15_role.mention if level_15_role else 'Not set'}\n"
         message += f"• Lockdown Status: {'Active' if lockdown_status else 'Inactive'}\n"
-        message += f"• Protected Categories: {len(allowed_categories)}\n"
         message += f"• Protected Channels: {len(protected_channels)}"
         
         await ctx.send(message)
-        
-        # If there are categories to list, show them
-        if allowed_categories:
-            category_list = ""
-            for cat_id in allowed_categories:
-                cat = ctx.guild.get_channel(cat_id)
-                if cat:
-                    category_list += f"• {cat.name} (ID: {cat.id})\n"
-                else:
-                    category_list += f"• Unknown Category (ID: {cat_id})\n"
-                    
-            await ctx.send(f"**Protected Categories:**\n{category_list}")
             
-        # If there are protected channels to list, show them
+        # If there are protected channels to list, show them in chunks to avoid message size limits
         if protected_channels:
-            channel_list = ""
+            chunks = []
+            current_chunk = "**Protected Channels:**\n"
+            
             for ch_id in protected_channels:
                 ch = ctx.guild.get_channel(ch_id)
-                if ch:
-                    channel_list += f"• {ch.mention} (ID: {ch.id})\n"
-                else:
-                    channel_list += f"• Unknown Channel (ID: {ch_id})\n"
-                    
-            await ctx.send(f"**Protected Channels:**\n{channel_list}")
-
-    async def store_original_permissions(self, guild_id: int, category_id: int, default_role_id: int, permissions):
-        """Store original permissions for a category to be restored later."""
-        async with self.config.guild_from_id(guild_id).original_permissions() as perms:
-            # Create a key combining category and role IDs
-            key = f"{category_id}:{default_role_id}"
+                channel_text = f"• {ch.mention if ch else f'Unknown Channel (ID: {ch_id})'}\n"
+                
+                # Check if adding this would exceed Discord's message limit
+                if len(current_chunk) + len(channel_text) > 1900:
+                    chunks.append(current_chunk)
+                    current_chunk = "**Protected Channels (continued):**\n"
+                
+                current_chunk += channel_text
             
-            # Store the permissions
-            perms[key] = {
-                "send_messages": permissions.send_messages
-            }
+            if current_chunk:
+                chunks.append(current_chunk)
+                
+            # Send each chunk as a separate message
+            for chunk in chunks:
+                await ctx.send(chunk)
 
-    async def get_original_permissions(self, guild_id: int, category_id: int, default_role_id: int):
-        """Get original permissions for a category."""
-        perms = await self.config.guild_from_id(guild_id).original_permissions()
-        key = f"{category_id}:{default_role_id}"
-        
-        if key in perms:
-            return perms[key]
-        return None
-
-    async def lock_categories(self, ctx: commands.Context, role_id: int):
-        """Lock specific categories for everyone except the specified role."""
+    async def lock_channels(self, ctx: commands.Context, role_id: int):
+        """Lock all text channels except protected ones."""
         role = ctx.guild.get_role(role_id)
         if not role:
             await ctx.send("❌ The required role does not exist. Please check the role IDs or configure them with `pruneset`.")
             return False
 
-        # Get the allowed categories
-        allowed_category_ids = await self.config.guild(ctx.guild).allowed_categories()
+        # Get the protected channels list
+        protected_channel_ids = await self.config.guild(ctx.guild).protected_channels()
         
-        # Filter to get only valid category channels
-        valid_categories = []
-        for cat_id in allowed_category_ids:
-            cat = ctx.guild.get_channel(cat_id)
-            if cat and isinstance(cat, discord.CategoryChannel):
-                valid_categories.append(cat)
+        # Get all text channels that aren't protected
+        channels_to_lock = [
+            channel for channel in ctx.guild.text_channels 
+            if channel.id not in protected_channel_ids and 
+            channel.permissions_for(ctx.guild.me).manage_channels
+        ]
         
-        if not valid_categories:
-            await ctx.send("❌ No valid categories found to lock. Please check category IDs.")
+        if not channels_to_lock:
+            await ctx.send("❌ No channels found to lock.")
             return False
 
+        total_channels = len(channels_to_lock)
+        processed = 0
+        
         # Use a typing indicator during this potentially lengthy operation
         async with ctx.typing():
-            # First, update progress message
-            status_msg = await ctx.send(f"🔒 Locking {len(valid_categories)} categories and syncing their channels...")
+            # Initial status message
+            status_msg = await ctx.send(f"🔒 Locking channels... (0/{total_channels})")
             
-            # Process categories in parallel for better performance
-            tasks = []
-            for category in valid_categories:
-                # Store original permissions before modifying
-                overwrites = category.overwrites_for(ctx.guild.default_role)
-                await self.store_original_permissions(
-                    ctx.guild.id, 
-                    category.id, 
-                    ctx.guild.default_role.id,
-                    overwrites
-                )
+            # Process channels in chunks for better performance
+            chunk_size = 5
+            for i in range(0, len(channels_to_lock), chunk_size):
+                chunk = channels_to_lock[i:i+chunk_size]
                 
-                # Lock the category
-                task = self.lock_single_category(category, ctx.guild.default_role, role)
-                tasks.append(task)
-            
-            # Wait for all category updates to complete
-            await asyncio.gather(*tasks)
+                # Process this chunk of channels concurrently
+                tasks = []
+                for channel in chunk:
+                    task = self.lock_single_channel(channel, ctx.guild.default_role, role)
+                    tasks.append(task)
                 
-            # Final success message with count of affected categories
-            await status_msg.edit(content=f"✅ {len(valid_categories)} categories and their channels locked successfully!")
+                # Wait for all tasks in this chunk to complete
+                await asyncio.gather(*tasks)
+                
+                # Update progress counter
+                processed += len(chunk)
+                await status_msg.edit(content=f"🔒 Locking channels... ({processed}/{total_channels})")
+                
+                # Brief pause to avoid rate limits
+                if i + chunk_size < len(channels_to_lock):
+                    await asyncio.sleep(1)
+                
+            # Final success message
+            await status_msg.edit(content=f"✅ Lockdown complete! {processed} channels locked successfully.")
             
         return True
-
-    async def lock_single_category(self, category: discord.CategoryChannel, default_role: discord.Role, allowed_role: discord.Role):
-        """Lock a single category and ensure channels inherit the settings."""
-        try:
-            # Update permissions for the default role at category level
-            overwrites = category.overwrites_for(default_role)
-            overwrites.send_messages = False
-            await category.set_permissions(default_role, overwrite=overwrites)
-            
-            # Update permissions for the allowed role at category level
-            overwrites = category.overwrites_for(allowed_role)
-            overwrites.send_messages = True
-            await category.set_permissions(allowed_role, overwrite=overwrites)
-            
-            # Make sure all channels in this category have sync permissions enabled
-            for channel in category.channels:
-                if isinstance(channel, discord.TextChannel):
-                    # If the channel doesn't have synced permissions, sync them
-                    if not channel.permissions_synced:
-                        await channel.edit(sync_permissions=True)
-                        
-        except Exception as e:
-            # Continue even if one category fails
-            pass
-
+    
     async def lock_single_channel(self, channel: discord.TextChannel, default_role: discord.Role, allowed_role: discord.Role):
-        """Lock a single text channel that's not in a category."""
+        """Lock a single text channel."""
         try:
             # Update permissions for the default role
             overwrites = channel.overwrites_for(default_role)
@@ -1130,103 +899,60 @@ class Prune(commands.Cog):
         except Exception as e:
             # Continue even if one channel fails
             pass
-
-    async def unlock_categories(self, ctx: commands.Context):
-        """Unlock specific categories by restoring original permissions."""
-        # Get the allowed categories
-        allowed_category_ids = await self.config.guild(ctx.guild).allowed_categories()
+            
+    async def unlock_channels(self, ctx: commands.Context):
+        """Unlock all text channels except protected ones."""
+        # Get the protected channels list
+        protected_channel_ids = await self.config.guild(ctx.guild).protected_channels()
         
-        # Get saved permissions
-        original_permissions = await self.config.guild(ctx.guild).original_permissions()
+        # Get all text channels that aren't protected
+        channels_to_unlock = [
+            channel for channel in ctx.guild.text_channels 
+            if channel.id not in protected_channel_ids and
+            channel.permissions_for(ctx.guild.me).manage_channels
+        ]
         
-        # Filter to get only valid category channels
-        valid_categories = []
-        for cat_id in allowed_category_ids:
-            cat = ctx.guild.get_channel(cat_id)
-            if cat and isinstance(cat, discord.CategoryChannel):
-                valid_categories.append(cat)
-        
-        if not valid_categories:
-            await ctx.send("❌ No valid categories found to unlock. Please check category IDs.")
+        if not channels_to_unlock:
+            await ctx.send("❌ No channels found to unlock.")
             return False
 
+        total_channels = len(channels_to_unlock)
+        processed = 0
+        
         # Use a typing indicator during this potentially lengthy operation
         async with ctx.typing():
-            # First, update progress message
-            status_msg = await ctx.send(f"🔓 Unlocking {len(valid_categories)} categories and restoring original permissions...")
+            # Initial status message
+            status_msg = await ctx.send(f"🔓 Unlocking channels... (0/{total_channels})")
             
-            # Process categories in parallel
-            tasks = []
-            for category in valid_categories:
-                # Get the original permissions
-                key = f"{category.id}:{ctx.guild.default_role.id}"
-                original_perms = original_permissions.get(key, None)
+            # Process channels in chunks for better performance
+            chunk_size = 5
+            for i in range(0, len(channels_to_unlock), chunk_size):
+                chunk = channels_to_unlock[i:i+chunk_size]
                 
-                # If we have original permissions, restore them
-                if original_perms:
-                    task = self.restore_category_permissions(category, ctx.guild.default_role, original_perms)
-                else:
-                    # Otherwise just reset to None (default)
-                    task = self.unlock_single_category(category, ctx.guild.default_role)
+                # Process this chunk of channels concurrently
+                tasks = []
+                for channel in chunk:
+                    task = self.unlock_single_channel(channel, ctx.guild.default_role)
+                    tasks.append(task)
                 
-                tasks.append(task)
-            
-            # Wait for all category updates to complete
-            await asyncio.gather(*tasks)
+                # Wait for all tasks in this chunk to complete
+                await asyncio.gather(*tasks)
                 
-            # Clear stored permissions
-            await self.config.guild(ctx.guild).original_permissions.set({})
-            
+                # Update progress counter
+                processed += len(chunk)
+                await status_msg.edit(content=f"🔓 Unlocking channels... ({processed}/{total_channels})")
+                
+                # Brief pause to avoid rate limits
+                if i + chunk_size < len(channels_to_unlock):
+                    await asyncio.sleep(1)
+                
             # Final success message
-            await status_msg.edit(content=f"✅ {len(valid_categories)} categories and their channels unlocked successfully!")
-        
+            await status_msg.edit(content=f"✅ Lockdown deactivated! {processed} channels unlocked successfully.")
+            
         return True
-
-    async def restore_category_permissions(self, category: discord.CategoryChannel, default_role: discord.Role, original_perms: dict):
-        """Restore original permissions for a category."""
-        try:
-            # Get current overwrites
-            overwrites = category.overwrites_for(default_role)
-            
-            # Restore original send_messages permission
-            if "send_messages" in original_perms:
-                overwrites.send_messages = original_perms["send_messages"]
-            else:
-                overwrites.send_messages = None
-                
-            # Apply the restored permissions
-            await category.set_permissions(default_role, overwrite=overwrites)
-            
-            # Make sure all channels in this category have sync permissions enabled
-            for channel in category.channels:
-                if isinstance(channel, discord.TextChannel):
-                    # If the channel doesn't have synced permissions, sync them
-                    if not channel.permissions_synced:
-                        await channel.edit(sync_permissions=True)
-        except Exception as e:
-            # Continue even if one category fails
-            pass
-
-    async def unlock_single_category(self, category: discord.CategoryChannel, default_role: discord.Role):
-        """Unlock a single category and ensure channels inherit the settings."""
-        try:
-            # Reset permissions for the default role
-            overwrites = category.overwrites_for(default_role)
-            overwrites.send_messages = None  # Reset to default
-            await category.set_permissions(default_role, overwrite=overwrites)
-            
-            # Make sure all channels in this category have sync permissions enabled
-            for channel in category.channels:
-                if isinstance(channel, discord.TextChannel):
-                    # If the channel doesn't have synced permissions, sync them
-                    if not channel.permissions_synced:
-                        await channel.edit(sync_permissions=True)
-        except Exception as e:
-            # Continue even if one category fails
-            pass
-
+    
     async def unlock_single_channel(self, channel: discord.TextChannel, default_role: discord.Role):
-        """Unlock a single text channel that's not in a category."""
+        """Unlock a single text channel."""
         try:
             # Reset permissions for the default role
             overwrites = channel.overwrites_for(default_role)
@@ -1248,6 +974,7 @@ class Prune(commands.Cog):
         - `.shield activate 5` - Only Level 5+ users can talk
         - `.shield activate 15` - Only Level 15+ users can talk
         - `.shield deactivate` - End lockdown mode
+        - `.shield status` - Check current lockdown status
         """
         if action.lower() == "activate" and level in [5, 15]:
             # Get the appropriate role
@@ -1267,7 +994,7 @@ class Prune(commands.Cog):
             status_msg = await ctx.send(f"🛡️ **Activating Lockdown:** Only users with `Level {level}+` can talk.")
             
             # Lock the server
-            success = await self.lock_categories(ctx, role_id)
+            success = await self.lock_channels(ctx, role_id)
             if not success:
                 return
             
@@ -1290,7 +1017,7 @@ class Prune(commands.Cog):
             status_msg = await ctx.send("🛡️ **Deactivating Lockdown**...")
             
             # Unlock the server
-            success = await self.unlock_categories(ctx)
+            success = await self.unlock_channels(ctx)
             if not success:
                 return
             
