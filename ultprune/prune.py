@@ -77,7 +77,11 @@ class Prune(commands.Cog):
             "staff_channel": None,
             "staff_role": None,
             "log_refs": {},  # Store log references in the database
-            "silenced_role": None  # Store the silenced role ID
+            "silenced_role": None,  # Store the silenced role ID
+            "level_5_role": None,   # Role ID for Level 5 lockdown
+            "level_15_role": None,  # Role ID for Level 15 lockdown
+            "lockdown_status": False,  # Is lockdown active
+            "lockdown_level": None  # Current lockdown level
         }
         self.config.register_guild(**default_guild)
         
@@ -553,23 +557,245 @@ class Prune(commands.Cog):
             await self.config.guild(ctx.guild).silenced_role.set(None)
             await ctx.send("Silenced role configuration removed.")
 
+    @pruneset.command(name="level5role")
+    async def set_level5_role(self, ctx: commands.Context, role: discord.Role = None):
+        """Set the Level 5 role for the shield command."""
+        if role:
+            await self.config.guild(ctx.guild).level_5_role.set(role.id)
+            await ctx.send(f"Level 5 role set to {role.mention}.")
+        else:
+            await self.config.guild(ctx.guild).level_5_role.set(None)
+            await ctx.send("Level 5 role configuration removed.")
+
+    @pruneset.command(name="level15role")
+    async def set_level15_role(self, ctx: commands.Context, role: discord.Role = None):
+        """Set the Level 15 role for the shield command."""
+        if role:
+            await self.config.guild(ctx.guild).level_15_role.set(role.id)
+            await ctx.send(f"Level 15 role set to {role.mention}.")
+        else:
+            await self.config.guild(ctx.guild).level_15_role.set(None)
+            await ctx.send("Level 15 role configuration removed.")
+
     @pruneset.command(name="settings")
     async def show_settings(self, ctx: commands.Context):
         """Show current prune settings."""
         staff_channel_id = await self.config.guild(ctx.guild).staff_channel()
         staff_role_id = await self.config.guild(ctx.guild).staff_role()
         silenced_role_id = await self.config.guild(ctx.guild).silenced_role()
+        level_5_role_id = await self.config.guild(ctx.guild).level_5_role()
+        level_15_role_id = await self.config.guild(ctx.guild).level_15_role()
+        lockdown_status = await self.config.guild(ctx.guild).lockdown_status()
         
         staff_channel = ctx.guild.get_channel(staff_channel_id) if staff_channel_id else None
         staff_role = ctx.guild.get_role(staff_role_id) if staff_role_id else None
         silenced_role = ctx.guild.get_role(silenced_role_id) if silenced_role_id else None
+        level_5_role = ctx.guild.get_role(level_5_role_id) if level_5_role_id else None
+        level_15_role = ctx.guild.get_role(level_15_role_id) if level_15_role_id else None
         
         message = "**Current Prune Settings**\n"
         message += f"• Staff Channel: {staff_channel.mention if staff_channel else 'Not set'}\n"
         message += f"• Staff Role: {staff_role.mention if staff_role else 'Not set'}\n"
-        message += f"• Silenced Role: {silenced_role.mention if silenced_role else 'Not set'}"
+        message += f"• Silenced Role: {silenced_role.mention if silenced_role else 'Not set'}\n"
+        message += f"• Level 5 Role: {level_5_role.mention if level_5_role else 'Not set'}\n"
+        message += f"• Level 15 Role: {level_15_role.mention if level_15_role else 'Not set'}\n"
+        message += f"• Lockdown Status: {'Active' if lockdown_status else 'Inactive'}"
         
         await ctx.send(message)
+
+    async def lock_categories(self, ctx: commands.Context, role_id: int):
+        """Lock all categories for everyone except the specified role."""
+        role = ctx.guild.get_role(role_id)
+        if not role:
+            await ctx.send("❌ The required role does not exist. Please check the role IDs or configure them with `pruneset`.")
+            return False
+
+        # Use a typing indicator during this potentially lengthy operation
+        async with ctx.typing():
+            # Process categories in parallel for better performance
+            tasks = []
+            for category in ctx.guild.categories:
+                task = self.lock_single_category(category, ctx.guild.default_role, role)
+                tasks.append(task)
+            
+            # Wait for all category updates to complete
+            await asyncio.gather(*tasks)
+            
+            # Also handle any channels not in a category
+            no_category_tasks = []
+            for channel in ctx.guild.text_channels:
+                if channel.category is None:  # Channel not in any category
+                    task = self.lock_single_channel(channel, ctx.guild.default_role, role)
+                    no_category_tasks.append(task)
+            
+            if no_category_tasks:
+                await asyncio.gather(*no_category_tasks)
+            
+        return True
+
+    async def lock_single_category(self, category: discord.CategoryChannel, default_role: discord.Role, allowed_role: discord.Role):
+        """Lock a single category."""
+        try:
+            # Update permissions for the default role
+            overwrites = category.overwrites_for(default_role)
+            overwrites.send_messages = False
+            await category.set_permissions(default_role, overwrite=overwrites)
+            
+            # Update permissions for the allowed role
+            overwrites = category.overwrites_for(allowed_role)
+            overwrites.send_messages = True
+            await category.set_permissions(allowed_role, overwrite=overwrites)
+        except Exception as e:
+            # Continue even if one category fails
+            pass
+
+    async def lock_single_channel(self, channel: discord.TextChannel, default_role: discord.Role, allowed_role: discord.Role):
+        """Lock a single text channel that's not in a category."""
+        try:
+            # Update permissions for the default role
+            overwrites = channel.overwrites_for(default_role)
+            overwrites.send_messages = False
+            await channel.set_permissions(default_role, overwrite=overwrites)
+            
+            # Update permissions for the allowed role
+            overwrites = channel.overwrites_for(allowed_role)
+            overwrites.send_messages = True
+            await channel.set_permissions(allowed_role, overwrite=overwrites)
+        except Exception as e:
+            # Continue even if one channel fails
+            pass
+
+    async def unlock_categories(self, ctx: commands.Context):
+        """Unlock all categories and channels not in categories."""
+        # Use a typing indicator during this potentially lengthy operation
+        async with ctx.typing():
+            # Process categories in parallel
+            tasks = []
+            for category in ctx.guild.categories:
+                task = self.unlock_single_category(category, ctx.guild.default_role)
+                tasks.append(task)
+            
+            # Wait for all category updates to complete
+            await asyncio.gather(*tasks)
+            
+            # Also handle any channels not in a category
+            no_category_tasks = []
+            for channel in ctx.guild.text_channels:
+                if channel.category is None:  # Channel not in any category
+                    task = self.unlock_single_channel(channel, ctx.guild.default_role)
+                    no_category_tasks.append(task)
+            
+            if no_category_tasks:
+                await asyncio.gather(*no_category_tasks)
+        
+        return True
+
+    async def unlock_single_category(self, category: discord.CategoryChannel, default_role: discord.Role):
+        """Unlock a single category."""
+        try:
+            # Reset permissions for the default role
+            overwrites = category.overwrites_for(default_role)
+            overwrites.send_messages = None  # Reset to default
+            await category.set_permissions(default_role, overwrite=overwrites)
+        except Exception as e:
+            # Continue even if one category fails
+            pass
+
+    async def unlock_single_channel(self, channel: discord.TextChannel, default_role: discord.Role):
+        """Unlock a single text channel that's not in a category."""
+        try:
+            # Reset permissions for the default role
+            overwrites = channel.overwrites_for(default_role)
+            overwrites.send_messages = None  # Reset to default
+            await channel.set_permissions(default_role, overwrite=overwrites)
+        except Exception as e:
+            # Continue even if one channel fails
+            pass
+
+    @commands.cooldown(1, 15, commands.BucketType.guild)
+    @commands.mod()
+    @commands.guild_only()
+    @commands.command()
+    async def shield(self, ctx: commands.Context, action: str, level: Optional[int] = None):
+        """
+        Activate or deactivate server lockdown mode.
+        
+        Examples:
+        - `.shield activate 5` - Only Level 5+ users can talk
+        - `.shield activate 15` - Only Level 15+ users can talk
+        - `.shield deactivate` - End lockdown mode
+        """
+        if action.lower() == "activate" and level in [5, 15]:
+            # Get the appropriate role
+            role_id = None
+            if level == 5:
+                role_id = await self.config.guild(ctx.guild).level_5_role()
+                if not role_id:
+                    await ctx.send("❌ Level 5 role not configured. Use `pruneset level5role` to set it.")
+                    return
+            else:  # level == 15
+                role_id = await self.config.guild(ctx.guild).level_15_role()
+                if not role_id:
+                    await ctx.send("❌ Level 15 role not configured. Use `pruneset level15role` to set it.")
+                    return
+            
+            # Initial message
+            status_msg = await ctx.send(f"🛡️ **Activating Lockdown:** Only users with `Level {level}+` can talk.")
+            
+            # Lock the server
+            success = await self.lock_categories(ctx, role_id)
+            if not success:
+                return
+            
+            # Update status
+            await status_msg.edit(content=f"🛡️ **Lockdown Activated:** Only users with `Level {level}+` can talk.")
+            
+            # Store lockdown state
+            await self.config.guild(ctx.guild).lockdown_status.set(True)
+            await self.config.guild(ctx.guild).lockdown_level.set(level)
+            
+            # Send to staff channel if configured
+            staff_channel_id = await self.config.guild(ctx.guild).staff_channel()
+            if staff_channel_id:
+                staff_channel = ctx.guild.get_channel(staff_channel_id)
+                if staff_channel:
+                    await staff_channel.send(f"🛡️ **SERVER LOCKDOWN ACTIVATED**\n• Moderator: {ctx.author.mention}\n• Level: {level}+\n• All other users cannot send messages.")
+        
+        elif action.lower() == "deactivate":
+            # Initial message
+            status_msg = await ctx.send("🛡️ **Deactivating Lockdown**...")
+            
+            # Unlock the server
+            success = await self.unlock_categories(ctx)
+            if not success:
+                return
+            
+            # Update status
+            await status_msg.edit(content="❌ **Lockdown Deactivated:** All users can talk again.")
+            
+            # Store lockdown state
+            await self.config.guild(ctx.guild).lockdown_status.set(False)
+            await self.config.guild(ctx.guild).lockdown_level.set(None)
+            
+            # Send to staff channel if configured
+            staff_channel_id = await self.config.guild(ctx.guild).staff_channel()
+            if staff_channel_id:
+                staff_channel = ctx.guild.get_channel(staff_channel_id)
+                if staff_channel:
+                    await staff_channel.send(f"❌ **SERVER LOCKDOWN DEACTIVATED**\n• Moderator: {ctx.author.mention}\n• All users can send messages again.")
+        
+        elif action.lower() == "status":
+            # Check current lockdown status
+            lockdown_status = await self.config.guild(ctx.guild).lockdown_status()
+            lockdown_level = await self.config.guild(ctx.guild).lockdown_level()
+            
+            if lockdown_status:
+                await ctx.send(f"🛡️ **Lockdown Status:** Active (Level {lockdown_level}+)")
+            else:
+                await ctx.send("❌ **Lockdown Status:** Inactive")
+        
+        else:
+            await ctx.send("Usage: `.shield activate 5`, `.shield activate 15`, `.shield status`, or `.shield deactivate`")
 
 async def setup(bot: Red):
     cog = Prune(bot)
