@@ -1,5 +1,5 @@
 from redbot.core.bot import Red
-from .anime import AnimeForumCreator
+from .animeforums import AnimeForumCreator
 
 
 async def setup(bot: Red):
