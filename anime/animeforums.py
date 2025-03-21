@@ -357,7 +357,12 @@ class AnimeForumCog(commands.Cog):
     @commands.command()
     @commands.guild_only()
     async def anime(self, ctx, *, name: str):
-        """Search for anime information from MyAnimeList"""
+        """Search for anime information from MyAnimeList
+        
+        You can search by name or by ID (prefix with 'id:')
+        Example: .anime Solo Leveling
+                 .anime id:40028
+        """
         # Check rate limits
         can_proceed, message = await self.check_rate_limit(ctx)
         if not can_proceed:
@@ -365,40 +370,90 @@ class AnimeForumCog(commands.Cog):
             
         async with ctx.typing():
             try:
-                # Search for the anime
-                result = await self.mal_api.search_anime(name)
-                
-                # Debug output to see structure of result
-                log.debug(f"Search result: {result}")
-                
-                if not result or len(result) == 0:
-                    return await ctx.send(f"Could not find anime matching '{name}'.")
-                    
-                # Get the first anime result
-                anime_result = result[0]
-                
-                # Check if 'id' exists in the result
-                if 'id' not in anime_result:
-                    # Try to find the right key for the ID
-                    anime_id = None
-                    if 'anime_id' in anime_result:
-                        anime_id = anime_result['anime_id']
-                    elif 'mal_id' in anime_result:
-                        anime_id = anime_result['mal_id']
-                    else:
-                        # Print all keys for debugging
-                        log.debug(f"Available keys in result: {anime_result.keys()}")
-                        return await ctx.send("Error: Couldn't find anime ID in search results.")
+                # Check if searching by ID
+                if name.lower().startswith('id:'):
+                    try:
+                        # Extract the ID and get anime details directly
+                        anime_id = int(name[3:].strip())
+                        anime = await self.mal_api.get_anime_details(anime_id)
+                        if not anime:
+                            return await ctx.send(f"Could not find anime with ID {anime_id}.")
+                    except ValueError:
+                        return await ctx.send("Invalid ID format. Use 'id:12345' where 12345 is the anime ID.")
                 else:
-                    anime_id = anime_result['id']
+                    # Search by name
+                    result = await self.mal_api.search_anime(name)
                     
-                # Get detailed anime info
-                anime = await self.mal_api.get_anime_details(anime_id)
-                if not anime:
-                    return await ctx.send("Error retrieving anime details.")
+                    if not result:
+                        return await ctx.send(f"Could not find anime matching '{name}'.")
+                    
+                    # Get the first anime result and extract the ID
+                    first_result = result[0]
+                    anime_id = None
+                    
+                    # Check which key contains the ID (could be 'id' or 'mal_id')
+                    if 'id' in first_result:
+                        anime_id = first_result['id']
+                    elif 'mal_id' in first_result:
+                        anime_id = first_result['mal_id']
+                    else:
+                        # Show available keys for debugging
+                        keys = ", ".join(first_result.keys())
+                        log.error(f"Could not find ID in anime result. Available keys: {keys}")
+                        return await ctx.send("Error: Could not process anime data.")
+                    
+                    # Get detailed anime info using the correct ID
+                    anime = await self.mal_api.get_anime_details(anime_id)
+                    if not anime:
+                        return await ctx.send("Error retrieving anime details.")
+                
+                # Show a selection list for name searches with multiple results
+                if not name.lower().startswith('id:') and len(result) > 1:
+                    # Create a list of anime options
+                    options = []
+                    for i, anime_option in enumerate(result[:5], 1):  # Limit to top 5
+                        title = anime_option.get('title', 'Unknown')
+                        anime_type = anime_option.get('type', 'Unknown')
+                        year = ''
+                        
+                        # Get year from aired.from if available
+                        if 'aired' in anime_option and anime_option['aired'] and 'from' in anime_option['aired']:
+                            aired_from = anime_option['aired']['from']
+                            if aired_from:
+                                # Extract year from date string
+                                if isinstance(aired_from, str) and len(aired_from) >= 4:
+                                    year = f" ({aired_from[:4]})"
+                        
+                        options.append(f"**{i}.** {title} - {anime_type}{year} [ID: {anime_option.get('id') or anime_option.get('mal_id')}]")
+                    
+                    options_msg = "**Multiple results found. Reply with the number you want:**\n" + "\n".join(options)
+                    await ctx.send(options_msg)
+                    
+                    # Wait for user selection
+                    try:
+                        def check(m):
+                            return m.author == ctx.author and m.channel == ctx.channel and m.content.isdigit() and 1 <= int(m.content) <= len(result[:5])
+                        
+                        selection_msg = await self.bot.wait_for('message', check=check, timeout=30.0)
+                        selection = int(selection_msg.content)
+                        
+                        # Get the selected anime
+                        selected = result[selection-1]
+                        anime_id = selected.get('id') or selected.get('mal_id')
+                        anime = await self.mal_api.get_anime_details(anime_id)
+                        if not anime:
+                            return await ctx.send("Error retrieving anime details.")
+                    
+                    except asyncio.TimeoutError:
+                        return await ctx.send("Selection timed out. Please try again.")
+                    except (ValueError, IndexError):
+                        return await ctx.send("Invalid selection. Please try again.")
                 
                 # Create embed with anime info
                 embed = create_embed(anime)
+                
+                # Add ID to the embed for reference
+                embed.add_field(name="MyAnimeList ID", value=str(anime['id']), inline=True)
                 
                 # Send the embed
                 await ctx.send(embed=embed)
