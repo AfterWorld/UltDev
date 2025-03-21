@@ -152,7 +152,7 @@ class AnimeForumCog(commands.Cog):
             color=discord.Color.blue()
         )
         embed.add_field(name="Version", value="1.0.0", inline=True)
-        embed.add_field(name="Author", value="Claude", inline=True)
+        embed.add_field(name="Author", value="UltPanda", inline=True)
         embed.add_field(name="Commands", value="`.forum`, `.seasonal`, `.toptier`", inline=False)
         embed.add_field(name="Config", value="`.animeset` for configuration", inline=False)
         await ctx.send(embed=embed)
