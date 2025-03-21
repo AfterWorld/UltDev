@@ -9,8 +9,8 @@ from redbot.core import Config
 from redbot.core.bot import Red
 from redbot.core.utils.chat_formatting import pagify
 
-from .mal_api import MyAnimeListAPI
-from .cache_manager import CacheManager
+from .malapi import MyAnimeListAPI
+from .cachemanager import CacheManager
 from .utils import create_embed, chunked_send, format_relative_time
 
 log = logging.getLogger("red.animeforum.forum_creator")
