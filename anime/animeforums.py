@@ -44,6 +44,7 @@ class AnimeForumCog(commands.Cog):
             "use_mal_data": True,
             "default_post_guidelines": True,
             "auto_thread_create": False,
+            "watchlists": {},
             "moderation": {
                 "spoiler_detection": True,
                 "content_filter": False,
@@ -135,6 +136,53 @@ class AnimeForumCog(commands.Cog):
         # Add timestamp and allow command
         self.command_timestamps[guild_id].append(current_time)
         return True, ""
+
+    async def _get_user_watchlist(self, guild_id, user_id):
+        """Get a user's watchlist from the database"""
+        async with self.config.guild_from_id(guild_id).watchlists() as watchlists:
+            if str(user_id) not in watchlists:
+                watchlists[str(user_id)] = []
+            return watchlists[str(user_id)]
+
+    async def _add_to_watchlist(self, guild_id, user_id, anime_data):
+        """Add an anime to a user's watchlist"""
+        # Simplified anime data to store
+        anime_entry = {
+            "id": anime_data.get("id"),
+            "title": anime_data.get("title"),
+            "image_url": anime_data.get("image_url"),
+            "episodes": anime_data.get("episodes"),
+            "status": anime_data.get("status"),
+            "added_on": datetime.now().isoformat(),
+            "last_updated": datetime.now().isoformat()
+        }
+        
+        async with self.config.guild_from_id(guild_id).watchlists() as watchlists:
+            if str(user_id) not in watchlists:
+                watchlists[str(user_id)] = []
+                
+            # Check if already in watchlist
+            for existing in watchlists[str(user_id)]:
+                if existing.get("id") == anime_entry["id"]:
+                    return False  # Already exists
+                    
+            # Add to watchlist
+            watchlists[str(user_id)].append(anime_entry)
+            return True
+    
+    async def _remove_from_watchlist(self, guild_id, user_id, anime_id):
+        """Remove an anime from a user's watchlist"""
+        async with self.config.guild_from_id(guild_id).watchlists() as watchlists:
+            if str(user_id) not in watchlists:
+                return False
+                
+            # Find and remove the anime
+            for i, anime in enumerate(watchlists[str(user_id)]):
+                if anime.get("id") == anime_id:
+                    watchlists[str(user_id)].pop(i)
+                    return True
+                    
+            return False  # Not found
 
     @commands.group()
     @commands.guild_only()
@@ -480,27 +528,424 @@ class AnimeForumCog(commands.Cog):
     @commands.command()
     @commands.guild_only()
     async def watchlist(self, ctx, action: str = "show", *, anime_name: str = None):
-        """Manage your personal anime watchlist"""
-        # This will be implemented in the watchlist_manager.py module
-        await ctx.send("This feature is coming soon!")
+        """Manage your personal anime watchlist
         
-    @commands.command()
-    @commands.guild_only()
-    async def schedule(self, ctx, action: str = "show", *, anime_name: str = None):
-        """View or manage upcoming anime episode schedule"""
-        # This will be implemented in the event_manager.py module
-        await ctx.send("This feature is coming soon!")
+        Actions:
+        - show: Display your watchlist (default)
+        - add [anime_name]: Add an anime to your watchlist
+        - remove [anime_name/id]: Remove an anime from your watchlist
+        - clear: Clear your entire watchlist
         
-    @commands.command()
-    @commands.guild_only()
-    async def upcoming(self, ctx):
-        """Show upcoming anime for next season"""
+        Examples:
+        .watchlist show
+        .watchlist add Solo Leveling
+        .watchlist remove One Piece
+        .watchlist remove id:21
+        .watchlist clear
+        """
         # Check rate limits
         can_proceed, message = await self.check_rate_limit(ctx)
         if not can_proceed:
             return await ctx.send(message)
             
-        await self.event_manager.show_upcoming_season(ctx)
+        # Get user's watchlist
+        user_id = ctx.author.id
+        guild_id = ctx.guild.id
+        
+        # Normalize action
+        action = action.lower()
+        
+        try:
+            if action == "show":
+                # Display the user's watchlist
+                watchlist = await self._get_user_watchlist(guild_id, user_id)
+                
+                if not watchlist:
+                    return await ctx.send("Your watchlist is empty. Add anime with `.watchlist add [anime_name]`")
+                
+                # Create an embed to display the watchlist
+                embed = discord.Embed(
+                    title=f"{ctx.author.display_name}'s Anime Watchlist",
+                    description=f"You have {len(watchlist)} anime in your watchlist",
+                    color=discord.Color.blue()
+                )
+                
+                # Add anime to the embed
+                for i, anime in enumerate(watchlist[:15], 1):  # Limit to 15 entries
+                    title = anime.get("title", "Unknown")
+                    status = anime.get("status", "Unknown")
+                    episodes = anime.get("episodes", "?")
+                    
+                    embed.add_field(
+                        name=f"{i}. {title}",
+                        value=f"Status: {status}\nEpisodes: {episodes}\nID: {anime.get('id')}\nAdded: {anime.get('added_on', 'Unknown')[:10]}",
+                        inline=(i % 2 == 0)  # Alternate inline to create two columns
+                    )
+                
+                # Add a footer with info if watchlist is longer than 15
+                if len(watchlist) > 15:
+                    embed.set_footer(text=f"Showing 15 of {len(watchlist)} anime. Use `.watchlist remove [name/id]` to manage your list.")
+                
+                # Send the embed
+                await ctx.send(embed=embed)
+                
+            elif action == "add":
+                # Check if anime name is provided
+                if not anime_name:
+                    return await ctx.send("Please provide an anime name to add to your watchlist.")
+                
+                # Search for the anime
+                result = await self.mal_api.search_anime(anime_name)
+                
+                if not result:
+                    return await ctx.send(f"Could not find anime matching '{anime_name}'.")
+                
+                # If multiple results, ask user to select one
+                if len(result) > 1:
+                    # Create a list of anime options
+                    options = []
+                    for i, anime_option in enumerate(result[:5], 1):  # Limit to top 5
+                        title = anime_option.get('title', 'Unknown')
+                        anime_type = anime_option.get('type', 'Unknown')
+                        options.append(f"**{i}.** {title} - {anime_type}")
+                    
+                    options_msg = "**Multiple results found. Reply with the number you want to add:**\n" + "\n".join(options)
+                    await ctx.send(options_msg)
+                    
+                    # Wait for user selection
+                    try:
+                        def check(m):
+                            return m.author == ctx.author and m.channel == ctx.channel and m.content.isdigit() and 1 <= int(m.content) <= len(result[:5])
+                        
+                        selection_msg = await self.bot.wait_for('message', check=check, timeout=30.0)
+                        selection = int(selection_msg.content)
+                        
+                        # Get the selected anime
+                        selected = result[selection-1]
+                        anime_id = selected.get('id') or selected.get('mal_id')
+                    except asyncio.TimeoutError:
+                        return await ctx.send("Selection timed out. Please try again.")
+                    except (ValueError, IndexError):
+                        return await ctx.send("Invalid selection. Please try again.")
+                else:
+                    # Use the first result
+                    anime_id = result[0].get('id') or result[0].get('mal_id')
+                
+                # Get detailed anime info
+                anime = await self.mal_api.get_anime_details(anime_id)
+                if not anime:
+                    return await ctx.send("Error retrieving anime details.")
+                
+                # Add to watchlist
+                success = await self._add_to_watchlist(guild_id, user_id, anime)
+                
+                if success:
+                    await ctx.send(f"Added **{anime['title']}** to your watchlist!")
+                else:
+                    await ctx.send(f"**{anime['title']}** is already in your watchlist.")
+                
+            elif action == "remove":
+                # Check if anime name/id is provided
+                if not anime_name:
+                    return await ctx.send("Please provide an anime name or ID to remove from your watchlist.")
+                
+                # Get current watchlist
+                watchlist = await self._get_user_watchlist(guild_id, user_id)
+                
+                if not watchlist:
+                    return await ctx.send("Your watchlist is empty.")
+                
+                # Check if removing by ID
+                if anime_name.lower().startswith('id:'):
+                    try:
+                        anime_id = int(anime_name[3:].strip())
+                        success = await self._remove_from_watchlist(guild_id, user_id, anime_id)
+                        
+                        if success:
+                            return await ctx.send(f"Removed anime with ID **{anime_id}** from your watchlist.")
+                        else:
+                            return await ctx.send(f"Anime with ID **{anime_id}** not found in your watchlist.")
+                    except ValueError:
+                        return await ctx.send("Invalid ID format. Use 'id:12345' where 12345 is the anime ID.")
+                
+                # Search watchlist for matching anime name
+                matches = []
+                for i, anime in enumerate(watchlist):
+                    if anime_name.lower() in anime.get("title", "").lower():
+                        matches.append((i, anime))
+                
+                if not matches:
+                    return await ctx.send(f"No anime matching '{anime_name}' found in your watchlist.")
+                
+                if len(matches) == 1:
+                    # Only one match, remove it directly
+                    idx, anime = matches[0]
+                    success = await self._remove_from_watchlist(guild_id, user_id, anime.get("id"))
+                    
+                    if success:
+                        await ctx.send(f"Removed **{anime.get('title')}** from your watchlist.")
+                    else:
+                        await ctx.send("Error removing anime from your watchlist.")
+                else:
+                    # Multiple matches, ask user to select
+                    options = []
+                    for i, (idx, anime) in enumerate(matches[:5], 1):
+                        title = anime.get("title", "Unknown")
+                        options.append(f"**{i}.** {title}")
+                    
+                    options_msg = "**Multiple matches found. Reply with the number you want to remove:**\n" + "\n".join(options)
+                    await ctx.send(options_msg)
+                    
+                    # Wait for user selection
+                    try:
+                        def check(m):
+                            return m.author == ctx.author and m.channel == ctx.channel and m.content.isdigit() and 1 <= int(m.content) <= len(matches[:5])
+                        
+                        selection_msg = await self.bot.wait_for('message', check=check, timeout=30.0)
+                        selection = int(selection_msg.content)
+                        
+                        # Get the selected anime
+                        idx, anime = matches[selection-1]
+                        success = await self._remove_from_watchlist(guild_id, user_id, anime.get("id"))
+                        
+                        if success:
+                            await ctx.send(f"Removed **{anime.get('title')}** from your watchlist.")
+                        else:
+                            await ctx.send("Error removing anime from your watchlist.")
+                    except asyncio.TimeoutError:
+                        await ctx.send("Selection timed out. Please try again.")
+                    except (ValueError, IndexError):
+                        await ctx.send("Invalid selection. Please try again.")
+            
+            elif action == "clear":
+                # Clear the entire watchlist
+                # First, ask for confirmation
+                confirm_msg = await ctx.send("Are you sure you want to clear your entire watchlist? (yes/no)")
+                
+                # Wait for confirmation
+                try:
+                    pred = MessagePredicate.yes_or_no(ctx)
+                    await self.bot.wait_for("message", check=pred, timeout=30)
+                    if pred.result:
+                        # Clear the watchlist
+                        async with self.config.guild_from_id(guild_id).watchlists() as watchlists:
+                            watchlists[str(user_id)] = []
+                        await ctx.send("Your watchlist has been cleared.")
+                    else:
+                        await ctx.send("Operation cancelled.")
+                except asyncio.TimeoutError:
+                    await ctx.send("No response received, operation cancelled.")
+            
+            else:
+                # Unknown action
+                await ctx.send(f"Unknown action '{action}'. Use 'show', 'add', 'remove', or 'clear'.")
+                
+        except Exception as e:
+            log.error(f"Error in watchlist command: {e}", exc_info=True)
+            await ctx.send(f"An error occurred while managing your watchlist: {str(e)}")
+        
+    @commands.command()
+    @commands.guild_only()
+    async def schedule(self, ctx, day: str = None, *, anime_name: str = None):
+        """View anime episode schedule
+        
+        Parameters:
+        - day: Optional day of the week to filter (e.g., monday, tuesday)
+        - anime_name: Optional anime name to search for
+        
+        Examples:
+        .schedule                 - Show all anime for the week
+        .schedule monday          - Show anime airing on Monday
+        .schedule today           - Show anime airing today
+        .schedule all one piece   - Search for One Piece in the full schedule
+        .schedule monday spy      - Search for "spy" in Monday's schedule
+        """
+        # Check rate limits
+        can_proceed, message = await self.check_rate_limit(ctx)
+        if not can_proceed:
+            return await ctx.send(message)
+        
+        async with ctx.typing():
+            try:
+                # Handle the case where anime_name is provided but day is not
+                if day and anime_name is None and day.lower() not in ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "today", "tomorrow", "all"]:
+                    anime_name = day
+                    day = "all"
+                
+                # Convert "today" to the actual day of the week
+                if day and day.lower() == "today":
+                    today = datetime.now().strftime("%A").lower()
+                    day = today
+                
+                # Convert "tomorrow" to the actual day of the week
+                if day and day.lower() == "tomorrow":
+                    tomorrow = (datetime.now() + timedelta(days=1)).strftime("%A").lower()
+                    day = tomorrow
+                
+                # Get the anime schedule
+                if day and day.lower() != "all":
+                    schedule_data = await self.mal_api.get_anime_schedule(day.lower())
+                else:
+                    schedule_data = await self.mal_api.get_anime_schedule()
+                
+                if not schedule_data:
+                    return await ctx.send("Failed to retrieve anime schedule data.")
+                
+                # Create pages for each day or filter by search term
+                pages = []
+                
+                for weekday, anime_list in schedule_data.items():
+                    # Skip if filtering by day and this isn't the right day
+                    if day and day.lower() != "all" and weekday.lower() != day.lower():
+                        continue
+                    
+                    # Filter by anime name if provided
+                    filtered_list = anime_list
+                    if anime_name:
+                        filtered_list = [anime for anime in anime_list if anime_name.lower() in anime.get("title", "").lower()]
+                        
+                        # Skip this day if no matches after filtering
+                        if not filtered_list:
+                            continue
+                    
+                    # Create an embed for this day
+                    embed = discord.Embed(
+                        title=f"Anime Schedule - {weekday}",
+                        description=f"Anime airing on {weekday}" + (f" matching '{anime_name}'" if anime_name else ""),
+                        color=discord.Color.blue()
+                    )
+                    
+                    # Add anime to the embed
+                    for i, anime in enumerate(filtered_list[:15], 1):  # Limit to 15 entries
+                        title = anime.get("title", "Unknown")
+                        time = anime.get("time", "Unknown time")
+                        episodes = anime.get("episodes", "?")
+                        score = anime.get("score", "N/A")
+                        
+                        embed.add_field(
+                            name=f"{i}. {title}",
+                            value=f"Time: {time}\nEpisodes: {episodes}\nScore: {score}\n[MAL Link]({anime.get('url', '#')})",
+                            inline=(i % 2 == 0)  # Alternate inline to create two columns
+                        )
+                    
+                    # Add a footer with info
+                    embed.set_footer(text=f"Found {len(filtered_list)} anime for {weekday}" + 
+                                        (" matching search" if anime_name else "") + 
+                                        (f". Showing 15 of {len(filtered_list)}." if len(filtered_list) > 15 else "."))
+                    
+                    # Add this embed to pages
+                    pages.append(embed)
+                
+                # Check if we have any results
+                if not pages:
+                    if anime_name:
+                        return await ctx.send(f"No anime matching '{anime_name}' found in the schedule" +
+                                            (f" for {day}" if day and day.lower() != "all" else "") + ".")
+                    else:
+                        return await ctx.send("No schedule data available" +
+                                            (f" for {day}" if day and day.lower() != "all" else "") + ".")
+                
+                # Send the embeds
+                if len(pages) == 1:
+                    # Only one page, send it directly
+                    await ctx.send(embed=pages[0])
+                else:
+                    # Multiple pages, use a menu
+                    msg = await ctx.send(embed=pages[0])
+                    
+                    # Add reactions for navigation
+                    if len(pages) > 1:
+                        await msg.add_reaction("⬅️")
+                        await msg.add_reaction("➡️")
+                    
+                    # Current page index
+                    current_page = 0
+                    
+                    def check(reaction, user):
+                        return user == ctx.author and str(reaction.emoji) in ["⬅️", "➡️"] and reaction.message.id == msg.id
+                    
+                    # Wait for reactions
+                    while True:
+                        try:
+                            reaction, user = await self.bot.wait_for("reaction_add", timeout=60.0, check=check)
+                            
+                            if str(reaction.emoji) == "➡️" and current_page < len(pages) - 1:
+                                current_page += 1
+                                await msg.edit(embed=pages[current_page])
+                            elif str(reaction.emoji) == "⬅️" and current_page > 0:
+                                current_page -= 1
+                                await msg.edit(embed=pages[current_page])
+                            
+                            # Remove the reaction
+                            await msg.remove_reaction(reaction, user)
+                            
+                        except asyncio.TimeoutError:
+                            # Stop listening for reactions
+                            break
+                        except Exception as e:
+                            log.error(f"Error in schedule pagination: {e}")
+                            break
+                
+            except Exception as e:
+                log.error(f"Error in schedule command: {e}", exc_info=True)
+                await ctx.send(f"An error occurred while retrieving the schedule: {str(e)}")
+        
+    @commands.command()
+    @commands.guild_only()
+    async def upcoming(self, ctx, *, query: str = None):
+        """Show upcoming anime for next season
+        
+        Optionally filter results by providing a search query
+        Example: .upcoming one piece
+        """
+        # Check rate limits
+        can_proceed, message = await self.check_rate_limit(ctx)
+        if not can_proceed:
+            return await ctx.send(message)
+        
+        async with ctx.typing():
+            try:
+                # Get upcoming anime, optionally filtered by query
+                upcoming_anime = await self.mal_api.get_upcoming_anime(15, query)
+                
+                if not upcoming_anime:
+                    if query:
+                        return await ctx.send(f"No upcoming anime found matching '{query}'.")
+                    else:
+                        return await ctx.send("No upcoming anime information available.")
+                
+                # Create an embed to display the results
+                embed = discord.Embed(
+                    title=f"Upcoming Anime{' - ' + query if query else ''}",
+                    description="Anime scheduled for the next season",
+                    color=discord.Color.blue()
+                )
+                
+                # Add anime to the embed
+                for i, anime in enumerate(upcoming_anime[:10], 1):  # Limit to 10 entries
+                    title = anime.get("title", "Unknown")
+                    airing_start = anime.get("airing_start", "TBA")
+                    if airing_start and isinstance(airing_start, str) and len(airing_start) >= 10:
+                        airing_start = airing_start[:10]  # Only show the date part
+                    
+                    episodes = anime.get("episodes", "?")
+                    anime_type = anime.get("type", "TV")
+                    
+                    embed.add_field(
+                        name=f"{i}. {title}",
+                        value=f"Type: {anime_type}\nEpisodes: {episodes}\nStart Date: {airing_start}\n[MAL Link]({anime.get('url', '#')})",
+                        inline=False
+                    )
+                
+                # Add a footer with info
+                embed.set_footer(text=f"Found {len(upcoming_anime)} upcoming anime. Showing top 10.")
+                
+                # Send the embed
+                await ctx.send(embed=embed)
+                
+            except Exception as e:
+                log.error(f"Error showing upcoming season: {e}", exc_info=True)
+                await ctx.send(f"Error showing upcoming season: {str(e)}")
                 
     @commands.command()
     @commands.guild_only()
