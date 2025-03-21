@@ -21,10 +21,9 @@ class AnimeForumCreator(commands.Cog):
         # Default settings
         default_guild = {
             "forum_command_prefix": ".",
-            "forums_category_name": "Anime Discussions",
-            "seasonal_category_name": "Current Season Anime",
+            "forums_category_name": "Anime Forums",
             "mention_message": "Hello there! If you want to discuss anime, please use one of our forum channels or create a new one with `.forum [anime name]`!",
-            "default_tags": ["Discussion", "Question", "Recommendation", "Review", "Spoiler", "Fanart", "News", "Meme"],
+            "default_tags": ["Discussion", "Question", "Recommendation", "Review", "Spoiler", "Fanart", "News", "Meme", "Seasonal", "Top Rated"],
             "auto_topic": True,
             "anime_api_url": "https://api.jikan.moe/v4",
             "use_mal_data": True,
@@ -60,11 +59,7 @@ class AnimeForumCreator(commands.Cog):
         await self.config.guild(ctx.guild).forums_category_name.set(category_name)
         await ctx.send(f"Anime forums category name set to: {category_name}")
 
-    @animeset.command(name="seasonalcategory")
-    async def set_seasonal_category(self, ctx, *, category_name: str):
-        """Set the category name for seasonal anime forums"""
-        await self.config.guild(ctx.guild).seasonal_category_name.set(category_name)
-        await ctx.send(f"Seasonal anime forums category name set to: {category_name}")
+
 
     @animeset.command(name="mentionmsg")
     async def set_mention_message(self, ctx, *, message: str):
@@ -162,15 +157,27 @@ class AnimeForumCreator(commands.Cog):
             print(f"Error fetching anime info: {e}")
             return None
 
-    async def create_forum_channel(self, guild, name: str, category=None, anime_data=None):
+    async def create_forum_channel(self, guild, name: str, category=None, anime_data=None, is_seasonal=False, is_top_rated=False):
         """Create a forum channel with optimized settings"""
         settings = await self.config.guild(guild).all()
         
         # Prepare forum tags
         forum_tags = []
         
+        # Add special tags based on type
+        if is_seasonal:
+            seasonal_tag = discord.ForumTag(name="Seasonal")
+            forum_tags.append(seasonal_tag)
+            
+        if is_top_rated:
+            top_rated_tag = discord.ForumTag(name="Top Rated")
+            forum_tags.append(top_rated_tag)
+        
         # Add default tags
         for tag_name in settings["default_tags"]:
+            # Skip the tags we already added
+            if (tag_name == "Seasonal" and is_seasonal) or (tag_name == "Top Rated" and is_top_rated):
+                continue
             forum_tags.append(discord.ForumTag(name=tag_name))
             
         # Add genre tags if available
@@ -309,8 +316,8 @@ class AnimeForumCreator(commands.Cog):
         status_msg = await ctx.send("Gathering information about seasonal anime. This may take a moment...")
         
         try:
-            # Find or create the seasonal forums category
-            category_name = settings["seasonal_category_name"]
+            # Find or create the forums category
+            category_name = settings["forums_category_name"]
             category = discord.utils.get(ctx.guild.categories, name=category_name)
             
             if not category:
@@ -376,7 +383,7 @@ class AnimeForumCreator(commands.Cog):
                 
                 # Create the forum
                 try:
-                    await self.create_forum_channel(ctx.guild, anime, category, anime_data)
+                    await self.create_forum_channel(ctx.guild, anime, category, anime_data, is_seasonal=True)
                     created_forums.append(anime)
                     
                     # Sleep to avoid rate limits
@@ -411,8 +418,8 @@ class AnimeForumCreator(commands.Cog):
         status_msg = await ctx.send("Gathering information about top-rated anime. This may take a moment...")
         
         try:
-            # Find or create the top tier forums category
-            category_name = "Top Tier Anime"
+            # Find or create the forums category
+            category_name = settings["forums_category_name"]
             category = discord.utils.get(ctx.guild.categories, name=category_name)
             
             if not category:
@@ -474,7 +481,7 @@ class AnimeForumCreator(commands.Cog):
                 
                 # Create the forum
                 try:
-                    await self.create_forum_channel(ctx.guild, anime, category, anime_data)
+                    await self.create_forum_channel(ctx.guild, anime, category, anime_data, is_top_rated=True)
                     created_forums.append(anime)
                     
                     # Sleep to avoid rate limits
