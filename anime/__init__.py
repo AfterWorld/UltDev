@@ -9,7 +9,7 @@ from redbot.core import commands
 from redbot.core.bot import Red
 
 # Import all the modules
-from .anime_forum_cog import AnimeForumCog
+from .animeforums import AnimeForumCog
 
 __version__ = "1.0.0"
 
