@@ -47,8 +47,8 @@ class EventManager:
             "saturday": 5, "sat": 5, "sa": 5,
             "sunday": 6, "sun": 6, "su": 6
         }
-        
-     async def schedule_checker(self):
+
+ async def schedule_checker(self):
         """Background task to check for scheduled events and notifications"""
         await self.bot.wait_until_ready()
         
