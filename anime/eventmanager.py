@@ -47,3 +47,31 @@ class EventManager:
             "saturday": 5, "sat": 5, "sa": 5,
             "sunday": 6, "sun": 6, "su": 6
         }
+        
+     async def schedule_checker(self):
+        """Background task to check for scheduled events and notifications"""
+        await self.bot.wait_until_ready()
+        
+        while self.bot.is_ready():
+            try:
+                # Only check every 15 minutes to avoid API spam
+                current_time = time.time()
+                
+                # Process airing notifications
+                for guild in self.bot.guilds:
+                    await self.check_airing_notifications(guild)
+                
+                # Process scheduled events
+                for guild in self.bot.guilds:
+                    await self.check_scheduled_events(guild)
+                
+                # Update last check time
+                for guild in self.bot.guilds:
+                    async with self.config.guild(guild).events() as events:
+                        events["last_check"] = current_time
+                        
+            except Exception as e:
+                log.error(f"Error in schedule checker: {e}")
+                
+            # Wait before next check (15 minutes)
+            await asyncio.sleep(900)
