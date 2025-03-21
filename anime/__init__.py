@@ -1,7 +1,7 @@
 from redbot.core.bot import Red
-from .mods import Moderation
+from .anime import AnimeForumCreator
 
 
 async def setup(bot: Red):
-    cog = Moderation(bot)
+    cog = AnimeForumCreator(bot)
     await bot.add_cog(cog)
