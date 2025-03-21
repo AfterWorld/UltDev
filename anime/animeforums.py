@@ -438,13 +438,14 @@ class AnimeForumCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message):
-        """Handle messages in forum channels"""
         if message.author.bot or not message.guild:
             return
             
-        # Get settings for this guild
-        settings = await self.config.guild(message.guild).all()
-        
+        # Skip mention response in specific channels
+        excluded_channels = [425068612542398476]  # Replace with your general channel IDs
+        if message.channel.id in excluded_channels:
+            return
+            
         # Handle bot mention
         if self.bot.user in message.mentions and not message.mention_everyone:
             await message.channel.send(settings["mention_message"])
