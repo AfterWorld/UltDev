@@ -5,6 +5,7 @@ from typing import Dict, List, Optional, Any, Union
 import aiohttp
 import json
 import random
+from datetime import datetime
 
 from .cachemanager import CacheManager
 
@@ -289,8 +290,8 @@ class MyAnimeListAPI:
             return schedule
         return {}
         
-    async def get_upcoming_anime(self, limit: int = 15) -> List[Dict]:
-        """Get upcoming anime for next season"""
+    async def get_upcoming_anime(self, limit: int = 15, query: str = None) -> List[Dict]:
+        """Get upcoming anime for next season, optionally filtered by query"""
         # Get current season info to determine next season
         current_season = await self._make_jikan_request("seasons/now", {"limit": 1})
         if not current_season or "data" not in current_season or not current_season["data"]:
@@ -309,7 +310,18 @@ class MyAnimeListAPI:
         next_year = current_year + 1 if next_idx == 0 else current_year
         
         # Get next season anime
-        return await self.get_seasonal_anime(next_year, next_season, limit)
+        upcoming_anime = await self.get_seasonal_anime(next_year, next_season, limit)
+        
+        # Filter results if query is provided
+        if query and upcoming_anime:
+            filtered_anime = []
+            query = query.lower()
+            for anime in upcoming_anime:
+                if query in anime.get("title", "").lower():
+                    filtered_anime.append(anime)
+            return filtered_anime
+        
+        return upcoming_anime
         
     async def get_recommendations(self, anime_id: int, limit: int = 10) -> List[Dict]:
         """Get anime recommendations based on a specific anime"""
