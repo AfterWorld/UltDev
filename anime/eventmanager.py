@@ -507,7 +507,7 @@ class EventManager:
         except Exception as e:
             log.error(f"Error cancelling event: {e}")
             await ctx.send(f"Error cancelling event: {e}")
-            return False_id = anime.get("id")
+            return False
                 
                 if anime_id in anime_ids:
                     # Find matching forum
