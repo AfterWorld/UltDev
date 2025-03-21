@@ -1,22 +1,38 @@
 import asyncio
 import discord
+import json
+import logging
+import time
+import random
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Tuple, Union, Any
+
+import aiohttp
 from redbot.core import commands, Config
 from redbot.core.bot import Red
-from redbot.core.utils.chat_formatting import pagify
-from typing import List, Dict, Optional
-import aiohttp
-import json
+from redbot.core.utils.chat_formatting import pagify, box
+from redbot.core.utils.menus import menu, DEFAULT_CONTROLS
+from redbot.core.utils.predicates import MessagePredicate
+
+log = logging.getLogger("red.animeforum")
+
+# Import additional modules
+from .mal_api import MyAnimeListAPI
+from .forum_creator import ForumCreator
+from .cache_manager import CacheManager
+from .event_manager import EventManager
+from .analytics import AnalyticsManager
+from .utils import create_embed, chunked_send, check_permissions
 
 
-class AnimeForumCreator(commands.Cog):
+class AnimeForumCog(commands.Cog):
     """
-    A cog that creates and manages anime-themed forum channels for ongoing discussions.
+    A comprehensive cog for creating and managing anime forum channels with MyAnimeList integration.
     """
 
     def __init__(self, bot: Red):
         self.bot = bot
         self.config = Config.get_conf(self, identifier=8675309, force_registration=True)
-        self.session = aiohttp.ClientSession()
         
         # Default settings
         default_guild = {
@@ -25,20 +41,122 @@ class AnimeForumCreator(commands.Cog):
             "mention_message": "Hello there! If you want to discuss anime, please use one of our forum channels or create a new one with `.forum [anime name]`!",
             "default_tags": ["Discussion", "Question", "Recommendation", "Review", "Spoiler", "Fanart", "News", "Meme", "Seasonal", "Top Rated"],
             "auto_topic": True,
-            "anime_api_url": "https://api.jikan.moe/v4",
             "use_mal_data": True,
-            "default_post_guidelines": True
+            "default_post_guidelines": True,
+            "auto_thread_create": False,
+            "moderation": {
+                "spoiler_detection": True,
+                "content_filter": False,
+                "auto_organize": True
+            },
+            "analytics": {
+                "enabled": True,
+                "track_activity": True,
+                "leaderboard_enabled": True
+            },
+            "mal_client_id": None,
+            "notifications": {
+                "new_episodes": True,
+                "new_seasons": True
+            },
+            "rate_limits": {
+                "max_forums_per_minute": 5,
+                "max_bulk_create": 15,
+                "cooldown_seconds": 2
+            }
         }
         
         self.config.register_guild(**default_guild)
+        self.config.register_global(mal_client_id=None)
         
-        # Cache for MyAnimeList data to avoid API rate limits
-        self.anime_cache = {}
+        # Initialize components
+        self.session = aiohttp.ClientSession()
+        self.cache = CacheManager(expiry=3600, max_size=500)
+        self.mal_api = MyAnimeListAPI(self.session, self.cache)
+        self.forum_creator = ForumCreator(bot, self.config, self.cache)
+        self.event_manager = EventManager(bot, self.config, self.mal_api, self.cache)
+        self.analytics = AnalyticsManager(bot, self.config)
+        
+        # Track rate limits
+        self.command_timestamps = {}
+        
+        # Start background tasks
+        self.bg_tasks = []
+        self.start_background_tasks()
         
     def cog_unload(self):
         """Clean up when cog is unloaded"""
+        # Cancel background tasks
+        for task in self.bg_tasks:
+            task.cancel()
+            
+        # Close sessions
         asyncio.create_task(self.session.close())
         
+    def start_background_tasks(self):
+        """Start all background tasks for this cog"""
+        self.bg_tasks.append(self.bot.loop.create_task(self.event_manager.schedule_checker()))
+        self.bg_tasks.append(self.bot.loop.create_task(self.analytics.process_analytics_queue()))
+        
+    async def check_rate_limit(self, ctx, command_type="regular") -> Tuple[bool, str]:
+        """Check if a command exceeds rate limits"""
+        # Get guild settings for rate limits
+        settings = await self.config.guild(ctx.guild).rate_limits()
+        
+        # Determine limits based on command type
+        if command_type == "bulk":
+            max_per_minute = settings["max_bulk_create"]
+        else:
+            max_per_minute = settings["max_forums_per_minute"]
+            
+        cooldown = settings["cooldown_seconds"]
+        
+        # Get the guild's command history
+        guild_id = ctx.guild.id
+        if guild_id not in self.command_timestamps:
+            self.command_timestamps[guild_id] = []
+        
+        # Clean up old timestamps
+        current_time = time.time()
+        self.command_timestamps[guild_id] = [
+            t for t in self.command_timestamps[guild_id] 
+            if current_time - t < 60
+        ]
+        
+        # Check if we've hit the rate limit
+        if len(self.command_timestamps[guild_id]) >= max_per_minute:
+            remaining = 60 - (current_time - self.command_timestamps[guild_id][0])
+            return False, f"Rate limit reached. Please try again in {remaining:.1f} seconds."
+        
+        # Check if we need to apply cooldown
+        if self.command_timestamps[guild_id] and current_time - self.command_timestamps[guild_id][-1] < cooldown:
+            return False, f"Please wait {cooldown - (current_time - self.command_timestamps[guild_id][-1]):.1f} seconds between commands."
+        
+        # Add timestamp and allow command
+        self.command_timestamps[guild_id].append(current_time)
+        return True, ""
+
+    @commands.group()
+    @commands.guild_only()
+    async def animecog(self, ctx):
+        """Main command group for AnimeForumCog"""
+        if ctx.invoked_subcommand is None:
+            await ctx.send_help(ctx.command)
+            
+    @animecog.command(name="version")
+    async def show_version(self, ctx):
+        """Show version information for the cog"""
+        embed = discord.Embed(
+            title="Anime Forum Cog",
+            description="Ultimate Anime Forum Creator for Discord",
+            color=discord.Color.blue()
+        )
+        embed.add_field(name="Version", value="1.0.0", inline=True)
+        embed.add_field(name="Author", value="Claude", inline=True)
+        embed.add_field(name="Commands", value="`.forum`, `.seasonal`, `.toptier`", inline=False)
+        embed.add_field(name="Config", value="`.animeset` for configuration", inline=False)
+        await ctx.send(embed=embed)
+
     @commands.group()
     @commands.guild_only()
     @commands.admin_or_permissions(manage_guild=True)
@@ -58,8 +176,6 @@ class AnimeForumCreator(commands.Cog):
         """Set the category name for anime forums"""
         await self.config.guild(ctx.guild).forums_category_name.set(category_name)
         await ctx.send(f"Anime forums category name set to: {category_name}")
-
-
 
     @animeset.command(name="mentionmsg")
     async def set_mention_message(self, ctx, *, message: str):
@@ -86,420 +202,239 @@ class AnimeForumCreator(commands.Cog):
                 return
             tags.remove(tag_name)
         await ctx.send(f"Removed '{tag_name}' from default forum tags.")
+    
+    @animeset.command(name="malclientid")
+    async def set_mal_client_id(self, ctx, client_id: str = None):
+        """Set MyAnimeList API client ID (leave empty to reset)"""
+        # Reset if no client ID provided
+        if client_id is None:
+            await self.config.guild(ctx.guild).mal_client_id.set(None)
+            await ctx.send("MyAnimeList client ID has been reset.")
+            return
+            
+        # Test the client ID
+        self.mal_api.set_client_id(client_id)
+        try:
+            test_result = await self.mal_api.search_anime("test", limit=1)
+            if test_result:
+                await self.config.guild(ctx.guild).mal_client_id.set(client_id)
+                await ctx.send("MyAnimeList client ID has been set and tested successfully.")
+            else:
+                await ctx.send("Error: Could not validate MyAnimeList client ID.")
+        except Exception as e:
+            await ctx.send(f"Error testing MyAnimeList client ID: {e}")
+    
+    @animeset.command(name="togglemoderation")
+    async def toggle_moderation_feature(self, ctx, feature: str):
+        """Toggle moderation features (spoiler_detection, content_filter, auto_organize)"""
+        async with self.config.guild(ctx.guild).moderation() as moderation:
+            if feature not in moderation:
+                await ctx.send(f"Unknown feature '{feature}'. Available features: {', '.join(moderation.keys())}")
+                return
+                
+            moderation[feature] = not moderation[feature]
+            state = "enabled" if moderation[feature] else "disabled"
+            
+        await ctx.send(f"Moderation feature '{feature}' has been {state}.")
         
-    @animeset.command(name="togglemaltopics")
-    async def toggle_mal_topics(self, ctx):
-        """Toggle using MyAnimeList data for forum topics"""
-        current = await self.config.guild(ctx.guild).use_mal_data()
-        await self.config.guild(ctx.guild).use_mal_data.set(not current)
-        state = "enabled" if not current else "disabled"
-        await ctx.send(f"Using MyAnimeList data for forum topics has been {state}.")
-        
-    @animeset.command(name="toggleguidelines")
-    async def toggle_guidelines(self, ctx):
-        """Toggle default post guidelines for new forums"""
-        current = await self.config.guild(ctx.guild).default_post_guidelines()
-        await self.config.guild(ctx.guild).default_post_guidelines.set(not current)
-        state = "enabled" if not current else "disabled"
-        await ctx.send(f"Default post guidelines for new forums has been {state}.")
-
+    @animeset.command(name="toggleanalytics")
+    async def toggle_analytics_feature(self, ctx, feature: str):
+        """Toggle analytics features (enabled, track_activity, leaderboard_enabled)"""
+        async with self.config.guild(ctx.guild).analytics() as analytics:
+            if feature not in analytics:
+                await ctx.send(f"Unknown feature '{feature}'. Available features: {', '.join(analytics.keys())}")
+                return
+                
+            analytics[feature] = not analytics[feature]
+            state = "enabled" if analytics[feature] else "disabled"
+            
+        await ctx.send(f"Analytics feature '{feature}' has been {state}.")
+    
     @animeset.command(name="settings")
     async def show_settings(self, ctx):
         """Show current anime forum settings"""
         settings = await self.config.guild(ctx.guild).all()
         
-        output = "**Anime Forum Creator Settings:**\n"
-        for key, value in settings.items():
-            if key == "default_tags":
-                tags_str = ", ".join(value)
-                output += f"**{key}:** {tags_str}\n"
-            else:
-                output += f"**{key}:** {value}\n"
+        # Format the settings in a readable way
+        pages = []
         
-        for page in pagify(output):
-            await ctx.send(page)
-
-    async def get_anime_info(self, anime_name: str) -> Optional[Dict]:
-        """Fetch anime information from MyAnimeList via Jikan API"""
-        if anime_name in self.anime_cache:
-            return self.anime_cache[anime_name]
-            
-        try:
-            settings = await self.config.guild_from_id(1).all()  # Using a dummy guild ID to get settings
-            base_url = settings.get("anime_api_url", "https://api.jikan.moe/v4")
-            
-            async with self.session.get(f"{base_url}/anime", params={"q": anime_name, "limit": 1}) as resp:
-                if resp.status != 200:
-                    return None
-                    
-                data = await resp.json()
-                
-                if not data.get("data") or len(data["data"]) == 0:
-                    return None
-                    
-                anime_data = data["data"][0]
-                
-                # Cache the result
-                self.anime_cache[anime_name] = {
-                    "id": anime_data.get("mal_id"),
-                    "title": anime_data.get("title"),
-                    "synopsis": anime_data.get("synopsis"),
-                    "genres": [genre["name"] for genre in anime_data.get("genres", [])],
-                    "image_url": anime_data.get("images", {}).get("jpg", {}).get("image_url"),
-                    "episodes": anime_data.get("episodes"),
-                    "score": anime_data.get("score"),
-                    "url": anime_data.get("url")
-                }
-                
-                return self.anime_cache[anime_name]
-                
-        except Exception as e:
-            print(f"Error fetching anime info: {e}")
-            return None
-
-    async def create_forum_channel(self, guild, name: str, category=None, anime_data=None, is_seasonal=False, is_top_rated=False):
-        """Create a forum channel with optimized settings"""
-        settings = await self.config.guild(guild).all()
-        
-        # Prepare forum tags
-        forum_tags = []
-        
-        # Add special tags based on type
-        if is_seasonal:
-            seasonal_tag = discord.ForumTag(name="Seasonal")
-            forum_tags.append(seasonal_tag)
-            
-        if is_top_rated:
-            top_rated_tag = discord.ForumTag(name="Top Rated")
-            forum_tags.append(top_rated_tag)
-        
-        # Add default tags
-        for tag_name in settings["default_tags"]:
-            # Skip the tags we already added
-            if (tag_name == "Seasonal" and is_seasonal) or (tag_name == "Top Rated" and is_top_rated):
-                continue
-            forum_tags.append(discord.ForumTag(name=tag_name))
-            
-        # Add genre tags if available
-        if anime_data and anime_data.get("genres"):
-            for genre in anime_data["genres"][:10]:  # Limit to 10 genres
-                if genre not in settings["default_tags"]:
-                    forum_tags.append(discord.ForumTag(name=genre))
-        
-        # Create guidelines for the forum
-        if settings["default_post_guidelines"]:
-            if anime_data:
-                guidelines = (
-                    f"# {anime_data['title']}\n\n"
-                    f"{anime_data['synopsis'][:500]}...\n\n"
-                    f"## Guidelines:\n"
-                    f"- Be respectful to other fans\n"
-                    f"- Mark spoilers appropriately\n"
-                    f"- Keep discussions on-topic\n"
-                    f"- Have fun discussing your favorite anime!\n\n"
-                    f"[MyAnimeList Page]({anime_data['url']})"
-                )
-            else:
-                guidelines = (
-                    f"# Welcome to the {name} Forum!\n\n"
-                    f"This is a place to discuss everything related to {name}.\n\n"
-                    f"## Guidelines:\n"
-                    f"- Be respectful to other fans\n"
-                    f"- Mark spoilers appropriately\n"
-                    f"- Keep discussions on-topic\n"
-                    f"- Have fun discussing your favorite anime!"
-                )
-        else:
-            guidelines = f"Discussion forum for {name}"
-            
-        # Create the forum channel
-        forum_channel = await guild.create_forum(
-            name=name,
-            category=category,
-            topic=guidelines[:1000],  # Discord's limit
-            reason=f"Anime forum"
+        # Basic settings
+        basic_settings = (
+            "**Basic Settings:**\n"
+            f"Forum Command Prefix: `{settings['forum_command_prefix']}`\n"
+            f"Forums Category: `{settings['forums_category_name']}`\n"
+            f"Use MAL Data: `{settings['use_mal_data']}`\n"
+            f"Auto Topic: `{settings['auto_topic']}`\n"
+            f"Default Post Guidelines: `{settings['default_post_guidelines']}`\n"
+            f"Auto Thread Create: `{settings['auto_thread_create']}`\n"
         )
+        pages.append(basic_settings)
         
-        # Set the available tags
-        await forum_channel.edit(available_tags=forum_tags)
+        # Default tags
+        tags_str = ", ".join(settings['default_tags'])
+        tags_settings = f"**Default Tags:**\n{tags_str}"
+        pages.append(tags_settings)
         
-        # Set suggested format if using MyAnimeList data
-        if anime_data and settings["use_mal_data"]:
-            # Create guidelines format that encourages structured discussions
-            suggested_format = (
-                f"**Topic**: \n\n"
-                f"**Episodes Covered**: \n\n"
-                f"**Discussion Points**: \n\n"
-                f"**Rating**: /10\n\n"
-                f"**Thoughts**: "
-            )
-            await forum_channel.edit(default_thread_slowmode_delay=0)
-            
-            # Set auto-archive to maximum
-            await forum_channel.edit(default_auto_archive_duration=4320)  # 3 days in minutes
+        # Moderation settings
+        mod_settings = "**Moderation Settings:**\n"
+        for key, value in settings['moderation'].items():
+            mod_settings += f"{key}: `{value}`\n"
+        pages.append(mod_settings)
         
-        return forum_channel
+        # Analytics settings
+        analytics_settings = "**Analytics Settings:**\n"
+        for key, value in settings['analytics'].items():
+            analytics_settings += f"{key}: `{value}`\n"
+        pages.append(analytics_settings)
+        
+        # Notification settings
+        notification_settings = "**Notification Settings:**\n"
+        for key, value in settings['notifications'].items():
+            notification_settings += f"{key}: `{value}`\n"
+        pages.append(notification_settings)
+        
+        # Rate limit settings
+        rate_limit_settings = "**Rate Limit Settings:**\n"
+        for key, value in settings['rate_limits'].items():
+            rate_limit_settings += f"{key}: `{value}`\n"
+        pages.append(rate_limit_settings)
+        
+        # Send paginated settings
+        for page in pages:
+            await ctx.send(page)
 
     @commands.command()
     @commands.guild_only()
     @commands.bot_has_permissions(manage_channels=True)
     async def forum(self, ctx, *, name: str):
         """Create a new anime forum channel in the configured category"""
-        settings = await self.config.guild(ctx.guild).all()
-        
-        # Check if user has permission
-        if not ctx.author.guild_permissions.manage_channels and not await ctx.bot.is_admin(ctx.author):
-            await ctx.send("You don't have permission to create forums.")
-            return
+        # Check permissions
+        if not await check_permissions(ctx):
+            return await ctx.send("You don't have permission to create forums.")
             
-        # Check if the command prefix matches
-        prefix = settings["forum_command_prefix"]
-        if not ctx.message.content.startswith(f"{ctx.prefix}{ctx.command.name}"):
-            return
+        # Check rate limits
+        can_proceed, message = await self.check_rate_limit(ctx)
+        if not can_proceed:
+            return await ctx.send(message)
             
-        async with ctx.typing():
-            try:
-                # Status message
-                status_msg = await ctx.send(f"Creating forum for **{name}**... Gathering anime information...")
-                
-                # Find or create the forums category
-                category_name = settings["forums_category_name"]
-                category = discord.utils.get(ctx.guild.categories, name=category_name)
-                
-                if not category:
-                    # Create the forums category if it doesn't exist
-                    category = await ctx.guild.create_category(category_name)
-                
-                # Get anime info if enabled
-                anime_data = None
-                if settings["use_mal_data"]:
-                    anime_data = await self.get_anime_info(name)
-                    if anime_data:
-                        await status_msg.edit(content=f"Creating forum for **{anime_data['title']}**... Setting up forum...")
-                    
-                # Create the forum
-                forum_channel = await self.create_forum_channel(ctx.guild, name, category, anime_data)
-                
-                # Send completion message with anime thumbnail if available
-                if anime_data and anime_data.get("image_url"):
-                    embed = discord.Embed(
-                        title=f"Forum Created: {anime_data['title']}",
-                        url=forum_channel.jump_url,
-                        description=f"A new anime forum has been created for {anime_data['title']}!",
-                        color=discord.Color.blue()
-                    )
-                    embed.set_thumbnail(url=anime_data["image_url"])
-                    embed.add_field(name="Episodes", value=anime_data.get("episodes", "Unknown"), inline=True)
-                    embed.add_field(name="Score", value=f"{anime_data.get('score', 'N/A')}/10", inline=True)
-                    embed.add_field(name="Genres", value=", ".join(anime_data.get("genres", ["Unknown"])[:3]), inline=True)
-                    
-                    await status_msg.delete()
-                    await ctx.send(embed=embed)
-                else:
-                    await status_msg.edit(content=f"Anime forum channel **{name}** has been created!")
-                
-            except Exception as e:
-                await ctx.send(f"Error creating forum channel: {e}")
+        # Forward to forum creator
+        await self.forum_creator.create_anime_forum(ctx, name)
 
     @commands.command()
     @commands.guild_only()
     @commands.bot_has_permissions(manage_channels=True)
     async def seasonal(self, ctx):
         """Create forum channels for current season anime"""
-        settings = await self.config.guild(ctx.guild).all()
-        
-        # Check if user has permission
-        if not ctx.author.guild_permissions.manage_channels and not await ctx.bot.is_admin(ctx.author):
-            await ctx.send("You don't have permission to create forums.")
-            return
+        # Check permissions
+        if not await check_permissions(ctx):
+            return await ctx.send("You don't have permission to create forums.")
             
-        status_msg = await ctx.send("Gathering information about seasonal anime. This may take a moment...")
-        
-        try:
-            # Find or create the forums category
-            category_name = settings["forums_category_name"]
-            category = discord.utils.get(ctx.guild.categories, name=category_name)
+        # Check rate limits
+        can_proceed, message = await self.check_rate_limit(ctx, "bulk")
+        if not can_proceed:
+            return await ctx.send(message)
             
-            if not category:
-                # Create the category
-                category = await ctx.guild.create_category(category_name)
-                
-            # Get current season anime from Jikan API
-            try:
-                base_url = settings.get("anime_api_url", "https://api.jikan.moe/v4")
-                async with self.session.get(f"{base_url}/seasons/now") as resp:
-                    if resp.status != 200:
-                        await status_msg.edit(content="Error accessing anime API. Using fallback list.")
-                        seasonal_anime = ["Spy x Family", "Demon Slayer", "Jujutsu Kaisen", "My Hero Academia", "One Piece"]
-                    else:
-                        data = await resp.json()
-                        seasonal_anime = []
-                        
-                        # Sort by popularity (members)
-                        sorted_anime = sorted(data.get("data", []), key=lambda x: x.get("members", 0), reverse=True)
-                        
-                        # Take top 15 most popular anime
-                        for anime in sorted_anime[:15]:
-                            title = anime.get("title")
-                            if title:
-                                seasonal_anime.append(title)
-                                # Cache the result
-                                self.anime_cache[title] = {
-                                    "id": anime.get("mal_id"),
-                                    "title": title,
-                                    "synopsis": anime.get("synopsis", ""),
-                                    "genres": [genre["name"] for genre in anime.get("genres", [])],
-                                    "image_url": anime.get("images", {}).get("jpg", {}).get("image_url"),
-                                    "episodes": anime.get("episodes"),
-                                    "score": anime.get("score"),
-                                    "url": anime.get("url")
-                                }
-            except Exception as e:
-                await status_msg.edit(content=f"Error accessing anime API: {e}. Using fallback list.")
-                seasonal_anime = ["Spy x Family", "Demon Slayer", "Jujutsu Kaisen", "My Hero Academia", "One Piece"]
-            
-            await status_msg.edit(content=f"Creating forums for {len(seasonal_anime)} seasonal anime...")
-            
-            created_forums = []
-            existing_forums = []
-            
-            for index, anime in enumerate(seasonal_anime):
-                # Update status every 3 anime
-                if index % 3 == 0:
-                    await status_msg.edit(content=f"Creating forums for seasonal anime... ({index}/{len(seasonal_anime)})")
-                
-                # Check if forum already exists (case insensitive)
-                existing_channel = discord.utils.find(
-                    lambda c: c.name.lower() == anime.lower().replace(" ", "-"),
-                    ctx.guild.channels
-                )
-                
-                if existing_channel:
-                    existing_forums.append(anime)
-                    continue
-                
-                # Get cached anime data
-                anime_data = self.anime_cache.get(anime)
-                
-                # Create the forum
-                try:
-                    await self.create_forum_channel(ctx.guild, anime, category, anime_data, is_seasonal=True)
-                    created_forums.append(anime)
-                    
-                    # Sleep to avoid rate limits
-                    await asyncio.sleep(1.5)
-                except Exception as e:
-                    print(f"Error creating forum for {anime}: {e}")
-            
-            # Final message
-            message = []
-            if created_forums:
-                message.append(f"Created {len(created_forums)} seasonal anime forums!")
-            if existing_forums:
-                message.append(f"{len(existing_forums)} forums already existed.")
-                
-            await status_msg.edit(content="\n".join(message))
-                
-        except Exception as e:
-            await status_msg.edit(content=f"Error creating seasonal anime forums: {e}")
+        # Forward to forum creator
+        await self.forum_creator.create_seasonal_forums(ctx)
 
     @commands.command()
     @commands.guild_only()
     @commands.bot_has_permissions(manage_channels=True)
     async def toptier(self, ctx):
         """Create forum channels for top-rated anime"""
-        settings = await self.config.guild(ctx.guild).all()
-        
-        # Check if user has permission
-        if not ctx.author.guild_permissions.manage_channels and not await ctx.bot.is_admin(ctx.author):
-            await ctx.send("You don't have permission to create forums.")
-            return
+        # Check permissions
+        if not await check_permissions(ctx):
+            return await ctx.send("You don't have permission to create forums.")
             
-        status_msg = await ctx.send("Gathering information about top-rated anime. This may take a moment...")
-        
-        try:
-            # Find or create the forums category
-            category_name = settings["forums_category_name"]
-            category = discord.utils.get(ctx.guild.categories, name=category_name)
+        # Check rate limits
+        can_proceed, message = await self.check_rate_limit(ctx, "bulk")
+        if not can_proceed:
+            return await ctx.send(message)
             
-            if not category:
-                # Create the category
-                category = await ctx.guild.create_category(category_name)
-                
-            # Get top anime from Jikan API
+        # Forward to forum creator
+        await self.forum_creator.create_toptier_forums(ctx)
+        
+    @commands.command()
+    @commands.guild_only()
+    async def anime(self, ctx, *, name: str):
+        """Search for anime information from MyAnimeList"""
+        # Check rate limits
+        can_proceed, message = await self.check_rate_limit(ctx)
+        if not can_proceed:
+            return await ctx.send(message)
+            
+        async with ctx.typing():
             try:
-                base_url = settings.get("anime_api_url", "https://api.jikan.moe/v4")
-                async with self.session.get(f"{base_url}/top/anime", params={"limit": 15}) as resp:
-                    if resp.status != 200:
-                        await status_msg.edit(content="Error accessing anime API. Using fallback list.")
-                        top_anime = ["Fullmetal Alchemist: Brotherhood", "Steins;Gate", "Hunter x Hunter", "Attack on Titan", "Gintama"]
-                    else:
-                        data = await resp.json()
-                        top_anime = []
-                        
-                        for anime in data.get("data", [])[:15]:
-                            title = anime.get("title")
-                            if title:
-                                top_anime.append(title)
-                                # Cache the result
-                                self.anime_cache[title] = {
-                                    "id": anime.get("mal_id"),
-                                    "title": title,
-                                    "synopsis": anime.get("synopsis", ""),
-                                    "genres": [genre["name"] for genre in anime.get("genres", [])],
-                                    "image_url": anime.get("images", {}).get("jpg", {}).get("image_url"),
-                                    "episodes": anime.get("episodes"),
-                                    "score": anime.get("score"),
-                                    "url": anime.get("url")
-                                }
-            except Exception as e:
-                await status_msg.edit(content=f"Error accessing anime API: {e}. Using fallback list.")
-                top_anime = ["Fullmetal Alchemist: Brotherhood", "Steins;Gate", "Hunter x Hunter", "Attack on Titan", "Gintama"]
-            
-            await status_msg.edit(content=f"Creating forums for {len(top_anime)} top-rated anime...")
-            
-            created_forums = []
-            existing_forums = []
-            
-            for index, anime in enumerate(top_anime):
-                # Update status every 3 anime
-                if index % 3 == 0:
-                    await status_msg.edit(content=f"Creating forums for top anime... ({index}/{len(top_anime)})")
-                
-                # Check if forum already exists
-                existing_channel = discord.utils.find(
-                    lambda c: c.name.lower() == anime.lower().replace(" ", "-"),
-                    ctx.guild.channels
-                )
-                
-                if existing_channel:
-                    existing_forums.append(anime)
-                    continue
-                
-                # Get cached anime data
-                anime_data = self.anime_cache.get(anime)
-                
-                # Create the forum
-                try:
-                    await self.create_forum_channel(ctx.guild, anime, category, anime_data, is_top_rated=True)
-                    created_forums.append(anime)
+                # Search for the anime
+                result = await self.mal_api.search_anime(name)
+                if not result:
+                    return await ctx.send(f"Could not find anime matching '{name}'.")
                     
-                    # Sleep to avoid rate limits
-                    await asyncio.sleep(1.5)
-                except Exception as e:
-                    print(f"Error creating forum for {anime}: {e}")
+                # Get detailed anime info
+                anime = await self.mal_api.get_anime_details(result[0]["id"])
+                if not anime:
+                    return await ctx.send("Error retrieving anime details.")
+                
+                # Create embed with anime info
+                embed = create_embed(anime)
+                
+                # Send the embed
+                await ctx.send(embed=embed)
+                
+                # Ask if they want to create a forum for this anime
+                confirm_msg = await ctx.send(f"Would you like to create a forum for **{anime['title']}**? (y/n)")
+                
+                # Wait for confirmation
+                try:
+                    pred = MessagePredicate.yes_or_no(ctx)
+                    await self.bot.wait_for("message", check=pred, timeout=30)
+                    if pred.result:
+                        # Create the forum
+                        await self.forum_creator.create_anime_forum(ctx, anime["title"], anime_data=anime)
+                    else:
+                        await ctx.send("Forum creation cancelled.")
+                except asyncio.TimeoutError:
+                    await ctx.send("No response received, forum creation cancelled.")
+                    
+            except Exception as e:
+                log.error(f"Error in anime command: {e}")
+                await ctx.send(f"An error occurred while searching for anime: {e}")
+                
+    @commands.command()
+    @commands.guild_only()
+    async def watchlist(self, ctx, action: str = "show", *, anime_name: str = None):
+        """Manage your personal anime watchlist"""
+        # This will be implemented in the watchlist_manager.py module
+        await ctx.send("This feature is coming soon!")
+        
+    @commands.command()
+    @commands.guild_only()
+    async def schedule(self, ctx, action: str = "show", *, anime_name: str = None):
+        """View or manage upcoming anime episode schedule"""
+        # This will be implemented in the event_manager.py module
+        await ctx.send("This feature is coming soon!")
+        
+    @commands.command()
+    @commands.guild_only()
+    async def upcoming(self, ctx):
+        """Show upcoming anime for next season"""
+        # Check rate limits
+        can_proceed, message = await self.check_rate_limit(ctx)
+        if not can_proceed:
+            return await ctx.send(message)
             
-            # Final message
-            message = []
-            if created_forums:
-                message.append(f"Created {len(created_forums)} top-rated anime forums!")
-            if existing_forums:
-                message.append(f"{len(existing_forums)} forums already existed.")
+        await self.event_manager.show_upcoming_season(ctx)
                 
-            await status_msg.edit(content="\n".join(message))
-                
-        except Exception as e:
-            await status_msg.edit(content=f"Error creating top anime forums: {e}")
+    @commands.command()
+    @commands.guild_only()
+    async def stats(self, ctx, *, forum_name: str = None):
+        """Show activity statistics for anime forums"""
+        # Check rate limits
+        can_proceed, message = await self.check_rate_limit(ctx)
+        if not can_proceed:
+            return await ctx.send(message)
+            
+        await self.analytics.show_forum_stats(ctx, forum_name)
 
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -514,79 +449,46 @@ class AnimeForumCreator(commands.Cog):
         if self.bot.user in message.mentions and not message.mention_everyone:
             await message.channel.send(settings["mention_message"])
             
+        # Process message for analytics
+        if settings["analytics"]["enabled"] and settings["analytics"]["track_activity"]:
+            self.analytics.track_message(message)
+            
         # Handle forum thread interaction
         if isinstance(message.channel, discord.Thread) and message.channel.parent:
             parent_channel = message.channel.parent
             
             # Check if parent is a forum channel
             if isinstance(parent_channel, discord.ForumChannel):
-                # Auto-tag based on content
-                content_lower = message.content.lower()
-                keywords = {
-                    "spoiler": "Spoiler",
-                    "fanart": "Fanart", 
-                    "recommend": "Recommendation",
-                    "help": "Question",
-                    "news": "News",
-                    "meme": "Meme",
-                    "review": "Review"
-                }
-                
-                current_tags = message.channel.applied_tags
-                new_tags = list(current_tags)
-                tag_added = False
-                
-                # Look for keywords to auto-tag
-                for tag in parent_channel.available_tags:
-                    for keyword, tag_name in keywords.items():
-                        # Check if keyword is in message and tag not already applied
-                        if keyword in content_lower and tag.name == tag_name and tag not in new_tags:
-                            new_tags.append(tag)
-                            tag_added = True
-                
-                # Update tags if needed
-                if tag_added and len(new_tags) > len(current_tags):
-                    try:
-                        await message.channel.edit(applied_tags=new_tags)
-                    except:
-                        pass
+                # Process message for forum-specific features
+                await self.forum_creator.process_thread_message(message, parent_channel, settings)
 
     @commands.Cog.listener()
     async def on_thread_create(self, thread):
         """Enhance new threads in anime forums"""
-        # Check if thread parent is a forum channel
+        # Only process if thread parent is a forum channel
         if not isinstance(thread.parent, discord.ForumChannel):
             return
             
-        # Only process if in anime category
+        # Get settings for this guild
         settings = await self.config.guild(thread.guild).all()
-        anime_category_names = [
-            settings["forums_category_name"],
-            settings["seasonal_category_name"],
-            "Top Tier Anime"
-        ]
         
+        # Check if in anime category
+        anime_category_name = settings["forums_category_name"]
         category_name = thread.parent.category.name if thread.parent.category else None
         
-        if not category_name or category_name not in anime_category_names:
+        if not category_name or category_name != anime_category_name:
             return
             
-        # Give the thread starter a welcoming message
-        try:
-            # Find anime name from forum name
-            anime_name = thread.parent.name.replace("-", " ").title()
-            
-            # Create a welcoming message
-            welcome_message = (
-                f"Welcome to the discussion about **{thread.name}**!\n\n"
-                f"Feel free to share your thoughts, theories, favorite moments, or questions about {anime_name}.\n\n"
-                f"Remember to use tags to help others find your thread. Enjoy your discussion!"
-            )
-            
-            # Send the message
-            await thread.send(welcome_message)
-        except Exception as e:
-            print(f"Error sending welcome message to new thread: {e}")
+        # Process the new thread
+        await self.forum_creator.process_new_thread(thread, settings)
+        
+        # Track for analytics
+        if settings["analytics"]["enabled"] and settings["analytics"]["track_activity"]:
+            self.analytics.track_thread_create(thread)
+
 
 async def setup(bot):
-    await bot.add_cog(AnimeForumCreator(bot))
+    """Set up the AnimeForumCog with all required modules"""
+    # The module loading is handled with relative imports so order doesn't matter
+    cog = AnimeForumCog(bot)
+    await bot.add_cog(cog)
