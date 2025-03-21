@@ -6,7 +6,7 @@ import aiohttp
 import json
 import random
 
-from .cache_manager import CacheManager
+from .cachemanager import CacheManager
 
 log = logging.getLogger("red.animeforum.mal_api")
 
