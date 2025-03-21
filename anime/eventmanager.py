@@ -119,7 +119,7 @@ class EventManager:
             
             # Filter to get only the anime we're tracking
             for anime in today_schedule:
-                anime = anime_results[0]
+                anime = anime_results[0] 
             anime_id = anime.get("id") or anime.get("mal_id")
             anime_title = anime.get("title")
             
