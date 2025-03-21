@@ -1,0 +1,25 @@
+{
+    "name": "AnimeForum",
+    "short": "Create and manage anime forum channels with MyAnimeList integration",
+    "description": "A comprehensive cog for creating and managing anime-themed forum channels in Discord, with rich MyAnimeList integration, analytics, scheduling, and event management.",
+    "end_user_data_statement": "This cog stores data about users' anime preferences and forum activity to provide personalized recommendations and analytics features. User IDs are stored alongside anime preferences and forum activity data.",
+    "author": [
+        "Claude"
+    ],
+    "required_cogs": {},
+    "requirements": [
+        "aiohttp"
+    ],
+    "tags": [
+        "anime",
+        "forum",
+        "myanimelist",
+        "mal",
+        "analytics",
+        "community"
+    ],
+    "min_bot_version": "3.5.0",
+    "hidden": false,
+    "disabled": false,
+    "type": "COG"
+}
