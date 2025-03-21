@@ -119,38 +119,13 @@ class EventManager:
             
             # Filter to get only the anime we're tracking
             for anime in today_schedule:
-                anime = anime_results[0] 
-            anime_id = anime.get("id") or anime.get("mal_id")
-            anime_title = anime.get("title")
-            
-            if not anime_id:
-                return await ctx.send("Could not find a valid anime ID.")
+                anime_id = anime.get("id")
                 
-            # Remove from watching list
-            removed = False
-            async with self.config.guild(ctx.guild).events() as events:
-                if "watching" in events and str(anime_id) in events["watching"]:
-                    if user_id in events["watching"][str(anime_id)]:
-                        events["watching"][str(anime_id)].remove(user_id)
-                        removed = True
-                        
-                    # If no one is watching, remove from airing notifications
-                    if not events["watching"][str(anime_id)] and "airing_notifications" in events:
-                        if anime_id in events["airing_notifications"]:
-                            events["airing_notifications"].remove(anime_id)
-                    
-            # Confirmation message
-            if removed:
-                await ctx.send(f"Removed from watching list: **{anime_title}**")
-            else:
-                await ctx.send(f"You were not watching **{anime_title}**.")
-                
-            return True
-            
-        except Exception as e:
-            log.error(f"Error removing from watching list: {e}")
-            await ctx.send(f"Error removing from watching list: {e}")
-            return False
+                if anime_id in anime_ids:
+                    # Find matching forum
+                    anime_title = anime.get("title")
+                    if not anime_title:
+                        continue
             
     async def show_upcoming_season(self, ctx):
         """Show information about the upcoming anime season"""
