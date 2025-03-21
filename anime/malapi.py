@@ -214,3 +214,116 @@ class MyAnimeListAPI:
             endpoint = f"seasons/{year}/{season}"
         else:
             endpoint = "seasons/now"
+            
+        params = {"limit": limit}
+        result = await self._make_jikan_request(endpoint, params)
+        
+        if result and "data" in result:
+            # Format the results consistently
+            anime_list = []
+            for item in result["data"][:limit]:
+                anime_list.append({
+                    "id": item.get("mal_id"),
+                    "title": item.get("title"),
+                    "synopsis": item.get("synopsis"),
+                    "episodes": item.get("episodes"),
+                    "score": item.get("score"),
+                    "image_url": item.get("images", {}).get("jpg", {}).get("image_url"),
+                    "airing_start": item.get("aired", {}).get("from"),
+                    "type": item.get("type"),
+                    "genres": [genre["name"] for genre in item.get("genres", [])],
+                    "url": item.get("url")
+                })
+            return anime_list
+        return []
+        
+    async def get_top_anime(self, limit: int = 15, filter_type: str = "all") -> List[Dict]:
+        """Get top-rated anime"""
+        params = {"limit": limit, "type": filter_type}
+        result = await self._make_jikan_request("top/anime", params)
+        
+        if result and "data" in result:
+            # Format the results consistently
+            anime_list = []
+            for item in result["data"][:limit]:
+                anime_list.append({
+                    "id": item.get("mal_id"),
+                    "title": item.get("title"),
+                    "synopsis": item.get("synopsis"),
+                    "episodes": item.get("episodes"),
+                    "score": item.get("score"),
+                    "image_url": item.get("images", {}).get("jpg", {}).get("image_url"),
+                    "type": item.get("type"),
+                    "genres": [genre["name"] for genre in item.get("genres", [])],
+                    "url": item.get("url")
+                })
+            return anime_list
+        return []
+        
+    async def get_anime_schedule(self, weekday: str = None) -> Dict[str, List[Dict]]:
+        """Get anime airing schedule, optionally filtered by weekday"""
+        if weekday:
+            endpoint = f"schedules/{weekday.lower()}"
+        else:
+            endpoint = "schedules"
+            
+        result = await self._make_jikan_request(endpoint)
+        
+        if result and "data" in result:
+            # Group by weekday
+            schedule = {}
+            for item in result["data"]:
+                weekday = item.get("broadcast", {}).get("day", "Unknown")
+                if weekday not in schedule:
+                    schedule[weekday] = []
+                    
+                schedule[weekday].append({
+                    "id": item.get("mal_id"),
+                    "title": item.get("title"),
+                    "episodes": item.get("episodes"),
+                    "score": item.get("score"),
+                    "image_url": item.get("images", {}).get("jpg", {}).get("image_url"),
+                    "time": item.get("broadcast", {}).get("time"),
+                    "url": item.get("url")
+                })
+            return schedule
+        return {}
+        
+    async def get_upcoming_anime(self, limit: int = 15) -> List[Dict]:
+        """Get upcoming anime for next season"""
+        # Get current season info to determine next season
+        current_season = await self._make_jikan_request("seasons/now", {"limit": 1})
+        if not current_season or "data" not in current_season or not current_season["data"]:
+            return []
+            
+        # Extract current season and year
+        sample_anime = current_season["data"][0]
+        current_year = int(sample_anime.get("year", datetime.now().year))
+        current_season_name = sample_anime.get("season", "").lower()
+        
+        # Calculate next season
+        seasons = ["winter", "spring", "summer", "fall"]
+        current_idx = seasons.index(current_season_name) if current_season_name in seasons else 0
+        next_idx = (current_idx + 1) % 4
+        next_season = seasons[next_idx]
+        next_year = current_year + 1 if next_idx == 0 else current_year
+        
+        # Get next season anime
+        return await self.get_seasonal_anime(next_year, next_season, limit)
+        
+    async def get_recommendations(self, anime_id: int, limit: int = 10) -> List[Dict]:
+        """Get anime recommendations based on a specific anime"""
+        result = await self._make_jikan_request(f"anime/{anime_id}/recommendations")
+        
+        if result and "data" in result:
+            recommendations = []
+            for item in result["data"][:limit]:
+                entry = item.get("entry", {})
+                recommendations.append({
+                    "id": entry.get("mal_id"),
+                    "title": entry.get("title"),
+                    "image_url": entry.get("images", {}).get("jpg", {}).get("image_url"),
+                    "url": entry.get("url")
+                })
+            return recommendations
+        return []
