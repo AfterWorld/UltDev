@@ -17,10 +17,10 @@ from redbot.core.utils.predicates import MessagePredicate
 log = logging.getLogger("red.animeforum")
 
 # Import additional modules
-from .mal_api import MyAnimeListAPI
-from .forum_creator import ForumCreator
-from .cache_manager import CacheManager
-from .event_manager import EventManager
+from .malapi import MyAnimeListAPI
+from .forumcreator import ForumCreator
+from .cachemanager import CacheManager
+from .eventmanager import EventManager
 from .analytics import AnalyticsManager
 from .utils import create_embed, chunked_send, check_permissions
 
