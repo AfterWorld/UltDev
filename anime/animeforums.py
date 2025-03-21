@@ -367,11 +367,33 @@ class AnimeForumCog(commands.Cog):
             try:
                 # Search for the anime
                 result = await self.mal_api.search_anime(name)
-                if not result:
+                
+                # Debug output to see structure of result
+                log.debug(f"Search result: {result}")
+                
+                if not result or len(result) == 0:
                     return await ctx.send(f"Could not find anime matching '{name}'.")
                     
+                # Get the first anime result
+                anime_result = result[0]
+                
+                # Check if 'id' exists in the result
+                if 'id' not in anime_result:
+                    # Try to find the right key for the ID
+                    anime_id = None
+                    if 'anime_id' in anime_result:
+                        anime_id = anime_result['anime_id']
+                    elif 'mal_id' in anime_result:
+                        anime_id = anime_result['mal_id']
+                    else:
+                        # Print all keys for debugging
+                        log.debug(f"Available keys in result: {anime_result.keys()}")
+                        return await ctx.send("Error: Couldn't find anime ID in search results.")
+                else:
+                    anime_id = anime_result['id']
+                    
                 # Get detailed anime info
-                anime = await self.mal_api.get_anime_details(result[0]["id"])
+                anime = await self.mal_api.get_anime_details(anime_id)
                 if not anime:
                     return await ctx.send("Error retrieving anime details.")
                 
@@ -397,8 +419,8 @@ class AnimeForumCog(commands.Cog):
                     await ctx.send("No response received, forum creation cancelled.")
                     
             except Exception as e:
-                log.error(f"Error in anime command: {e}")
-                await ctx.send(f"An error occurred while searching for anime: {e}")
+                log.error(f"Error in anime command: {e}", exc_info=True)
+                await ctx.send(f"An error occurred while searching for anime: {str(e)}")
                 
     @commands.command()
     @commands.guild_only()
