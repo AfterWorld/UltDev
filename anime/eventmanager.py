@@ -12,8 +12,8 @@ from redbot.core.bot import Red
 from redbot.core.utils.chat_formatting import pagify, box
 from redbot.core.utils.predicates import MessagePredicate
 
-from .mal_api import MyAnimeListAPI
-from .cache_manager import CacheManager
+from .malapi import MyAnimeListAPI
+from .cachemanager import CacheManager
 from .utils import create_embed, format_relative_time
 
 log = logging.getLogger("red.animeforum.event_manager")
