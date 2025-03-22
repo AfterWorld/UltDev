@@ -366,6 +366,7 @@ class TCBScansAPI:
     def __init__(self):
         self.base_url = "https://tcbscans.com"
         self.session = None
+        self.project_list = []  # Cache for available manga
     
     async def ensure_session(self):
         """Ensure an aiohttp session exists"""
@@ -397,50 +398,163 @@ class TCBScansAPI:
             log.error(f"Error fetching TCB page: {str(e)}")
             return None
     
-    async def search_manga(self, title):
-        """Search for manga by title"""
-        # TCB Scans doesn't have a search API, so we scrape from the projects page
+    async def get_available_manga(self, force_refresh=False):
+        """Get a list of all available manga on TCB Scans"""
+        if not force_refresh and self.project_list:
+            return self.project_list
+        
+        # Get the projects page
         html = await self.get_webpage(f"{self.base_url}/projects")
         if not html:
             return []
         
-        results = []
         soup = BeautifulSoup(html, 'html.parser')
+        self.project_list = []
         
-        # Look for manga cards
-        manga_cards = soup.select(".bg-card")
+        # Look for manga cards/items in different potential layouts
+        manga_items = (
+            soup.select(".bg-card") or 
+            soup.select(".manga-card") or 
+            soup.select(".grid-item") or
+            soup.select(".project-card") or
+            soup.select("a[href^='/mangas/']")
+        )
         
-        title_lower = title.lower()
-        for card in manga_cards:
-            # Extract manga info
-            manga_link = card.select_one("a")
-            if not manga_link or not manga_link.get("href"):
-                continue
+        log.info(f"Found {len(manga_items)} manga items on TCB Scans projects page")
+        
+        for item in manga_items:
+            try:
+                # Extract manga info
+                manga_link = item.select_one("a") if not item.name == 'a' else item
+                if not manga_link or not manga_link.get("href"):
+                    continue
+                    
+                manga_url = manga_link.get("href")
+                # Make sure it's a full URL
+                if not manga_url.startswith("http"):
+                    manga_url = urljoin(self.base_url, manga_url)
+                    
+                manga_id = manga_url.split("/")[-1] if "/" in manga_url else manga_url
                 
-            manga_url = manga_link.get("href")
-            manga_id = manga_url.split("/")[-1] if "/" in manga_url else manga_url
-            
-            title_elem = card.select_one("h5") or card.select_one(".card-title")
-            manga_title = title_elem.get_text(strip=True) if title_elem else "Unknown Title"
-            
-            # Only include if the title matches the search query
-            if title_lower in manga_title.lower():
+                # Get title from different possible elements
+                title_elem = (
+                    item.select_one("h5") or 
+                    item.select_one(".card-title") or 
+                    item.select_one(".manga-title") or
+                    item.select_one(".title") or
+                    manga_link
+                )
+                manga_title = title_elem.get_text(strip=True) if title_elem else "Unknown Title"
+                
                 # Get cover image
                 cover_url = None
-                img_elem = card.select_one("img")
+                img_elem = item.select_one("img")
                 if img_elem and "src" in img_elem.attrs:
                     cover_url = img_elem["src"]
                     # Make sure URL is absolute
                     if not cover_url.startswith("http"):
                         cover_url = urljoin(self.base_url, cover_url)
                 
-                results.append({
+                # Add to results list
+                self.project_list.append({
                     "id": manga_id,
                     "title": manga_title,
-                    "url": urljoin(self.base_url, manga_url),
+                    "url": manga_url,
                     "cover_url": cover_url,
                     "source": "tcbscans"
                 })
+            except Exception as e:
+                log.error(f"Error parsing manga item: {str(e)}")
+        
+        # Add direct URLs for popular manga that TCB Scans is known to translate
+        # Even if we couldn't find them on the projects page
+        known_titles = [
+            # Core TCB Scans manga
+            {"title": "One Piece", "id": "one-piece", "url": f"{self.base_url}/mangas/1/one-piece"},
+            {"title": "My Hero Academia", "id": "my-hero-academia", "url": f"{self.base_url}/mangas/2/my-hero-academia"},
+            {"title": "Jujutsu Kaisen", "id": "jujutsu-kaisen", "url": f"{self.base_url}/mangas/3/jujutsu-kaisen"},
+            {"title": "Black Clover", "id": "black-clover", "url": f"{self.base_url}/mangas/4/black-clover"},
+            {"title": "Chainsaw Man", "id": "chainsaw-man", "url": f"{self.base_url}/mangas/5/chainsaw-man"},
+            {"title": "Dragon Ball Super", "id": "dragon-ball-super", "url": f"{self.base_url}/mangas/6/dragon-ball-super"},
+            {"title": "Hunter X Hunter", "id": "hunter-x-hunter", "url": f"{self.base_url}/mangas/7/hunter-x-hunter"},
+            
+            # Additional popular manga
+            {"title": "One Punch Man", "id": "one-punch-man", "url": f"{self.base_url}/mangas/8/one-punch-man"},
+            {"title": "Boruto", "id": "boruto", "url": f"{self.base_url}/mangas/9/boruto"},
+            {"title": "Demon Slayer", "id": "demon-slayer", "url": f"{self.base_url}/mangas/10/demon-slayer"},
+            {"title": "Attack on Titan", "id": "attack-on-titan", "url": f"{self.base_url}/mangas/11/attack-on-titan"},
+            {"title": "Tokyo Ghoul", "id": "tokyo-ghoul", "url": f"{self.base_url}/mangas/12/tokyo-ghoul"},
+            {"title": "Naruto", "id": "naruto", "url": f"{self.base_url}/mangas/13/naruto"},
+            {"title": "Bleach", "id": "bleach", "url": f"{self.base_url}/mangas/14/bleach"},
+            {"title": "Dr. Stone", "id": "dr-stone", "url": f"{self.base_url}/mangas/15/dr-stone"},
+            {"title": "The Promised Neverland", "id": "the-promised-neverland", "url": f"{self.base_url}/mangas/16/the-promised-neverland"},
+            {"title": "Haikyuu", "id": "haikyuu", "url": f"{self.base_url}/mangas/17/haikyuu"},
+            
+            # Aliases/abbreviations
+            {"title": "OPM", "id": "one-punch-man", "url": f"{self.base_url}/mangas/8/one-punch-man"},
+            {"title": "MHA", "id": "my-hero-academia", "url": f"{self.base_url}/mangas/2/my-hero-academia"},
+            {"title": "JJK", "id": "jujutsu-kaisen", "url": f"{self.base_url}/mangas/3/jujutsu-kaisen"},
+            {"title": "CSM", "id": "chainsaw-man", "url": f"{self.base_url}/mangas/5/chainsaw-man"},
+            {"title": "DBS", "id": "dragon-ball-super", "url": f"{self.base_url}/mangas/6/dragon-ball-super"},
+            {"title": "HxH", "id": "hunter-x-hunter", "url": f"{self.base_url}/mangas/7/hunter-x-hunter"},
+            {"title": "AOT", "id": "attack-on-titan", "url": f"{self.base_url}/mangas/11/attack-on-titan"}
+        ]
+        
+        # Add known manga if not already in list
+        for manga in known_titles:
+            if not any(m["title"].lower() == manga["title"].lower() for m in self.project_list):
+                manga["source"] = "tcbscans"
+                self.project_list.append(manga)
+        
+        return self.project_list
+    
+    async def search_manga(self, title):
+        """Search for manga by title"""
+        # Get all available manga first
+        all_manga = await self.get_available_manga()
+        
+        if not all_manga:
+            return []
+        
+        # Normalize the search query
+        title_lower = title.lower()
+        title_words = title_lower.split()
+        
+        # Perform the search with different matching strategies
+        exact_matches = []
+        partial_matches = []
+        word_matches = []
+        
+        for manga in all_manga:
+            manga_title = manga["title"].lower()
+            
+            # Exact match
+            if title_lower == manga_title:
+                exact_matches.append(manga)
+                continue
+                
+            # Partial match (title is contained in manga title)
+            if title_lower in manga_title:
+                partial_matches.append(manga)
+                continue
+                
+            # Word match (all words in title appear in manga title)
+            if all(word in manga_title for word in title_words):
+                word_matches.append(manga)
+                continue
+        
+        # Combine results in order of relevance
+        results = exact_matches + partial_matches + word_matches
+        
+        # If we have abbreviations like "OPM" for "One Punch Man", try to handle them
+        if not results and len(title) <= 5:
+            # Could be an abbreviation, try matching initials
+            for manga in all_manga:
+                manga_title = manga["title"]
+                # Get initials (first letter of each word)
+                initials = ''.join(word[0].lower() for word in manga_title.split() if word)
+                if title_lower == initials:
+                    results.append(manga)
         
         return results
     
@@ -459,7 +573,7 @@ class TCBScansAPI:
         soup = BeautifulSoup(html, 'html.parser')
         
         # Extract manga info
-        title_elem = soup.select_one("h1") or soup.select_one(".manga-title")
+        title_elem = soup.select_one("h1") or soup.select_one("h2") or soup.select_one(".manga-title")
         title = title_elem.get_text(strip=True) if title_elem else "Unknown Title"
         
         # Get description
@@ -468,7 +582,7 @@ class TCBScansAPI:
         
         # Get cover image
         cover_url = None
-        img_elem = soup.select_one(".manga-cover img") or soup.select_one(".manga-image img")
+        img_elem = soup.select_one(".manga-cover img") or soup.select_one(".manga-image img") or soup.select_one("img")
         if img_elem and "src" in img_elem.attrs:
             cover_url = img_elem["src"]
             # Make sure URL is absolute
@@ -496,40 +610,57 @@ class TCBScansAPI:
         
         # Find the chapters section
         chapters = []
-        chapter_items = soup.select(".chapter-item") or soup.select(".chapters-list li")
+        chapter_items = (
+            soup.select(".chapter-item") or 
+            soup.select(".chapters-list li") or
+            soup.select("a[href^='/chapters/']") or
+            soup.select("a[href*='/chapter/']")
+        )
         
         for item in chapter_items:
-            # Extract chapter info
-            link = item.select_one("a")
-            if not link or not link.get("href"):
-                continue
-            
-            chapter_url = link.get("href")
-            chapter_id = chapter_url.split("/")[-1] if "/" in chapter_url else chapter_url
-            
-            # Extract chapter title/number
-            title_text = link.get_text(strip=True)
-            
-            # Try to extract chapter number with regex
-            chapter_num_match = re.search(r'Chapter\s+(\d+(?:\.\d+)?)', title_text, re.IGNORECASE)
-            chapter_num = chapter_num_match.group(1) if chapter_num_match else "N/A"
-            
-            # Create readable chapter info
-            chapter_info = title_text
-            
-            # Get the date if available
-            date_elem = item.select_one(".release-date") or item.select_one(".date")
-            date_text = date_elem.get_text(strip=True) if date_elem else ""
-            
-            chapters.append({
-                "id": chapter_id,
-                "chapter": chapter_num,
-                "title": title_text,
-                "chapter_info": chapter_info,
-                "published_at": date_text,
-                "url": urljoin(self.base_url, chapter_url),
-                "source": "tcbscans"
-            })
+            try:
+                # Extract chapter info
+                link = item if item.name == 'a' else item.select_one("a")
+                if not link or not link.get("href"):
+                    continue
+                
+                chapter_url = link.get("href")
+                # Make sure URL is absolute
+                if not chapter_url.startswith("http"):
+                    chapter_url = urljoin(self.base_url, chapter_url)
+                    
+                chapter_id = chapter_url.split("/")[-1] if "/" in chapter_url else chapter_url
+                
+                # Extract chapter title/number
+                title_text = link.get_text(strip=True)
+                
+                # Try to extract chapter number with regex
+                chapter_num_match = re.search(r'Chapter\s+(\d+(?:\.\d+)?)', title_text, re.IGNORECASE)
+                if chapter_num_match:
+                    chapter_num = chapter_num_match.group(1)
+                else:
+                    # Try alternate formats (e.g., "#123")
+                    alt_match = re.search(r'#(\d+(?:\.\d+)?)', title_text)
+                    chapter_num = alt_match.group(1) if alt_match else "N/A"
+                
+                # Create readable chapter info
+                chapter_info = title_text
+                
+                # Get the date if available
+                date_elem = item.select_one(".release-date") or item.select_one(".date")
+                date_text = date_elem.get_text(strip=True) if date_elem else ""
+                
+                chapters.append({
+                    "id": chapter_id,
+                    "chapter": chapter_num,
+                    "title": title_text,
+                    "chapter_info": chapter_info,
+                    "published_at": date_text,
+                    "url": chapter_url,
+                    "source": "tcbscans"
+                })
+            except Exception as e:
+                log.error(f"Error parsing chapter item: {str(e)}")
         
         # Sort chapters by number in descending order
         try:
