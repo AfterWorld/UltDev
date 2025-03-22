@@ -4,15 +4,16 @@ import json
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Union
-from bs4 import BeautifulSoup
+from urllib.parse import quote, urljoin
 
 import aiohttp
+from bs4 import BeautifulSoup
 import discord
 from redbot.core import Config, commands
 from redbot.core.bot import Red
 from redbot.core.utils.menus import DEFAULT_CONTROLS, menu
 
-log = logging.getLogger("red.mangadex")
+log = logging.getLogger("red.mangatracker")
 
 class MangaDexAPI:
     """API wrapper for MangaDex"""
@@ -253,7 +254,8 @@ class MangaDexAPI:
                 "title": title,
                 "description": attributes.get("description", {}).get("en", "No description available."),
                 "status": attributes.get("status", "unknown"),
-                "cover_url": cover_url
+                "cover_url": cover_url,
+                "source": "mangadex"
             })
         
         return results
@@ -296,7 +298,8 @@ class MangaDexAPI:
             "description": attributes.get("description", {}).get("en", "No description available."),
             "status": attributes.get("status", "unknown"),
             "cover_url": cover_url,
-            "attributes": attributes
+            "attributes": attributes,
+            "source": "mangadex"
         }
     
     async def get_latest_chapters(self, manga_id, limit=1):
@@ -350,14 +353,196 @@ class MangaDexAPI:
                 "volume": attributes.get("volume", "N/A"),
                 "group": group_name,
                 "published_at": attributes.get("publishAt", ""),
-                "url": f"https://mangadex.org/chapter/{chapter_id}"
+                "url": f"https://mangadex.org/chapter/{chapter_id}",
+                "source": "mangadex"
             })
         
         return chapters
 
 
-class MangaDexTracker(commands.Cog):
-    """Track manga releases from MangaDex"""
+class TCBScansAPI:
+    """API wrapper for TCB Scans (web scraping based)"""
+    
+    def __init__(self):
+        self.base_url = "https://tcbscans.com"
+        self.session = None
+    
+    async def ensure_session(self):
+        """Ensure an aiohttp session exists"""
+        if self.session is None or self.session.closed:
+            self.session = aiohttp.ClientSession(headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml",
+                "Accept-Language": "en-US,en;q=0.9"
+            })
+    
+    async def close_session(self):
+        """Close the aiohttp session"""
+        if self.session and not self.session.closed:
+            await self.session.close()
+    
+    async def get_webpage(self, url):
+        """Fetch a webpage and return its HTML"""
+        await self.ensure_session()
+        
+        try:
+            log.info(f"Fetching TCB page: {url}")
+            async with self.session.get(url) as response:
+                if response.status == 200:
+                    return await response.text()
+                else:
+                    log.error(f"Failed to get TCB page, status: {response.status} for URL: {url}")
+                    return None
+        except Exception as e:
+            log.error(f"Error fetching TCB page: {str(e)}")
+            return None
+    
+    async def search_manga(self, title):
+        """Search for manga by title"""
+        # TCB Scans doesn't have a search API, so we scrape from the projects page
+        html = await self.get_webpage(f"{self.base_url}/projects")
+        if not html:
+            return []
+        
+        results = []
+        soup = BeautifulSoup(html, 'html.parser')
+        
+        # Look for manga cards
+        manga_cards = soup.select(".bg-card")
+        
+        title_lower = title.lower()
+        for card in manga_cards:
+            # Extract manga info
+            manga_link = card.select_one("a")
+            if not manga_link or not manga_link.get("href"):
+                continue
+                
+            manga_url = manga_link.get("href")
+            manga_id = manga_url.split("/")[-1] if "/" in manga_url else manga_url
+            
+            title_elem = card.select_one("h5") or card.select_one(".card-title")
+            manga_title = title_elem.get_text(strip=True) if title_elem else "Unknown Title"
+            
+            # Only include if the title matches the search query
+            if title_lower in manga_title.lower():
+                # Get cover image
+                cover_url = None
+                img_elem = card.select_one("img")
+                if img_elem and "src" in img_elem.attrs:
+                    cover_url = img_elem["src"]
+                    # Make sure URL is absolute
+                    if not cover_url.startswith("http"):
+                        cover_url = urljoin(self.base_url, cover_url)
+                
+                results.append({
+                    "id": manga_id,
+                    "title": manga_title,
+                    "url": urljoin(self.base_url, manga_url),
+                    "cover_url": cover_url,
+                    "source": "tcbscans"
+                })
+        
+        return results
+    
+    async def get_manga_details(self, manga_id):
+        """Get detailed information about a manga using its URL or ID"""
+        if manga_id.startswith("http"):
+            url = manga_id  # It's already a full URL
+        else:
+            # Try to construct the URL from ID
+            url = f"{self.base_url}/mangas/{manga_id}"
+        
+        html = await self.get_webpage(url)
+        if not html:
+            return None
+        
+        soup = BeautifulSoup(html, 'html.parser')
+        
+        # Extract manga info
+        title_elem = soup.select_one("h1") or soup.select_one(".manga-title")
+        title = title_elem.get_text(strip=True) if title_elem else "Unknown Title"
+        
+        # Get description
+        desc_elem = soup.select_one(".description") or soup.select_one(".synopsis")
+        description = desc_elem.get_text(strip=True) if desc_elem else "No description available."
+        
+        # Get cover image
+        cover_url = None
+        img_elem = soup.select_one(".manga-cover img") or soup.select_one(".manga-image img")
+        if img_elem and "src" in img_elem.attrs:
+            cover_url = img_elem["src"]
+            # Make sure URL is absolute
+            if not cover_url.startswith("http"):
+                cover_url = urljoin(self.base_url, cover_url)
+        
+        return {
+            "id": manga_id,
+            "title": title,
+            "description": description,
+            "url": url,
+            "cover_url": cover_url,
+            "source": "tcbscans"
+        }
+    
+    async def get_latest_chapters(self, manga_id):
+        """Get the latest chapters for a manga"""
+        manga_url = manga_id if manga_id.startswith("http") else f"{self.base_url}/mangas/{manga_id}"
+        
+        html = await self.get_webpage(manga_url)
+        if not html:
+            return []
+        
+        soup = BeautifulSoup(html, 'html.parser')
+        
+        # Find the chapters section
+        chapters = []
+        chapter_items = soup.select(".chapter-item") or soup.select(".chapters-list li")
+        
+        for item in chapter_items:
+            # Extract chapter info
+            link = item.select_one("a")
+            if not link or not link.get("href"):
+                continue
+            
+            chapter_url = link.get("href")
+            chapter_id = chapter_url.split("/")[-1] if "/" in chapter_url else chapter_url
+            
+            # Extract chapter title/number
+            title_text = link.get_text(strip=True)
+            
+            # Try to extract chapter number with regex
+            chapter_num_match = re.search(r'Chapter\s+(\d+(?:\.\d+)?)', title_text, re.IGNORECASE)
+            chapter_num = chapter_num_match.group(1) if chapter_num_match else "N/A"
+            
+            # Create readable chapter info
+            chapter_info = title_text
+            
+            # Get the date if available
+            date_elem = item.select_one(".release-date") or item.select_one(".date")
+            date_text = date_elem.get_text(strip=True) if date_elem else ""
+            
+            chapters.append({
+                "id": chapter_id,
+                "chapter": chapter_num,
+                "title": title_text,
+                "chapter_info": chapter_info,
+                "published_at": date_text,
+                "url": urljoin(self.base_url, chapter_url),
+                "source": "tcbscans"
+            })
+        
+        # Sort chapters by number in descending order
+        try:
+            chapters.sort(key=lambda x: float(x["chapter"]) if x["chapter"] != "N/A" else 0, reverse=True)
+        except (ValueError, TypeError):
+            # If sorting fails, keep original order
+            pass
+        
+        return chapters
+
+
+class MangaTracker(commands.Cog):
+    """Track manga releases from MangaDex and TCB Scans"""
     
     default_guild_settings = {
         "notification_channel": None,
@@ -369,7 +554,8 @@ class MangaDexTracker(commands.Cog):
     
     def __init__(self, bot: Red):
         self.bot = bot
-        self.api = MangaDexAPI()
+        self.mangadex_api = MangaDexAPI()
+        self.tcbscans_api = TCBScansAPI()
         self.config = Config.get_conf(self, identifier=9879845123, force_registration=True)
         
         # Register default settings
@@ -383,33 +569,46 @@ class MangaDexTracker(commands.Cog):
         """Clean up when cog is unloaded"""
         if self.check_for_updates_task:
             self.check_for_updates_task.cancel()
-        asyncio.create_task(self.api.close_session())
+        asyncio.create_task(self.mangadex_api.close_session())
+        asyncio.create_task(self.tcbscans_api.close_session())
+    
+    def format_timestamp(self, dt):
+        """Format a datetime object into a clean human-readable string"""
+        if isinstance(dt, str):
+            try:
+                dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
+            except ValueError:
+                return dt
+                
+        # Format: "March 22, 2025 at 6:38 PM UTC"
+        return dt.strftime("%B %d, %Y at %I:%M %p %Z")
     
     @commands.group(name="manga")
     async def manga(self, ctx: commands.Context):
         """Manga tracking commands"""
         if ctx.invoked_subcommand is None:
             help_text = (
-                "📚 **MangaDex Tracker**\n\n"
+                "📚 **Manga Tracker**\n\n"
                 "Available commands:\n"
                 "`[p]manga search <title>` - Search for manga\n"
                 "`[p]manga track <title>` - Track a manga for new chapter releases\n"
                 "`[p]manga untrack <title>` - Stop tracking a manga\n"
                 "`[p]manga list` - List all tracked manga\n"
                 "`[p]manga setnotify [channel]` - Set the channel for notifications\n"
-                "`[p]manga check` - Manually check for updates"
+                "`[p]manga check` - Manually check for updates\n"
+                "`[p]manga tcbsearch <title>` - Search for manga on TCB Scans"
             )
             await ctx.send(help_text.replace("[p]", ctx.clean_prefix))
     
     @manga.command(name="search")
     async def manga_search(self, ctx: commands.Context, *, query: str):
-        """Search for manga by title"""
+        """Search for manga on MangaDex by title"""
         async with ctx.typing():
             message = await ctx.send(f"🔍 Searching for: {query}...")
-            results = await self.api.search_manga(query, fallback_scrape=True)
+            results = await self.mangadex_api.search_manga(query, fallback_scrape=True)
             
             if not results or len(results) == 0:
-                return await message.edit(content=f"❌ No results found for '{query}'")
+                return await message.edit(content=f"❌ No results found for '{query}' on MangaDex")
             
             # Create pages for pagination
             pages = []
@@ -419,7 +618,7 @@ class MangaDexTracker(commands.Cog):
             
             for i, chunk in enumerate(chunks):
                 embed = discord.Embed(
-                    title=f"Search Results for '{query}'",
+                    title=f"MangaDex Results for '{query}'",
                     color=await ctx.embed_color(),
                     timestamp=datetime.now()
                 )
@@ -453,80 +652,192 @@ class MangaDexTracker(commands.Cog):
             await message.delete()
             await menu(ctx, pages, DEFAULT_CONTROLS)
     
-    @manga.command(name="track")
-    async def manga_track(self, ctx: commands.Context, *, title: str):
-        """Track a manga for new chapter releases"""
+    @manga.command(name="tcbsearch")
+    async def tcb_manga_search(self, ctx: commands.Context, *, query: str):
+        """Search for manga on TCB Scans by title"""
         async with ctx.typing():
-            # Search for the manga first
-            results = await self.api.search_manga(title)
+            message = await ctx.send(f"🔍 Searching for: {query} on TCB Scans...")
+            results = await self.tcbscans_api.search_manga(query)
             
             if not results or len(results) == 0:
-                return await ctx.send(f"❌ No results found for '{title}'")
+                return await message.edit(content=f"❌ No results found for '{query}' on TCB Scans")
             
-            # If multiple results, ask user to be more specific or provide an ID
-            if len(results) > 1:
-                # Try to find an exact match
-                exact_match = None
-                for manga in results:
-                    if manga.get('title', '').lower() == title.lower():
-                        exact_match = manga
-                        break
+            # Create pages for pagination
+            pages = []
+            
+            # Split results into chunks of 3 per page
+            chunks = [results[i:i + 3] for i in range(0, len(results), 3)]
+            
+            for i, chunk in enumerate(chunks):
+                embed = discord.Embed(
+                    title=f"TCB Scans Results for '{query}'",
+                    color=await ctx.embed_color(),
+                    timestamp=datetime.now()
+                )
                 
-                if not exact_match:
-                    return await ctx.send(f"ℹ️ Found multiple results for '{title}'. Please be more specific or use the ID from search results.")
+                for manga in chunk:
+                    title = manga.get('title', 'Unknown Title')
+                    manga_id = manga.get('id', 'Unknown ID')
+                    url = manga.get('url', '#')
+                    
+                    value = f"**ID:** `{manga_id}`\n**URL:** [Read on TCB Scans]({url})"
+                    
+                    embed.add_field(
+                        name=f"{title}",
+                        value=value,
+                        inline=False
+                    )
+                    
+                    # Set thumbnail to the cover of the first manga
+                    if i == 0 and manga == chunk[0] and manga.get('cover_url'):
+                        embed.set_thumbnail(url=manga.get('cover_url'))
+                
+                embed.set_footer(text=f"Page {i+1}/{len(chunks)} • Found {len(results)} results")
+                pages.append(embed)
+            
+            # Send paginated results
+            await message.delete()
+            await menu(ctx, pages, DEFAULT_CONTROLS)
+    
+    @manga.command(name="track")
+    async def manga_track(self, ctx: commands.Context, *, title: str):
+        """Track a manga for new chapter releases (searches both MangaDex and TCB Scans)"""
+        async with ctx.typing():
+            await ctx.send(f"🔍 Searching on both MangaDex and TCB Scans for: {title}...")
+            
+            # Search on both platforms
+            mangadex_results = await self.mangadex_api.search_manga(title, fallback_scrape=True)
+            tcb_results = await self.tcbscans_api.search_manga(title)
+            
+            if not mangadex_results and not tcb_results:
+                return await ctx.send(f"❌ No results found for '{title}' on either MangaDex or TCB Scans")
+            
+            # Create a combined embed for selection
+            embed = discord.Embed(
+                title=f"Select a manga to track",
+                description=f"Reply with the number of the manga you want to track:",
+                color=await ctx.embed_color(),
+                timestamp=datetime.now()
+            )
+            
+            options = []
+            count = 1
+            
+            # Add MangaDex results
+            if mangadex_results:
+                embed.add_field(name="📚 MangaDex Results", value="", inline=False)
+                for manga in mangadex_results[:5]:  # Limit to first 5
+                    options.append(manga)
+                    embed.add_field(
+                        name=f"{count}. {manga.get('title', 'Unknown Title')}",
+                        value=f"Source: MangaDex",
+                        inline=True
+                    )
+                    count += 1
+            
+            # Add TCB Scans results
+            if tcb_results:
+                embed.add_field(name="📚 TCB Scans Results", value="", inline=False)
+                for manga in tcb_results[:5]:  # Limit to first 5
+                    options.append(manga)
+                    embed.add_field(
+                        name=f"{count}. {manga.get('title', 'Unknown Title')}",
+                        value=f"Source: TCB Scans",
+                        inline=True
+                    )
+                    count += 1
+            
+            # Send embed and wait for response
+            selection_message = await ctx.send(embed=embed)
+            
+            def check(msg):
+                return msg.author == ctx.author and msg.channel == ctx.channel and msg.content.isdigit()
+            
+            try:
+                # Wait for user selection
+                user_response = await self.bot.wait_for('message', check=check, timeout=60.0)
+                selection = int(user_response.content)
+                
+                # Validate selection
+                if selection < 1 or selection > len(options):
+                    return await ctx.send(f"❌ Invalid selection. Please choose a number between 1 and {len(options)}.")
+                
+                # Get the selected manga
+                selected_manga = options[selection - 1]
+                source = selected_manga.get('source', 'unknown')
+                manga_id = selected_manga.get('id', '')
+                manga_title = selected_manga.get('title', 'Unknown Title')
+                
+                if source == 'mangadex':
+                    # Get the latest chapter from MangaDex
+                    chapters = await self.mangadex_api.get_latest_chapters(manga_id)
+                    api = self.mangadex_api
+                elif source == 'tcbscans':
+                    # Get the latest chapter from TCB Scans
+                    if 'url' in selected_manga:
+                        chapters = await self.tcbscans_api.get_latest_chapters(selected_manga['url'])
+                    else:
+                        chapters = await self.tcbscans_api.get_latest_chapters(manga_id)
+                    api = self.tcbscans_api
                 else:
-                    manga = exact_match
-            else:
-                manga = results[0]
+                    return await ctx.send(f"❌ Unknown source for manga: {manga_title}")
+                
+                if not chapters:
+                    return await ctx.send(f"❌ Failed to get chapters for '{manga_title}'")
+                
+                latest_chapter = chapters[0] if chapters else None
+                latest_chapter_num = latest_chapter.get('chapter', 'N/A') if latest_chapter else 'N/A'
+                
+                # Get current tracked manga
+                tracked_manga = await self.config.tracked_manga()
+                
+                # Generate a unique key
+                manga_key = f"{source}-{manga_id}"
+                
+                # Add to tracked manga
+                tracked_manga[manga_key] = {
+                    'title': manga_title,
+                    'latest_chapter': latest_chapter_num,
+                    'last_checked': self.format_timestamp(datetime.now(timezone.utc)),
+                    'source': source,
+                    'id': manga_id,
+                    'url': selected_manga.get('url', '') if source == 'tcbscans' else ''
+                }
+                
+                # Save to config
+                await self.config.tracked_manga.set(tracked_manga)
+                
+                # Set notification channel if not already set
+                if await self.config.guild(ctx.guild).notification_channel() is None:
+                    await self.config.guild(ctx.guild).notification_channel.set(ctx.channel.id)
+                
+                await ctx.send(f"✅ Now tracking **{manga_title}** from **{source.upper()}**! Latest chapter: {latest_chapter_num}")
+                
+            except asyncio.TimeoutError:
+                await ctx.send("❌ Selection timed out. Please try again.")
             
-            manga_id = manga.get('id')
-            manga_title = manga.get('title')
-            
-            # Get the latest chapter
-            chapters = await self.api.get_latest_chapters(manga_id)
-            
-            if not chapters:
-                return await ctx.send(f"❌ Failed to get chapters for '{manga_title}'")
-            
-            latest_chapter = chapters[0] if chapters else None
-            latest_chapter_num = latest_chapter.get('chapter', 'N/A') if latest_chapter else 'N/A'
-            
-            # Get current tracked manga
-            tracked_manga = await self.config.tracked_manga()
-            
-            # Add to tracked manga
-            tracked_manga[manga_id] = {
-                'title': manga_title,
-                'latest_chapter': latest_chapter_num,
-                'last_checked': self.format_timestamp(datetime.now(timezone.utc))
-            }
-            
-            # Save to config
-            await self.config.tracked_manga.set(tracked_manga)
-            
-            # Set notification channel if not already set
-            if await self.config.guild(ctx.guild).notification_channel() is None:
-                await self.config.guild(ctx.guild).notification_channel.set(ctx.channel.id)
-            
-            await ctx.send(f"✅ Now tracking **{manga_title}**! Latest chapter: {latest_chapter_num}")
+        except Exception as e:
+            log.error(f"Error in manga track command: {str(e)}")
+            await ctx.send(f"❌ An error occurred: {str(e)}")
     
     @manga.command(name="untrack")
     async def manga_untrack(self, ctx: commands.Context, *, title: str):
         """Stop tracking a manga"""
         # Find manga by title in tracked list
-        manga_id_to_remove = None
+        manga_key_to_remove = None
         tracked_manga = await self.config.tracked_manga()
         
-        for manga_id, manga_data in tracked_manga.items():
+        for manga_key, manga_data in tracked_manga.items():
             if manga_data['title'].lower() == title.lower():
-                manga_id_to_remove = manga_id
+                manga_key_to_remove = manga_key
                 break
         
-        if manga_id_to_remove:
-            removed_title = tracked_manga[manga_id_to_remove]['title']
-            del tracked_manga[manga_id_to_remove]
+        if manga_key_to_remove:
+            removed_title = tracked_manga[manga_key_to_remove]['title']
+            removed_source = tracked_manga[manga_key_to_remove].get('source', 'unknown').upper()
+            del tracked_manga[manga_key_to_remove]
             await self.config.tracked_manga.set(tracked_manga)
-            await ctx.send(f"✅ Stopped tracking **{removed_title}**")
+            await ctx.send(f"✅ Stopped tracking **{removed_title}** from **{removed_source}**")
         else:
             await ctx.send(f"❌ No tracked manga found with title '{title}'")
     
@@ -553,14 +864,16 @@ class MangaDexTracker(commands.Cog):
                 timestamp=datetime.now()
             )
             
-            for manga_id, manga_data in chunk:
+            for manga_key, manga_data in chunk:
                 # Format the last_checked timestamp if it's not already formatted
                 last_checked = manga_data['last_checked']
                 if isinstance(last_checked, str) and ('+' in last_checked or 'T' in last_checked):
                     last_checked = self.format_timestamp(last_checked)
                 
+                source = manga_data.get('source', 'unknown').upper()
+                
                 embed.add_field(
-                    name=manga_data['title'],
+                    name=f"{manga_data['title']} ({source})",
                     value=f"Latest Chapter: {manga_data['latest_chapter']}\n"
                           f"Last Checked: {last_checked}",
                     inline=False
@@ -612,13 +925,24 @@ class MangaDexTracker(commands.Cog):
             tracked_manga = await self.config.tracked_manga()
             updates_made = False
             
-            for manga_id, manga_data in tracked_manga.items():
+            for manga_key, manga_data in tracked_manga.items():
                 try:
-                    # Get latest chapters
-                    chapters = await self.api.get_latest_chapters(manga_id)
+                    source = manga_data.get('source', 'mangadex')
+                    manga_id = manga_data.get('id', '')
+                    manga_url = manga_data.get('url', '')
+                    
+                    # Get chapters based on source
+                    chapters = []
+                    if source == 'mangadex':
+                        chapters = await self.mangadex_api.get_latest_chapters(manga_id)
+                    elif source == 'tcbscans':
+                        if manga_url:
+                            chapters = await self.tcbscans_api.get_latest_chapters(manga_url)
+                        else:
+                            chapters = await self.tcbscans_api.get_latest_chapters(manga_id)
                     
                     if not chapters:
-                        log.error(f"Failed to get chapters for {manga_data['title']}")
+                        log.error(f"Failed to get chapters for {manga_data['title']} from {source}")
                         continue
                     
                     latest_chapter = chapters[0] if chapters else None
@@ -628,7 +952,7 @@ class MangaDexTracker(commands.Cog):
                     latest_chapter_num = latest_chapter.get('chapter', 'N/A')
                     
                     # Update last checked timestamp
-                    tracked_manga[manga_id]['last_checked'] = self.format_timestamp(datetime.now(timezone.utc))
+                    tracked_manga[manga_key]['last_checked'] = self.format_timestamp(datetime.now(timezone.utc))
                     updates_made = True
                     
                     # Check if there's a new chapter
@@ -641,15 +965,16 @@ class MangaDexTracker(commands.Cog):
                             log.info(f"New chapter found for {manga_data['title']}: {latest_chapter_num} (current: {manga_data['latest_chapter']})")
                             
                             # Update the latest chapter number
-                            tracked_manga[manga_id]['latest_chapter'] = latest_chapter_num
+                            tracked_manga[manga_key]['latest_chapter'] = latest_chapter_num
                             
                             # Add to updates found
                             updates_found.append({
-                                'manga_id': manga_id,
+                                'manga_key': manga_key,
                                 'manga_title': manga_data['title'],
                                 'previous_chapter': manga_data['latest_chapter'],
                                 'new_chapter': latest_chapter_num,
-                                'chapter_data': latest_chapter
+                                'chapter_data': latest_chapter,
+                                'source': source
                             })
                     except ValueError:
                         # Handle non-numeric chapter numbers
@@ -657,15 +982,16 @@ class MangaDexTracker(commands.Cog):
                             log.info(f"New chapter found for {manga_data['title']}: {latest_chapter_num} (current: {manga_data['latest_chapter']})")
                             
                             # Update the latest chapter number
-                            tracked_manga[manga_id]['latest_chapter'] = latest_chapter_num
+                            tracked_manga[manga_key]['latest_chapter'] = latest_chapter_num
                             
                             # Add to updates found
                             updates_found.append({
-                                'manga_id': manga_id,
+                                'manga_key': manga_key,
                                 'manga_title': manga_data['title'],
                                 'previous_chapter': manga_data['latest_chapter'],
                                 'new_chapter': latest_chapter_num,
-                                'chapter_data': latest_chapter
+                                'chapter_data': latest_chapter,
+                                'source': source
                             })
                     
                 except Exception as e:
@@ -688,17 +1014,6 @@ class MangaDexTracker(commands.Cog):
             log.error(f"Error in update check: {str(e)}")
             return []
     
-    def format_timestamp(self, dt):
-        """Format a datetime object into a clean human-readable string"""
-        if isinstance(dt, str):
-            try:
-                dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
-            except ValueError:
-                return dt
-                
-        # Format: "March 22, 2025 at 6:38 PM UTC"
-        return dt.strftime("%B %d, %Y at %I:%M %p %Z")
-    
     async def _send_notifications(self, updates, guilds=None):
         """Send notifications for updates to specified guilds"""
         guilds = guilds or self.bot.guilds
@@ -711,24 +1026,25 @@ class MangaDexTracker(commands.Cog):
                         channel = guild.get_channel(channel_id)
                         if channel:
                             chapter_data = update.get('chapter_data', {})
+                            source = update.get('source', 'unknown').upper()
                             chapter_url = chapter_data.get('url', '')
                             chapter_info = chapter_data.get('chapter_info', f"Chapter {update['new_chapter']}")
-                            group = chapter_data.get('group', 'Unknown Group')
                             
                             embed = discord.Embed(
                                 title=f"📢 New Chapter Alert: {update['manga_title']}",
-                                description=f"**{chapter_info}** is now available!",
+                                description=f"**{chapter_info}** is now available on **{source}**!",
                                 color=discord.Color.gold(),
                                 url=chapter_url
                             )
-                            
-                            embed.add_field(name="Scanlation Group", value=group, inline=True)
                             
                             # Add previous chapter info
                             if update['previous_chapter'] != 'N/A':
                                 embed.add_field(name="Previous Chapter", value=update['previous_chapter'], inline=True)
                             
-                            embed.set_footer(text="MangaDex Tracker")
+                            # Add source info
+                            embed.add_field(name="Source", value=source, inline=True)
+                            
+                            embed.set_footer(text="Manga Tracker")
                             await channel.send(embed=embed)
                 except Exception as e:
                     log.error(f"Error sending notification to guild {guild.id}: {str(e)}")
@@ -754,5 +1070,5 @@ class MangaDexTracker(commands.Cog):
 
 async def setup(bot: Red):
     """Add the cog to the bot"""
-    cog = MangaDexTracker(bot)
+    cog = MangaTracker(bot)
     await bot.add_cog(cog)
