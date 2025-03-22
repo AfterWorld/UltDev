@@ -1,0 +1,13 @@
+{
+    "author": ["UltPanda"],
+    "install_msg": "Thanks for installing the WeebCentral cog! Use `[p]manga` to get started with tracking manga releases.",
+    "name": "WeebCentral",
+    "short": "Track manga releases from WeebCentral",
+    "description": "A cog that tracks manga on WeebCentral and sends notifications when new chapters are released.",
+    "tags": ["manga", "anime", "tracker", "weebcentral"],
+    "requirements": ["aiohttp"],
+    "hidden": false,
+    "disabled": false,
+    "type": "COG",
+    "end_user_data_statement": "This cog stores data about tracked manga titles. No personal data is stored."
+}
