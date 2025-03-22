@@ -702,120 +702,121 @@ class MangaTracker(commands.Cog):
     @manga.command(name="track")
     async def manga_track(self, ctx: commands.Context, *, title: str):
         """Track a manga for new chapter releases (searches both MangaDex and TCB Scans)"""
-        async with ctx.typing():
-            await ctx.send(f"🔍 Searching on both MangaDex and TCB Scans for: {title}...")
-            
-            # Search on both platforms
-            mangadex_results = await self.mangadex_api.search_manga(title, fallback_scrape=True)
-            tcb_results = await self.tcbscans_api.search_manga(title)
-            
-            if not mangadex_results and not tcb_results:
-                return await ctx.send(f"❌ No results found for '{title}' on either MangaDex or TCB Scans")
-            
-            # Create a combined embed for selection
-            embed = discord.Embed(
-                title=f"Select a manga to track",
-                description=f"Reply with the number of the manga you want to track:",
-                color=await ctx.embed_color(),
-                timestamp=datetime.now()
-            )
-            
-            options = []
-            count = 1
-            
-            # Add MangaDex results
-            if mangadex_results:
-                embed.add_field(name="📚 MangaDex Results", value="", inline=False)
-                for manga in mangadex_results[:5]:  # Limit to first 5
-                    options.append(manga)
-                    embed.add_field(
-                        name=f"{count}. {manga.get('title', 'Unknown Title')}",
-                        value=f"Source: MangaDex",
-                        inline=True
-                    )
-                    count += 1
-            
-            # Add TCB Scans results
-            if tcb_results:
-                embed.add_field(name="📚 TCB Scans Results", value="", inline=False)
-                for manga in tcb_results[:5]:  # Limit to first 5
-                    options.append(manga)
-                    embed.add_field(
-                        name=f"{count}. {manga.get('title', 'Unknown Title')}",
-                        value=f"Source: TCB Scans",
-                        inline=True
-                    )
-                    count += 1
-            
-            # Send embed and wait for response
-            selection_message = await ctx.send(embed=embed)
-            
-            def check(msg):
-                return msg.author == ctx.author and msg.channel == ctx.channel and msg.content.isdigit()
-            
-            try:
-                # Wait for user selection
-                user_response = await self.bot.wait_for('message', check=check, timeout=60.0)
-                selection = int(user_response.content)
+        try:
+            async with ctx.typing():
+                await ctx.send(f"🔍 Searching on both MangaDex and TCB Scans for: {title}...")
                 
-                # Validate selection
-                if selection < 1 or selection > len(options):
-                    return await ctx.send(f"❌ Invalid selection. Please choose a number between 1 and {len(options)}.")
+                # Search on both platforms
+                mangadex_results = await self.mangadex_api.search_manga(title, fallback_scrape=True)
+                tcb_results = await self.tcbscans_api.search_manga(title)
                 
-                # Get the selected manga
-                selected_manga = options[selection - 1]
-                source = selected_manga.get('source', 'unknown')
-                manga_id = selected_manga.get('id', '')
-                manga_title = selected_manga.get('title', 'Unknown Title')
+                if not mangadex_results and not tcb_results:
+                    return await ctx.send(f"❌ No results found for '{title}' on either MangaDex or TCB Scans")
                 
-                if source == 'mangadex':
-                    # Get the latest chapter from MangaDex
-                    chapters = await self.mangadex_api.get_latest_chapters(manga_id)
-                    api = self.mangadex_api
-                elif source == 'tcbscans':
-                    # Get the latest chapter from TCB Scans
-                    if 'url' in selected_manga:
-                        chapters = await self.tcbscans_api.get_latest_chapters(selected_manga['url'])
+                # Create a combined embed for selection
+                embed = discord.Embed(
+                    title=f"Select a manga to track",
+                    description=f"Reply with the number of the manga you want to track:",
+                    color=await ctx.embed_color(),
+                    timestamp=datetime.now()
+                )
+                
+                options = []
+                count = 1
+                
+                # Add MangaDex results
+                if mangadex_results:
+                    embed.add_field(name="📚 MangaDex Results", value="", inline=False)
+                    for manga in mangadex_results[:5]:  # Limit to first 5
+                        options.append(manga)
+                        embed.add_field(
+                            name=f"{count}. {manga.get('title', 'Unknown Title')}",
+                            value=f"Source: MangaDex",
+                            inline=True
+                        )
+                        count += 1
+                
+                # Add TCB Scans results
+                if tcb_results:
+                    embed.add_field(name="📚 TCB Scans Results", value="", inline=False)
+                    for manga in tcb_results[:5]:  # Limit to first 5
+                        options.append(manga)
+                        embed.add_field(
+                            name=f"{count}. {manga.get('title', 'Unknown Title')}",
+                            value=f"Source: TCB Scans",
+                            inline=True
+                        )
+                        count += 1
+                
+                # Send embed and wait for response
+                selection_message = await ctx.send(embed=embed)
+                
+                def check(msg):
+                    return msg.author == ctx.author and msg.channel == ctx.channel and msg.content.isdigit()
+                
+                try:
+                    # Wait for user selection
+                    user_response = await self.bot.wait_for('message', check=check, timeout=60.0)
+                    selection = int(user_response.content)
+                    
+                    # Validate selection
+                    if selection < 1 or selection > len(options):
+                        return await ctx.send(f"❌ Invalid selection. Please choose a number between 1 and {len(options)}.")
+                    
+                    # Get the selected manga
+                    selected_manga = options[selection - 1]
+                    source = selected_manga.get('source', 'unknown')
+                    manga_id = selected_manga.get('id', '')
+                    manga_title = selected_manga.get('title', 'Unknown Title')
+                    
+                    if source == 'mangadex':
+                        # Get the latest chapter from MangaDex
+                        chapters = await self.mangadex_api.get_latest_chapters(manga_id)
+                        api = self.mangadex_api
+                    elif source == 'tcbscans':
+                        # Get the latest chapter from TCB Scans
+                        if 'url' in selected_manga:
+                            chapters = await self.tcbscans_api.get_latest_chapters(selected_manga['url'])
+                        else:
+                            chapters = await self.tcbscans_api.get_latest_chapters(manga_id)
+                        api = self.tcbscans_api
                     else:
-                        chapters = await self.tcbscans_api.get_latest_chapters(manga_id)
-                    api = self.tcbscans_api
-                else:
-                    return await ctx.send(f"❌ Unknown source for manga: {manga_title}")
-                
-                if not chapters:
-                    return await ctx.send(f"❌ Failed to get chapters for '{manga_title}'")
-                
-                latest_chapter = chapters[0] if chapters else None
-                latest_chapter_num = latest_chapter.get('chapter', 'N/A') if latest_chapter else 'N/A'
-                
-                # Get current tracked manga
-                tracked_manga = await self.config.tracked_manga()
-                
-                # Generate a unique key
-                manga_key = f"{source}-{manga_id}"
-                
-                # Add to tracked manga
-                tracked_manga[manga_key] = {
-                    'title': manga_title,
-                    'latest_chapter': latest_chapter_num,
-                    'last_checked': self.format_timestamp(datetime.now(timezone.utc)),
-                    'source': source,
-                    'id': manga_id,
-                    'url': selected_manga.get('url', '') if source == 'tcbscans' else ''
-                }
-                
-                # Save to config
-                await self.config.tracked_manga.set(tracked_manga)
-                
-                # Set notification channel if not already set
-                if await self.config.guild(ctx.guild).notification_channel() is None:
-                    await self.config.guild(ctx.guild).notification_channel.set(ctx.channel.id)
-                
-                await ctx.send(f"✅ Now tracking **{manga_title}** from **{source.upper()}**! Latest chapter: {latest_chapter_num}")
-                
-            except asyncio.TimeoutError:
-                await ctx.send("❌ Selection timed out. Please try again.")
-            
+                        return await ctx.send(f"❌ Unknown source for manga: {manga_title}")
+                    
+                    if not chapters:
+                        return await ctx.send(f"❌ Failed to get chapters for '{manga_title}'")
+                    
+                    latest_chapter = chapters[0] if chapters else None
+                    latest_chapter_num = latest_chapter.get('chapter', 'N/A') if latest_chapter else 'N/A'
+                    
+                    # Get current tracked manga
+                    tracked_manga = await self.config.tracked_manga()
+                    
+                    # Generate a unique key
+                    manga_key = f"{source}-{manga_id}"
+                    
+                    # Add to tracked manga
+                    tracked_manga[manga_key] = {
+                        'title': manga_title,
+                        'latest_chapter': latest_chapter_num,
+                        'last_checked': self.format_timestamp(datetime.now(timezone.utc)),
+                        'source': source,
+                        'id': manga_id,
+                        'url': selected_manga.get('url', '') if source == 'tcbscans' else ''
+                    }
+                    
+                    # Save to config
+                    await self.config.tracked_manga.set(tracked_manga)
+                    
+                    # Set notification channel if not already set
+                    if await self.config.guild(ctx.guild).notification_channel() is None:
+                        await self.config.guild(ctx.guild).notification_channel.set(ctx.channel.id)
+                    
+                    await ctx.send(f"✅ Now tracking **{manga_title}** from **{source.upper()}**! Latest chapter: {latest_chapter_num}")
+                    
+                except asyncio.TimeoutError:
+                    await ctx.send("❌ Selection timed out. Please try again.")
+        
         except Exception as e:
             log.error(f"Error in manga track command: {str(e)}")
             await ctx.send(f"❌ An error occurred: {str(e)}")
