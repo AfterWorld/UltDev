@@ -1,8 +1,10 @@
 import asyncio
 import logging
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Union
+from bs4 import BeautifulSoup
 
 import aiohttp
 import discord
@@ -363,7 +365,7 @@ class MangaDexTracker(commands.Cog):
             tracked_manga[manga_id] = {
                 'title': manga_title,
                 'latest_chapter': latest_chapter_num,
-                'last_checked': datetime.now(timezone.utc).isoformat()
+                'last_checked': self.format_timestamp(datetime.now(timezone.utc))
             }
             
             # Save to config
@@ -488,7 +490,7 @@ class MangaDexTracker(commands.Cog):
                     latest_chapter_num = latest_chapter.get('chapter', 'N/A')
                     
                     # Update last checked timestamp
-                    tracked_manga[manga_id]['last_checked'] = datetime.now(timezone.utc).isoformat()
+                    tracked_manga[manga_id]['last_checked'] = self.format_timestamp(datetime.now(timezone.utc))
                     updates_made = True
                     
                     # Check if there's a new chapter
@@ -547,6 +549,17 @@ class MangaDexTracker(commands.Cog):
         except Exception as e:
             log.error(f"Error in update check: {str(e)}")
             return []
+    
+    def format_timestamp(self, dt):
+        """Format a datetime object into a clean human-readable string"""
+        if isinstance(dt, str):
+            try:
+                dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
+            except ValueError:
+                return dt
+                
+        # Format: "March 22, 2025 at 6:38 PM UTC"
+        return dt.strftime("%B %d, %Y at %I:%M %p %Z")
     
     async def _send_notifications(self, updates, guilds=None):
         """Send notifications for updates to specified guilds"""
