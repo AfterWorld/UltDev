@@ -5,7 +5,7 @@
     "short": "Track manga releases from MangaDex",
     "description": "A cog that tracks manga on MangaDex and sends notifications when new chapters are released.",
     "tags": ["manga", "anime", "tracker", "mangadex"],
-    "requirements": ["aiohttp"],
+    "requirements": ["aiohttp", "beautifulsoup4"],
     "hidden": false,
     "disabled": false,
     "type": "COG",
