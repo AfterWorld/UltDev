@@ -44,8 +44,8 @@ class MangaDexAPI:
                 log.info(f"Rate limited, sleeping for {sleep_time} seconds")
                 await asyncio.sleep(sleep_time)
     
-    async def make_request(self, endpoint, params=None):
-        """Make a request to the MangaDex API"""
+    async def make_request(self, endpoint, params=None, fallback_scrape=False):
+        """Make a request to the MangaDex API with web scraping fallback"""
         await self.ensure_session()
         await self.handle_rate_limits()
         
@@ -71,13 +71,146 @@ class MangaDexAPI:
                     return await response.json()
                 else:
                     log.error(f"API request failed with status {response.status}: {url}")
+                    
+                    # Try web scraping fallback if enabled
+                    if fallback_scrape and endpoint.startswith("/manga"):
+                        log.info("Trying web scraping fallback...")
+                        return await self.scrape_fallback(endpoint, params)
+                    
                     return None
         except Exception as e:
             log.error(f"Error making API request: {str(e)}")
+            
+            # Try web scraping fallback if enabled
+            if fallback_scrape and endpoint.startswith("/manga"):
+                log.info("Trying web scraping fallback after exception...")
+                return await self.scrape_fallback(endpoint, params)
+                
             return None
     
-    async def search_manga(self, title, limit=5, offset=0):
-        """Search for manga by title"""
+    async def scrape_fallback(self, endpoint, params=None):
+        """Fallback to web scraping when API fails"""
+        await self.ensure_session()
+        
+        # Convert API endpoint to web URL
+        web_url = "https://mangadex.org"
+        
+        if endpoint.startswith("/manga"):
+            manga_id = endpoint.split("/")[-1] if "/" in endpoint else ""
+            if manga_id:
+                web_url += f"/title/{manga_id}"
+            elif params and "title" in params:
+                web_url += f"/search?q={params['title']}"
+            else:
+                web_url += "/titles"
+        
+        log.info(f"Scraping from web URL: {web_url}")
+        
+        try:
+            async with self.session.get(web_url) as response:
+                if response.status != 200:
+                    log.error(f"Web scraping failed with status {response.status}")
+                    return None
+                
+                html = await response.text()
+                soup = BeautifulSoup(html, 'html.parser')
+                
+                # Different parsing based on endpoint
+                if endpoint.startswith("/manga/") and "/" in endpoint:
+                    # Single manga page
+                    return self.parse_manga_page(soup, endpoint.split("/")[-1])
+                elif endpoint.startswith("/manga") or (params and "title" in params):
+                    # Manga search results
+                    return self.parse_search_results(soup, params.get("title", "") if params else "")
+                
+                return None
+        except Exception as e:
+            log.error(f"Error in web scraping fallback: {str(e)}")
+            return None
+    
+    def parse_manga_page(self, soup, manga_id):
+        """Parse a single manga page"""
+        result = {"data": {
+            "id": manga_id,
+            "attributes": {},
+            "relationships": []
+        }}
+        
+        # Try to get the title
+        title_elem = soup.select_one("h3.manga-title") or soup.select_one("h1") or soup.select_one(".title")
+        if title_elem:
+            result["data"]["attributes"]["title"] = {"en": title_elem.get_text(strip=True)}
+        
+        # Try to get description
+        desc_elem = soup.select_one(".description") or soup.select_one(".synopsis")
+        if desc_elem:
+            result["data"]["attributes"]["description"] = {"en": desc_elem.get_text(strip=True)}
+        
+        # Try to get status
+        status_elem = soup.select_one(".status")
+        if status_elem:
+            result["data"]["attributes"]["status"] = status_elem.get_text(strip=True).lower()
+        
+        # Try to get cover art
+        cover_elem = soup.select_one(".cover img") or soup.select_one(".manga-poster img")
+        if cover_elem and "src" in cover_elem.attrs:
+            cover_url = cover_elem["src"]
+            result["data"]["relationships"].append({
+                "type": "cover_art",
+                "attributes": {"fileName": cover_url.split("/")[-1]}
+            })
+        
+        return result
+    
+    def parse_search_results(self, soup, search_query):
+        """Parse search results page"""
+        results = {"data": []}
+        
+        # Look for manga cards/items
+        manga_items = soup.select(".manga-card") or soup.select(".manga-item") or soup.select(".grid-item")
+        
+        for item in manga_items:
+            manga_id = ""
+            # Try to extract ID from URL
+            link_elem = item.select_one("a")
+            if link_elem and "href" in link_elem.attrs:
+                href = link_elem["href"]
+                id_match = re.search(r'/title/([^/]+)', href)
+                if id_match:
+                    manga_id = id_match.group(1)
+            
+            # Get title
+            title_elem = item.select_one(".manga-title") or item.select_one("h3") or link_elem
+            title = title_elem.get_text(strip=True) if title_elem else "Unknown Title"
+            
+            # Get cover image
+            cover_url = None
+            img_elem = item.select_one("img")
+            if img_elem and "src" in img_elem.attrs:
+                cover_url = img_elem["src"]
+            
+            # Create manga entry
+            manga_entry = {
+                "id": manga_id,
+                "attributes": {
+                    "title": {"en": title},
+                },
+                "relationships": []
+            }
+            
+            # Add cover art relationship if available
+            if cover_url:
+                manga_entry["relationships"].append({
+                    "type": "cover_art",
+                    "attributes": {"fileName": cover_url.split("/")[-1]}
+                })
+            
+            results["data"].append(manga_entry)
+        
+        return results
+    
+    async def search_manga(self, title, limit=5, offset=0, fallback_scrape=False):
+        """Search for manga by title with web scraping fallback"""
         params = {
             "title": title,
             "limit": limit,
@@ -86,7 +219,7 @@ class MangaDexAPI:
             "contentRating[]": ["safe", "suggestive", "erotica", "pornographic"]  # Include all ratings
         }
         
-        response = await self.make_request("/manga", params)
+        response = await self.make_request("/manga", params, fallback_scrape=fallback_scrape)
         
         if not response or "data" not in response:
             return []
@@ -273,7 +406,7 @@ class MangaDexTracker(commands.Cog):
         """Search for manga by title"""
         async with ctx.typing():
             message = await ctx.send(f"🔍 Searching for: {query}...")
-            results = await self.api.search_manga(query)
+            results = await self.api.search_manga(query, fallback_scrape=True)
             
             if not results or len(results) == 0:
                 return await message.edit(content=f"❌ No results found for '{query}'")
@@ -421,10 +554,15 @@ class MangaDexTracker(commands.Cog):
             )
             
             for manga_id, manga_data in chunk:
+                # Format the last_checked timestamp if it's not already formatted
+                last_checked = manga_data['last_checked']
+                if isinstance(last_checked, str) and ('+' in last_checked or 'T' in last_checked):
+                    last_checked = self.format_timestamp(last_checked)
+                
                 embed.add_field(
                     name=manga_data['title'],
                     value=f"Latest Chapter: {manga_data['latest_chapter']}\n"
-                          f"Last Checked: {manga_data['last_checked']}",
+                          f"Last Checked: {last_checked}",
                     inline=False
                 )
             
