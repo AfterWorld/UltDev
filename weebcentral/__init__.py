@@ -1,6 +1,6 @@
 from redbot.core.bot import Red
 
-from .weebcentral import WeebCentral
+from .weeb import WeebCentral
 
 async def setup(bot: Red):
     await bot.add_cog(WeebCentral(bot))
