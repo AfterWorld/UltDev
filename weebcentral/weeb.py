@@ -2,88 +2,279 @@ import asyncio
 import json
 import logging
 import os
-from datetime import datetime
+import re
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Union
+from urllib.parse import quote
 
 import aiohttp
 import discord
+from bs4 import BeautifulSoup
 from redbot.core import Config, commands
 from redbot.core.bot import Red
-from redbot.core.utils.menus import menu, DEFAULT_CONTROLS
+from redbot.core.utils.menus import DEFAULT_CONTROLS, menu
 
 log = logging.getLogger("red.weebcentral")
 
 class WeebCentralAPI:
     """API wrapper for WeebCentral"""
     
-    def __init__(self, base_url="https://www.weebcentral.com/api"):
-        self.base_url = base_url
+    def __init__(self, base_url="https://weebcentral.com"):
+        self.base_url = base_url.rstrip("/")
         self.session = None
+        self.directory = None  # Cache the directory
     
     async def ensure_session(self):
         """Ensure an aiohttp session exists"""
         if self.session is None or self.session.closed:
-            self.session = aiohttp.ClientSession()
+            self.session = aiohttp.ClientSession(headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                "Referer": self.base_url
+            })
     
     async def close_session(self):
         """Close the aiohttp session"""
         if self.session and not self.session.closed:
             await self.session.close()
     
-    async def search_manga(self, query: str) -> Optional[List[Dict]]:
+    async def get_directory(self, force_refresh=False):
+        """Get the full manga directory"""
+        if self.directory is not None and not force_refresh:
+            return self.directory
+        
+        await self.ensure_session()
+        
+        try:
+            # First, try to get the directory from the search page
+            async with self.session.get(f"{self.base_url}/search") as response:
+                if response.status != 200:
+                    log.error(f"Failed to get directory, status: {response.status}")
+                    return []
+                
+                html = await response.text()
+                
+                # Try to find the directory in a JavaScript variable
+                directory_match = re.search(r'vm\.Directory\s*=\s*(\[.*?\]);', html, re.DOTALL)
+                if directory_match:
+                    try:
+                        directory_json = directory_match.group(1)
+                        self.directory = json.loads(directory_json)
+                        return self.directory
+                    except json.JSONDecodeError as e:
+                        log.error(f"Failed to parse directory JSON: {e}")
+                
+                # If we couldn't find the directory in JavaScript, try to scrape it from HTML
+                soup = BeautifulSoup(html, 'html.parser')
+                manga_items = []
+                
+                # Look for manga listings on the page
+                manga_elements = soup.select('.manga-item') or soup.select('.grid-item')
+                for element in manga_elements:
+                    a_tag = element.find('a')
+                    if a_tag and 'href' in a_tag.attrs:
+                        link = a_tag['href']
+                        title = a_tag.get_text(strip=True) or a_tag.get('title', '')
+                        
+                        # Extract manga ID from link
+                        id_match = re.search(r'/series/([^/]+)', link)
+                        manga_id = id_match.group(1) if id_match else ''
+                        
+                        if manga_id and title:
+                            manga_items.append({
+                                'i': manga_id,
+                                's': title,
+                                'a': []  # Empty array for aliases
+                            })
+                
+                self.directory = manga_items
+                return manga_items
+                
+        except Exception as e:
+            log.error(f"Error getting manga directory: {str(e)}")
+            return []
+    
+    async def search_manga(self, query: str) -> List[Dict]:
         """Search for manga by name"""
         await self.ensure_session()
         
         try:
-            # The exact endpoint may differ - adjust as needed based on the actual API
-            url = f"{self.base_url}/search"
-            params = {"q": query}
+            # Get the full directory
+            directory = await self.get_directory()
+            if not directory:
+                return []
             
-            async with self.session.get(url, params=params) as response:
-                if response.status == 200:
-                    return await response.json()
+            # Normalize the query
+            query_lower = query.lower()
+            
+            # Search in the directory
+            results = []
+            for manga in directory:
+                title = manga.get('s', '')
+                if query_lower in title.lower():
+                    results.append({
+                        'id': manga.get('i', ''),
+                        'title': title,
+                        'alt_titles': manga.get('a', [])
+                    })
                 else:
-                    log.error(f"Search failed with status {response.status}")
-                    return None
+                    # Also search in alternative titles
+                    for alt in manga.get('a', []):
+                        if query_lower in alt.lower():
+                            results.append({
+                                'id': manga.get('i', ''),
+                                'title': title,
+                                'alt_titles': manga.get('a', [])
+                            })
+                            break
+            
+            # If we still don't have results, try a direct search
+            if not results:
+                search_url = f"{self.base_url}/search?q={quote(query)}"
+                async with self.session.get(search_url) as response:
+                    if response.status != 200:
+                        return []
+                    
+                    html = await response.text()
+                    soup = BeautifulSoup(html, 'html.parser')
+                    
+                    # Look for manga listings
+                    manga_elements = soup.select('.manga-item') or soup.select('.grid-item')
+                    for element in manga_elements:
+                        a_tag = element.find('a')
+                        if a_tag and 'href' in a_tag.attrs:
+                            link = a_tag['href']
+                            title = a_tag.get_text(strip=True) or a_tag.get('title', '')
+                            
+                            # Extract manga ID from link
+                            id_match = re.search(r'/series/([^/]+)', link)
+                            manga_id = id_match.group(1) if id_match else ''
+                            
+                            if manga_id and title:
+                                results.append({
+                                    'id': manga_id,
+                                    'title': title,
+                                    'alt_titles': []
+                                })
+            
+            return results
+            
         except Exception as e:
             log.error(f"Error searching for manga: {str(e)}")
-            return None
+            return []
     
     async def get_manga_details(self, manga_id: str) -> Optional[Dict]:
         """Get detailed information about a manga"""
         await self.ensure_session()
         
         try:
-            # The exact endpoint may differ - adjust as needed
-            url = f"{self.base_url}/manga/{manga_id}"
+            manga_url = f"{self.base_url}/series/{manga_id}"
             
-            async with self.session.get(url) as response:
-                if response.status == 200:
-                    return await response.json()
-                else:
+            async with self.session.get(manga_url) as response:
+                if response.status != 200:
                     log.error(f"Failed to get manga details, status: {response.status}")
                     return None
+                
+                html = await response.text()
+                
+                # Try to extract manga details from JavaScript variables
+                chapters_match = re.search(r'vm\.Chapters\s*=\s*(\[.*?\]);', html, re.DOTALL)
+                
+                if not chapters_match:
+                    # If we can't find the chapters variable, try BeautifulSoup
+                    soup = BeautifulSoup(html, 'html.parser')
+                    
+                    title_element = soup.select_one('.series-title') or soup.select_one('h1')
+                    title = title_element.get_text(strip=True) if title_element else ''
+                    
+                    chapters = []
+                    chapter_elements = soup.select('.chapter-item') or soup.select('.chapter-list-item')
+                    for element in chapter_elements:
+                        a_tag = element.find('a')
+                        if a_tag and 'href' in a_tag.attrs:
+                            link = a_tag['href']
+                            chapter_text = a_tag.get_text(strip=True)
+                            
+                            # Extract chapter number
+                            chapter_num_match = re.search(r'Chapter\s+(\d+(\.\d+)?)', chapter_text)
+                            chapter_num = chapter_num_match.group(1) if chapter_num_match else ''
+                            
+                            # Extract chapter ID from link
+                            id_match = re.search(r'/chapters/([^/]+)', link)
+                            chapter_id = id_match.group(1) if id_match else ''
+                            
+                            if chapter_id and chapter_num:
+                                date_element = element.select_one('.chapter-date')
+                                date_text = date_element.get_text(strip=True) if date_element else ''
+                                
+                                chapters.append({
+                                    'id': chapter_id,
+                                    'chapter_number': float(chapter_num),
+                                    'title': chapter_text,
+                                    'date': date_text,
+                                    'url': link
+                                })
+                    
+                    return {
+                        'id': manga_id,
+                        'title': title,
+                        'chapters': sorted(chapters, key=lambda x: x['chapter_number'], reverse=True)
+                    }
+                else:
+                    # Parse chapters from JavaScript
+                    try:
+                        chapters_json = chapters_match.group(1)
+                        chapters_data = json.loads(chapters_json)
+                        
+                        # Get title from the page
+                        soup = BeautifulSoup(html, 'html.parser')
+                        title_element = soup.select_one('.series-title') or soup.select_one('h1')
+                        title = title_element.get_text(strip=True) if title_element else ''
+                        
+                        # Process chapters
+                        chapters = []
+                        for chapter in chapters_data:
+                            chapter_id = chapter.get('id', '') or chapter.get('ChapterID', '') or chapter.get('i', '')
+                            chapter_num = chapter.get('Chapter', '') or chapter.get('ChapterNumber', '') or chapter.get('n', '')
+                            
+                            if not chapter_id or not chapter_num:
+                                continue
+                            
+                            # Convert chapter number to float
+                            try:
+                                chapter_num = float(chapter_num)
+                            except ValueError:
+                                continue
+                            
+                            chapter_title = chapter.get('ChapterName', '') or f"Chapter {chapter_num}"
+                            date_str = chapter.get('Date', '') or chapter.get('ReleaseDate', '') or ''
+                            
+                            chapters.append({
+                                'id': chapter_id,
+                                'chapter_number': chapter_num,
+                                'title': chapter_title,
+                                'date': date_str,
+                                'url': f"{self.base_url}/chapters/{chapter_id}"
+                            })
+                        
+                        return {
+                            'id': manga_id,
+                            'title': title,
+                            'chapters': sorted(chapters, key=lambda x: x['chapter_number'], reverse=True)
+                        }
+                    except json.JSONDecodeError as e:
+                        log.error(f"Failed to parse chapters JSON: {e}")
+                        return None
+                    
         except Exception as e:
             log.error(f"Error getting manga details: {str(e)}")
             return None
     
-    async def get_latest_chapters(self, manga_id: str) -> Optional[List[Dict]]:
+    async def get_latest_chapters(self, manga_id: str) -> List[Dict]:
         """Get the latest chapters for a manga"""
-        await self.ensure_session()
-        
-        try:
-            # The exact endpoint may differ - adjust as needed
-            url = f"{self.base_url}/manga/{manga_id}/chapters"
-            
-            async with self.session.get(url) as response:
-                if response.status == 200:
-                    return await response.json()
-                else:
-                    log.error(f"Failed to get chapters, status: {response.status}")
-                    return None
-        except Exception as e:
-            log.error(f"Error getting manga chapters: {str(e)}")
-            return None
+        manga_details = await self.get_manga_details(manga_id)
+        if manga_details:
+            return manga_details.get('chapters', [])
+        return []
 
 
 class WeebCentral(commands.Cog):
@@ -126,7 +317,9 @@ class WeebCentral(commands.Cog):
                 "`[p]manga track <title>` - Track a manga for new chapter releases\n"
                 "`[p]manga untrack <title>` - Stop tracking a manga\n"
                 "`[p]manga list` - List all tracked manga\n"
-                "`[p]manga setnotify [channel]` - Set the channel for notifications"
+                "`[p]manga setnotify [channel]` - Set the channel for notifications\n"
+                "`[p]manga refresh` - Force refresh the manga directory\n"
+                "`[p]manga check` - Manually check for updates"
             )
             await ctx.send(help_text.replace("[p]", ctx.clean_prefix))
     
@@ -154,14 +347,17 @@ class WeebCentral(commands.Cog):
                 )
                 
                 for manga in chunk:
-                    # Fields may differ based on the actual API response
                     manga_id = manga.get('id', 'Unknown ID')
                     title = manga.get('title', 'Unknown Title')
-                    chapters = manga.get('chapters', 'Unknown')
+                    alt_titles = manga.get('alt_titles', [])
+                    
+                    value = f"ID: `{manga_id}`\n"
+                    if alt_titles and len(alt_titles) > 0:
+                        value += f"Alternate Titles: {', '.join(alt_titles[:3])}\n"
                     
                     embed.add_field(
                         name=f"{title}",
-                        value=f"ID: `{manga_id}`\nChapters: {chapters}",
+                        value=value,
                         inline=False
                     )
                 
@@ -184,9 +380,20 @@ class WeebCentral(commands.Cog):
             
             # If multiple results, ask user to be more specific or provide an ID
             if len(results) > 1:
-                return await ctx.send(f"ℹ️ Found multiple results for '{title}'. Please be more specific or use the ID from search results.")
+                # Try to find an exact match
+                exact_match = None
+                for manga in results:
+                    if manga.get('title', '').lower() == title.lower():
+                        exact_match = manga
+                        break
+                
+                if not exact_match:
+                    return await ctx.send(f"ℹ️ Found multiple results for '{title}'. Please be more specific or use the ID from search results.")
+                else:
+                    manga = exact_match
+            else:
+                manga = results[0]
             
-            manga = results[0]
             manga_id = manga.get('id')
             manga_title = manga.get('title')
             
@@ -197,7 +404,11 @@ class WeebCentral(commands.Cog):
                 return await ctx.send(f"❌ Failed to get chapters for '{manga_title}'")
             
             latest_chapter = chapters[0] if chapters else None
-            latest_chapter_num = latest_chapter.get('chapter_number', '0') if latest_chapter else '0'
+            latest_chapter_num = latest_chapter.get('chapter_number', 0) if latest_chapter else 0
+            
+            # Convert to string if it's a number
+            if isinstance(latest_chapter_num, (int, float)):
+                latest_chapter_num = str(latest_chapter_num)
             
             # Get current tracked manga
             tracked_manga = await self.config.tracked_manga()
@@ -294,6 +505,126 @@ class WeebCentral(commands.Cog):
         await self.config.guild(ctx.guild).notification_channel.set(channel.id)
         await ctx.send(f"✅ Notifications for this server will be sent to {channel.mention}")
     
+    @manga.command(name="refresh")
+    async def refresh_directory(self, ctx: commands.Context):
+        """Force refresh the manga directory"""
+        async with ctx.typing():
+            await ctx.send("🔄 Refreshing manga directory...")
+            directory = await self.api.get_directory(force_refresh=True)
+            await ctx.send(f"✅ Refreshed manga directory. Found {len(directory)} manga.")
+    
+    @manga.command(name="check")
+    async def manual_check(self, ctx: commands.Context):
+        """Manually check for updates"""
+        async with ctx.typing():
+            await ctx.send("🔍 Manually checking for updates...")
+            updates = await self._check_for_updates(ctx.guild)
+            
+            if updates:
+                await ctx.send(f"✅ Found {len(updates)} updates!")
+            else:
+                await ctx.send("ℹ️ No new chapters found.")
+    
+    async def _check_for_updates(self, guild=None):
+        """Check for updates and return a list of updates found"""
+        updates_found = []
+        
+        try:
+            # Get tracked manga
+            tracked_manga = await self.config.tracked_manga()
+            updates_made = False
+            
+            for manga_id, manga_data in tracked_manga.items():
+                try:
+                    # Get latest chapters
+                    chapters = await self.api.get_latest_chapters(manga_id)
+                    
+                    if not chapters:
+                        log.error(f"Failed to get chapters for {manga_data['title']}")
+                        continue
+                    
+                    latest_chapter = chapters[0] if chapters else None
+                    if not latest_chapter:
+                        continue
+                    
+                    latest_chapter_num = latest_chapter.get('chapter_number', 0)
+                    
+                    # Convert to string if it's a number
+                    if isinstance(latest_chapter_num, (int, float)):
+                        latest_chapter_num = str(latest_chapter_num)
+                    
+                    # Update last checked timestamp
+                    tracked_manga[manga_id]['last_checked'] = datetime.now().isoformat()
+                    updates_made = True
+                    
+                    # Check if there's a new chapter
+                    try:
+                        current = float(manga_data['latest_chapter'])
+                        new = float(latest_chapter_num)
+                        if new > current:
+                            log.info(f"New chapter found for {manga_data['title']}: {latest_chapter_num} (current: {manga_data['latest_chapter']})")
+                            
+                            # Update the latest chapter number
+                            tracked_manga[manga_id]['latest_chapter'] = latest_chapter_num
+                            
+                            # Add to updates found
+                            updates_found.append({
+                                'manga_id': manga_id,
+                                'manga_title': manga_data['title'],
+                                'previous_chapter': manga_data['latest_chapter'],
+                                'new_chapter': latest_chapter_num,
+                                'chapter_data': latest_chapter
+                            })
+                    except ValueError:
+                        log.error(f"Error comparing chapter numbers for {manga_data['title']}: {manga_data['latest_chapter']} vs {latest_chapter_num}")
+                    
+                except Exception as e:
+                    log.error(f"Error checking updates for {manga_data['title']}: {str(e)}")
+                
+                # Add a small delay between requests to avoid rate limiting
+                await asyncio.sleep(1)
+            
+            # Save updated data if changes were made
+            if updates_made:
+                await self.config.tracked_manga.set(tracked_manga)
+            
+            # Send notifications if updates were found and a guild was specified
+            if updates_found and guild:
+                await self._send_notifications(updates_found, [guild])
+            
+            return updates_found
+            
+        except Exception as e:
+            log.error(f"Error in update check: {str(e)}")
+            return []
+    
+    async def _send_notifications(self, updates, guilds=None):
+        """Send notifications for updates to specified guilds"""
+        guilds = guilds or self.bot.guilds
+        
+        for update in updates:
+            for guild in guilds:
+                try:
+                    channel_id = await self.config.guild(guild).notification_channel()
+                    if channel_id:
+                        channel = guild.get_channel(channel_id)
+                        if channel:
+                            chapter_data = update.get('chapter_data', {})
+                            chapter_url = chapter_data.get('url', '')
+                            manga_id = update.get('manga_id', '')
+                            
+                            embed = discord.Embed(
+                                title=f"📢 New Chapter Alert: {update['manga_title']}",
+                                description=f"Chapter {update['new_chapter']} is now available!",
+                                color=discord.Color.gold(),
+                                url=chapter_url or f"{self.api.base_url}/series/{manga_id}"
+                            )
+                            
+                            embed.set_footer(text="WeebCentral Manga Tracker")
+                            await channel.send(embed=embed)
+                except Exception as e:
+                    log.error(f"Error sending notification to guild {guild.id}: {str(e)}")
+    
     async def check_for_updates(self):
         """Background task to check for manga updates"""
         await self.bot.wait_until_ready()
@@ -301,67 +632,7 @@ class WeebCentral(commands.Cog):
         while self.bot.is_ready() and not self.bot.is_closed():
             try:
                 log.info("Checking for manga updates...")
-                
-                # Get tracked manga
-                tracked_manga = await self.config.tracked_manga()
-                updates_made = False
-                
-                for manga_id, manga_data in tracked_manga.items():
-                    try:
-                        # Get latest chapters
-                        chapters = await self.api.get_latest_chapters(manga_id)
-                        
-                        if not chapters:
-                            log.error(f"Failed to get chapters for {manga_data['title']}")
-                            continue
-                        
-                        latest_chapter = chapters[0] if chapters else None
-                        if not latest_chapter:
-                            continue
-                        
-                        latest_chapter_num = latest_chapter.get('chapter_number', '0')
-                        
-                        # Update last checked timestamp
-                        tracked_manga[manga_id]['last_checked'] = datetime.now().isoformat()
-                        updates_made = True
-                        
-                        # Check if there's a new chapter
-                        if latest_chapter_num > manga_data['latest_chapter']:
-                            log.info(f"New chapter found for {manga_data['title']}: {latest_chapter_num}")
-                            
-                            # Update the latest chapter number
-                            tracked_manga[manga_id]['latest_chapter'] = latest_chapter_num
-                            
-                            # Send notifications to all guilds
-                            for guild in self.bot.guilds:
-                                try:
-                                    channel_id = await self.config.guild(guild).notification_channel()
-                                    if channel_id:
-                                        channel = guild.get_channel(channel_id)
-                                        if channel:
-                                            chapter_url = latest_chapter.get('url', '')
-                                            
-                                            embed = discord.Embed(
-                                                title=f"📢 New Chapter Alert: {manga_data['title']}",
-                                                description=f"Chapter {latest_chapter_num} is now available!",
-                                                color=discord.Color.gold(),
-                                                url=chapter_url or f"https://www.weebcentral.com/series/{manga_id}"
-                                            )
-                                            
-                                            embed.set_footer(text="WeebCentral Manga Tracker")
-                                            await channel.send(embed=embed)
-                                except Exception as e:
-                                    log.error(f"Error sending notification to guild {guild.id}: {str(e)}")
-                        
-                    except Exception as e:
-                        log.error(f"Error checking updates for {manga_data['title']}: {str(e)}")
-                    
-                    # Add a small delay between requests to avoid rate limiting
-                    await asyncio.sleep(1)
-                
-                # Save updated data if changes were made
-                if updates_made:
-                    await self.config.tracked_manga.set(tracked_manga)
+                await self._check_for_updates()
                 
                 # Wait for 1 hour before checking again
                 await asyncio.sleep(3600)  # 1 hour in seconds
