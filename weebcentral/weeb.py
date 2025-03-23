@@ -449,14 +449,14 @@ class MangaDexAPI:
             "limit": limit,
             "offset": offset,
             "order[createdAt]": "desc",  # Sort by creation date
-            "includes[]": ["cover_art", "author", "artist"],
+            "includes[]": ["cover_art", "author", "artist", "tag"],
             "contentRating[]": ["safe", "suggestive", "erotica", "pornographic"]
         }
         
         response = await self.make_request("/manga", params)
         
         if not response or "data" not in response:
-            log.error(f"Invalid or empty response from MangaDex: {response}")
+            log.error(f"Invalid or empty response from MangaDex")
             return []
         
         # Format the results
@@ -468,42 +468,50 @@ class MangaDexAPI:
                 
                 # Get title with better error handling
                 title = "Unknown Title"
-                if "title" in attributes and attributes["title"]:
+                if attributes.get("title"):
                     title_dict = attributes["title"]
-                    if isinstance(title_dict, dict):
-                        # Try to get English title, fallback to first available
-                        title = (title_dict.get("en") or 
-                                title_dict.get("jp") or 
-                                title_dict.get("ja"))
-                        if not title and title_dict:
-                            # Get first non-empty value
+                    if isinstance(title_dict, dict) and title_dict:
+                        # Try English title first, then Japanese
+                        if title_dict.get("en"):
+                            title = title_dict["en"]
+                        elif title_dict.get("ja"):
+                            title = title_dict["ja"]
+                        else:
+                            # Get any title
                             for lang, text in title_dict.items():
                                 if text:
                                     title = text
                                     break
                 
-                # Debug log
-                log.info(f"Processing manga: {manga_id}, title: {title}")
+                # Get content type (manga, manhwa, manhua)
+                content_type = "Manga"  # Default
+                
+                # Look for tags that might indicate content type
+                original_language = attributes.get("originalLanguage", "").lower()
+                if original_language == "ko" or original_language == "kr":
+                    content_type = "Manhwa"
+                elif original_language == "zh" or original_language == "cn":
+                    content_type = "Manhua"
                 
                 # Get cover art
                 cover_url = None
                 for relationship in manga.get("relationships", []):
                     if relationship.get("type") == "cover_art":
-                        if "attributes" in relationship and "fileName" in relationship["attributes"]:
-                            filename = relationship["attributes"]["fileName"]
+                        rel_attrs = relationship.get("attributes", {})
+                        if rel_attrs and "fileName" in rel_attrs:
+                            filename = rel_attrs["fileName"]
                             if filename:
                                 cover_url = f"https://uploads.mangadex.org/covers/{manga_id}/{filename}"
                 
-                # Get creation date (when the manga was added to MangaDex)
+                # Get creation date
                 created_at = attributes.get("createdAt", "")
+                creation_time = datetime.now(timezone.utc)
+                formatted_date = "Recent"
                 
-                # Create timestamp for sorting and format the date
-                try:
-                    if created_at:
-                        # Parse the ISO format date
+                if created_at:
+                    try:
                         creation_time = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
-                        
-                        # Check for unrealistic future dates
+                        # Check for unrealistic dates
                         if creation_time.year > 2025:
                             creation_time = datetime.now(timezone.utc)
                         
@@ -511,65 +519,38 @@ class MangaDexAPI:
                         est_tz = timezone(timedelta(hours=-5))
                         creation_time = creation_time.astimezone(est_tz)
                         formatted_date = creation_time.strftime("%Y-%m-%d %I:%M %p EST")
-                    else:
-                        creation_time = datetime.now(timezone.utc)
-                        est_tz = timezone(timedelta(hours=-5))
-                        creation_time = creation_time.astimezone(est_tz)
-                        formatted_date = creation_time.strftime("%Y-%m-%d %I:%M %p EST")
-                    
-                    creation_timestamp = creation_time.timestamp()
-                except ValueError:
-                    creation_time = datetime.now(timezone.utc)
-                    est_tz = timezone(timedelta(hours=-5))
-                    creation_time = creation_time.astimezone(est_tz)
-                    creation_timestamp = creation_time.timestamp()
-                    formatted_date = creation_time.strftime("%Y-%m-%d %I:%M %p EST")
+                    except (ValueError, TypeError):
+                        pass  # Use defaults
                 
-                # Get tags to identify if it's manga or manhwa
-                tags = []
-                for tag in attributes.get("tags", []):
-                    if "attributes" in tag and "name" in tag["attributes"]:
-                        tag_names = tag["attributes"]["name"]
-                        # Try to get English tag name
-                        tag_name = (tag_names.get("en") or 
-                                   next(iter(tag_names.values())) if tag_names else "")
-                        if tag_name:
-                            tags.append(tag_name)
-                
-                # Determine content type (manga, manhwa, manhua)
-                content_type = "Manga"  # Default
-                if any(tag.lower() in ["manhwa", "korean"] for tag in tags):
-                    content_type = "Manhwa"
-                elif any(tag.lower() in ["manhua", "chinese"] for tag in tags):
-                    content_type = "Manhua"
+                creation_timestamp = creation_time.timestamp()
                 
                 # Get status with default
                 status = "Unknown"
-                if "status" in attributes and attributes["status"]:
+                if attributes.get("status"):
                     status = attributes["status"].capitalize()
                 
                 # Get demographics
                 demographics = []
-                if "publicationDemographic" in attributes and attributes["publicationDemographic"]:
+                if attributes.get("publicationDemographic"):
                     demo = attributes["publicationDemographic"]
                     demographics.append(demo.capitalize())
                 
                 # Get description with error handling
                 description = "No description available."
-                if "description" in attributes and attributes["description"]:
+                if attributes.get("description"):
                     desc_dict = attributes["description"]
-                    if isinstance(desc_dict, dict):
-                        desc = (desc_dict.get("en") or 
-                               desc_dict.get("jp") or 
-                               desc_dict.get("ja"))
-                        if not desc and desc_dict:
-                            # Get first non-empty value
+                    if isinstance(desc_dict, dict) and desc_dict:
+                        # Try English description first
+                        if desc_dict.get("en"):
+                            description = desc_dict["en"]
+                        elif desc_dict.get("ja"):
+                            description = desc_dict["ja"]
+                        else:
+                            # Get any description
                             for lang, text in desc_dict.items():
                                 if text:
-                                    desc = text
+                                    description = text
                                     break
-                        if desc:
-                            description = desc
                 
                 results.append({
                     'id': manga_id,
@@ -581,7 +562,6 @@ class MangaDexAPI:
                     'creation_time': creation_time,
                     'creation_timestamp': creation_timestamp,
                     'content_type': content_type,
-                    'tags': tags,
                     'demographics': demographics,
                     'url': f"https://mangadex.org/title/{manga_id}",
                     'source': 'mangadex'
@@ -2079,26 +2059,36 @@ class MangaTracker(commands.Cog):
         
         # Process and sort manga by content type
         manga_by_type = defaultdict(list)
+        valid_entries_found = False
         
         for source, source_additions in latest_additions.items():
-            # Filter out entries with missing crucial data
-            filtered_additions = [
-                manga for manga in source_additions 
-                if manga.get('title') and manga.get('title') != "Unknown Title"
-            ]
-            
-            if not filtered_additions:
-                await ctx.send("❌ Found manga entries but with missing data. Refreshing data...")
-                await self._collect_latest_releases()
-                return await self.new_releases(ctx)
-            
-            for manga in filtered_additions:
+            for manga in source_additions:
+                # Accept any title, even "Unknown Title" - we'll display whatever we have
                 content_type = manga.get('content_type', 'Manga')
                 manga_by_type[content_type].append(manga)
+                
+                # Check if at least one entry has good data
+                if manga.get('title') and manga.get('title') != "Unknown Title":
+                    valid_entries_found = True
         
-        # If no valid content found after filtering
+        if not valid_entries_found:
+            # If we have no good entries, try refreshing data one time
+            message = await ctx.send("⚠️ Found manga entries but with incomplete data. Refreshing data (this may take a moment)...")
+            await self._collect_latest_releases()
+            latest_additions = await self.config.latest_releases()
+            
+            # Clear the previous sorting and try again
+            manga_by_type = defaultdict(list)
+            for source, source_additions in latest_additions.items():
+                for manga in source_additions:
+                    content_type = manga.get('content_type', 'Manga')
+                    manga_by_type[content_type].append(manga)
+            
+            await message.edit(content="✅ Data refreshed. Displaying results...")
+        
+        # If no content found at all
         if not manga_by_type:
-            return await ctx.send("❌ No valid manga entries found. Please try again later.")
+            return await ctx.send("❌ No manga entries found. Please try again later.")
         
         # Create separate pages for manga, manhwa, and manhua
         for content_type, content_list in manga_by_type.items():
@@ -2117,6 +2107,7 @@ class MangaTracker(commands.Cog):
                 )
                 
                 for manga in chunk:
+                    # Use fallbacks for all fields
                     title = manga.get('title', 'Unknown Title')
                     status = manga.get('status', 'Unknown')
                     url = manga.get('url', '#')
@@ -2158,7 +2149,7 @@ class MangaTracker(commands.Cog):
         
         # If no pages, show a message
         if not pages:
-            return await ctx.send("❌ No recent manga additions found.")
+            return await ctx.send("❌ No manga entries found. Please try again later.")
         
         # If only one page, just send it
         if len(pages) == 1:
