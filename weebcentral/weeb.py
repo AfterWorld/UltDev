@@ -443,6 +443,122 @@ class MangaDexAPI:
         
         return releases
 
+    async def get_new_manga(self, limit=20, offset=0):
+        """Get newly added manga on MangaDex"""
+        params = {
+            "limit": limit,
+            "offset": offset,
+            "order[createdAt]": "desc",  # Sort by creation date
+            "includes[]": ["cover_art", "author", "artist"],
+            "contentRating[]": ["safe", "suggestive", "erotica", "pornographic"]
+        }
+        
+        response = await self.make_request("/manga", params)
+        
+        if not response or "data" not in response:
+            return []
+        
+        # Format the results
+        results = []
+        for manga in response["data"]:
+            manga_id = manga["id"]
+            attributes = manga["attributes"]
+            
+            # Get title
+            title = ""
+            if "title" in attributes:
+                title_dict = attributes["title"]
+                # Try to get English title, fallback to first available
+                title = (title_dict.get("en") or 
+                        title_dict.get("jp") or 
+                        title_dict.get("ja") or 
+                        next(iter(title_dict.values())) if title_dict else "Unknown Title")
+            
+            # Get cover art
+            cover_url = None
+            for relationship in manga.get("relationships", []):
+                if relationship["type"] == "cover_art":
+                    if "attributes" in relationship and "fileName" in relationship["attributes"]:
+                        filename = relationship["attributes"]["fileName"]
+                        cover_url = f"https://uploads.mangadex.org/covers/{manga_id}/{filename}"
+            
+            # Get creation date (when the manga was added to MangaDex)
+            created_at = attributes.get("createdAt", "")
+            
+            # Create timestamp for sorting and format the date
+            try:
+                if created_at:
+                    # Parse the ISO format date
+                    creation_time = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                    
+                    # Check for unrealistic future dates
+                    if creation_time.year > 2025:
+                        creation_time = datetime.now(timezone.utc)
+                    
+                    # Convert to EST
+                    est_tz = timezone(timedelta(hours=-5))
+                    creation_time = creation_time.astimezone(est_tz)
+                    formatted_date = creation_time.strftime("%Y-%m-%d %I:%M %p EST")
+                else:
+                    creation_time = datetime.now(timezone.utc)
+                    est_tz = timezone(timedelta(hours=-5))
+                    creation_time = creation_time.astimezone(est_tz)
+                    formatted_date = creation_time.strftime("%Y-%m-%d %I:%M %p EST")
+                
+                creation_timestamp = creation_time.timestamp()
+            except ValueError:
+                creation_time = datetime.now(timezone.utc)
+                est_tz = timezone(timedelta(hours=-5))
+                creation_time = creation_time.astimezone(est_tz)
+                creation_timestamp = creation_time.timestamp()
+                formatted_date = creation_time.strftime("%Y-%m-%d %I:%M %p EST")
+            
+            # Get tags to identify if it's manga or manhwa
+            tags = []
+            for tag in attributes.get("tags", []):
+                if "attributes" in tag and "name" in tag["attributes"]:
+                    tag_names = tag["attributes"]["name"]
+                    # Try to get English tag name
+                    tag_name = (tag_names.get("en") or 
+                               next(iter(tag_names.values())) if tag_names else "")
+                    if tag_name:
+                        tags.append(tag_name)
+            
+            # Determine content type (manga, manhwa, manhua)
+            content_type = "Manga"  # Default
+            if "Manhwa" in tags or "Korean" in tags:
+                content_type = "Manhwa"
+            elif "Manhua" in tags or "Chinese" in tags:
+                content_type = "Manhua"
+            
+            # Get status
+            status = attributes.get("status", "unknown").capitalize()
+            
+            # Get demographics
+            demographics = []
+            if "publicationDemographic" in attributes:
+                demo = attributes["publicationDemographic"]
+                if demo:
+                    demographics.append(demo.capitalize())
+            
+            results.append({
+                'id': manga_id,
+                'title': title,
+                'description': attributes.get("description", {}).get("en", "No description available."),
+                'status': status,
+                'cover_url': cover_url,
+                'created_at': formatted_date,
+                'creation_time': creation_time,
+                'creation_timestamp': creation_timestamp,
+                'content_type': content_type,
+                'tags': tags,
+                'demographics': demographics,
+                'url': f"https://mangadex.org/title/{manga_id}",
+                'source': 'mangadex'
+            })
+        
+        return results
+
 class TCBScansAPI:
     """API wrapper for TCB Scans (web scraping based)"""
     
@@ -1285,7 +1401,7 @@ class MangaTracker(commands.Cog):
         
         return "standard"
     
-    @commands.group(name="manga")
+    @manga.group(name="manga")
     async def manga(self, ctx: commands.Context):
         """Manga tracking commands"""
         if ctx.invoked_subcommand is None:
@@ -1302,7 +1418,7 @@ class MangaTracker(commands.Cog):
                 "`[p]manga setfreq <title> <frequency>` - Set update frequency override\n"
                 "`[p]manga setnotify [channel]` - Set the channel for notifications\n"
                 "`[p]manga check` - Manually check for updates\n"
-                "`[p]manga newreleases` - Show the latest manga releases\n"
+                "`[p]manga newreleases` - Show newly added manga and manhwa\n"
                 "`[p]manga refresh` - Refresh cached manga data"
             )
             await ctx.send(help_text.replace("[p]", ctx.clean_prefix))
@@ -1912,66 +2028,88 @@ class MangaTracker(commands.Cog):
     
     @manga.command(name="newreleases")
     async def new_releases(self, ctx: commands.Context):
-        """Show the latest manga releases from tracked sources"""
-        latest_releases = await self.config.latest_releases()
+        """Show the latest manga and manhwa additions from tracked sources"""
+        latest_additions = await self.config.latest_releases()
         last_check = await self.config.last_releases_check()
         
-        if not latest_releases:
-            await ctx.send("❌ No recent releases found. Checking now...")
+        if not latest_additions:
+            await ctx.send("❌ No recent manga additions found. Checking now...")
             await self._collect_latest_releases()
-            latest_releases = await self.config.latest_releases()
+            latest_additions = await self.config.latest_releases()
             
-            if not latest_releases:
-                return await ctx.send("❌ No recent releases found.")
+            if not latest_additions:
+                return await ctx.send("❌ No recent manga additions found.")
         
         # Create pages for pagination
         pages = []
         
-        # Process and sort releases
-        releases_list = []
-        for source, source_releases in latest_releases.items():
-            for release in source_releases:
-                releases_list.append(release)
+        # Process and sort manga by content type
+        manga_by_type = defaultdict(list)
         
-        # Sort by timestamp (most recent first)
-        releases_list.sort(key=lambda x: x.get('release_timestamp', 0), reverse=True)
+        for source, source_additions in latest_additions.items():
+            for manga in source_additions:
+                content_type = manga.get('content_type', 'Manga')
+                manga_by_type[content_type].append(manga)
         
-        # Group by source for presentation
-        releases_by_source = defaultdict(list)
-        for release in releases_list:
-            source = release.get('source', 'unknown')
-            releases_by_source[source].append(release)
-        
-        # Create embeds by source
-        for source, source_releases in releases_by_source.items():
-            embed = discord.Embed(
-                title=f"Latest Releases from {source.upper()}",
-                description=f"Last updated: {self.format_relative_time(last_check) if last_check else 'Unknown'}",
-                color=await ctx.embed_color(),
-                timestamp=datetime.now()
-            )
+        # Create separate pages for manga, manhwa, and manhua
+        for content_type, content_list in manga_by_type.items():
+            # Sort by creation timestamp (newest first)
+            content_list.sort(key=lambda x: x.get('creation_timestamp', 0), reverse=True)
             
-            # Add releases (limited to 10 per source)
-            for release in source_releases[:10]:
-                manga_title = release.get('manga_title', 'Unknown Manga')
-                chapter_num = release.get('chapter_num', 'N/A')
-                url = release.get('url', '#')
-                
-                # Use relative time format if available, otherwise use formatted date
-                if 'release_time' in release and isinstance(release['release_time'], datetime):
-                    released_at = self.format_relative_time(release['release_time'])
-                else:
-                    released_at = release.get('released_at', 'Unknown')
-                
-                value = f"[Read Chapter]({url})\nReleased: {released_at}"
-                
-                embed.add_field(
-                    name=f"{manga_title} - Chapter {chapter_num}",
-                    value=value,
-                    inline=False
+            # Split into chunks for pagination (5 per page)
+            chunks = [content_list[i:i+5] for i in range(0, len(content_list), 5)]
+            
+            for i, chunk in enumerate(chunks):
+                embed = discord.Embed(
+                    title=f"New {content_type} Releases",
+                    description=f"Last updated: {self.format_relative_time(last_check) if last_check else 'Unknown'}",
+                    color=await ctx.embed_color(),
+                    timestamp=datetime.now()
                 )
-            
-            pages.append(embed)
+                
+                for manga in chunk:
+                    title = manga.get('title', 'Unknown Title')
+                    status = manga.get('status', 'Unknown')
+                    url = manga.get('url', '#')
+                    
+                    # Get demographics if available
+                    demographics = manga.get('demographics', [])
+                    demo_text = f" ({', '.join(demographics)})" if demographics else ""
+                    
+                    # Use relative time format for when the manga was added
+                    if 'creation_time' in manga and isinstance(manga['creation_time'], datetime):
+                        added_at = self.format_relative_time(manga['creation_time'])
+                    else:
+                        added_at = manga.get('created_at', 'Unknown')
+                    
+                    # Create a shorter description
+                    description = manga.get('description', 'No description available.')
+                    if len(description) > 150:
+                        description = description[:147] + "..."
+                    
+                    value = (
+                        f"**Status:** {status}{demo_text}\n"
+                        f"**Added:** {added_at}\n"
+                        f"{description}\n"
+                        f"[Read on {manga.get('source', 'mangadex').upper()}]({url})"
+                    )
+                    
+                    embed.add_field(
+                        name=title,
+                        value=value,
+                        inline=False
+                    )
+                
+                # Set thumbnail to the cover of the first manga in the chunk
+                if chunk and chunk[0].get('cover_url'):
+                    embed.set_thumbnail(url=chunk[0]['cover_url'])
+                
+                embed.set_footer(text=f"Page {i+1}/{len(chunks)} • {content_type}")
+                pages.append(embed)
+        
+        # If no pages, show a message
+        if not pages:
+            return await ctx.send("❌ No recent manga additions found.")
         
         # If only one page, just send it
         if len(pages) == 1:
@@ -2148,109 +2286,22 @@ class MangaTracker(commands.Cog):
                     log.error(f"Error sending notification to guild {guild.id}: {str(e)}")
     
     async def _collect_latest_releases(self):
-        """Collect the latest releases from all sources"""
-        latest_releases = {}
+        """Collect the latest manga additions from all sources"""
+        latest_additions = {}
         
         try:
-            # Get releases from MangaDex
-            mangadex_releases = await self.mangadex_api.get_latest_releases(limit=20)
-            
-            # Process the releases to fix date format issues
-            processed_mangadex_releases = []
-            for release in mangadex_releases:
-                # Get published date
-                published_at = release.get('published_at', '')
-                
-                # Try to parse and format it properly
-                try:
-                    if isinstance(published_at, str):
-                        if published_at.startswith('2037'):  # Fix for incorrect future dates
-                            # Replace with current time
-                            release_time = datetime.now(timezone.utc)
-                        else:
-                            # Try to parse the existing date
-                            release_time = datetime.fromisoformat(published_at.replace('Z', '+00:00'))
-                    else:
-                        release_time = datetime.now(timezone.utc)
-                    
-                    # Convert to EST
-                    est_tz = timezone(timedelta(hours=-5))
-                    release_time = release_time.astimezone(est_tz)
-                    formatted_date = release_time.strftime("%Y-%m-%d %I:%M %p EST")
-                    
-                    # Update the release with the corrected date
-                    release_copy = release.copy()
-                    release_copy['released_at'] = formatted_date
-                    release_copy['release_time'] = release_time
-                    release_copy['release_timestamp'] = release_time.timestamp()
-                    
-                    processed_mangadex_releases.append(release_copy)
-                except (ValueError, TypeError):
-                    # If date parsing fails, use current time
-                    release_time = datetime.now(timezone.utc)
-                    est_tz = timezone(timedelta(hours=-5))
-                    release_time = release_time.astimezone(est_tz)
-                    
-                    release_copy = release.copy()
-                    release_copy['released_at'] = release_time.strftime("%Y-%m-%d %I:%M %p EST")
-                    release_copy['release_time'] = release_time
-                    release_copy['release_timestamp'] = release_time.timestamp()
-                    
-                    processed_mangadex_releases.append(release_copy)
-            
-            latest_releases['mangadex'] = processed_mangadex_releases
-            
-            # Get releases from TCB Scans
-            tcb_releases = await self.tcbscans_api.get_latest_releases(limit=20)
-            
-            # Process TCB releases the same way
-            processed_tcb_releases = []
-            for release in tcb_releases:
-                # Get published date
-                published_at = release.get('released_at', '')
-                
-                # Try to parse and format it properly
-                try:
-                    if isinstance(published_at, str) and not published_at.lower() == 'recent' and not published_at.lower() == 'unknown':
-                        release_time = datetime.fromisoformat(published_at.replace('Z', '+00:00'))
-                    else:
-                        release_time = datetime.now(timezone.utc)
-                    
-                    # Convert to EST
-                    est_tz = timezone(timedelta(hours=-5))
-                    release_time = release_time.astimezone(est_tz)
-                    formatted_date = release_time.strftime("%Y-%m-%d %I:%M %p EST")
-                    
-                    # Update the release with the corrected date
-                    release_copy = release.copy()
-                    release_copy['released_at'] = formatted_date
-                    release_copy['release_time'] = release_time
-                    release_copy['release_timestamp'] = release_time.timestamp()
-                    
-                    processed_tcb_releases.append(release_copy)
-                except (ValueError, TypeError):
-                    # If date parsing fails, use current time
-                    release_time = datetime.now(timezone.utc)
-                    est_tz = timezone(timedelta(hours=-5))
-                    release_time = release_time.astimezone(est_tz)
-                    
-                    release_copy = release.copy()
-                    release_copy['released_at'] = release_time.strftime("%Y-%m-%d %I:%M %p EST")
-                    release_copy['release_time'] = release_time
-                    release_copy['release_timestamp'] = release_time.timestamp()
-                    
-                    processed_tcb_releases.append(release_copy)
-            
-            latest_releases['tcbscans'] = processed_tcb_releases
+            # Get new manga from MangaDex
+            mangadex_additions = await self.mangadex_api.get_new_manga(limit=20)
+            latest_additions['mangadex'] = mangadex_additions
             
             # Save to config
-            await self.config.latest_releases.set(latest_releases)
+            await self.config.latest_releases.set(latest_additions)  # Reusing the same config key
             await self.config.last_releases_check.set(datetime.now(timezone.utc).isoformat())
             
-            log.info(f"Collected latest releases: {len(processed_mangadex_releases)} from MangaDex, {len(processed_tcb_releases)} from TCB Scans")
+            log.info(f"Collected latest manga additions: {len(mangadex_additions)} from MangaDex")
             
         except Exception as e:
-            log.error(f"Error collecting latest releases: {str(e)}")
+            log.error(f"Error collecting latest manga additions: {str(e)}")
     
     async def check_frequent_updates(self):
         """Check for updates for manga in the 'frequent' tier (every hour)"""
