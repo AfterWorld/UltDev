@@ -1602,6 +1602,9 @@ class AnimeForumCog(commands.Cog):
         if message.author.bot or not message.guild:
             return
             
+        # Get settings for this guild
+        settings = await self.config.guild(message.guild).all()
+            
         # Skip mention response in specific channels
         excluded_channels = [425068612542398476]  # Replace with your general channel IDs
         if message.channel.id in excluded_channels:
@@ -1623,7 +1626,6 @@ class AnimeForumCog(commands.Cog):
             if isinstance(parent_channel, discord.ForumChannel):
                 # Process message for forum-specific features
                 await self.forum_creator.process_thread_message(message, parent_channel, settings)
-
     @commands.Cog.listener()
     async def on_thread_create(self, thread):
         """Enhance new threads in anime forums"""
