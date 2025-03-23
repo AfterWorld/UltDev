@@ -399,19 +399,31 @@ class MangaDexAPI:
             if chapter_num == "":
                 chapter_num = "N/A"
             
-            # Get published date
+            # Get published date and convert to EST
             published_at = attributes.get("publishAt", "")
             
             # Create timestamp for sorting
             try:
                 if published_at:
+                    # Parse the ISO format date
                     release_time = datetime.fromisoformat(published_at.replace('Z', '+00:00'))
+                    # Convert to EST (UTC-5)
+                    est_tz = timezone(timedelta(hours=-5))
+                    release_time = release_time.astimezone(est_tz)
+                    formatted_date = release_time.strftime("%Y-%m-%d %I:%M %p EST")
                 else:
                     release_time = datetime.now(timezone.utc)
+                    est_tz = timezone(timedelta(hours=-5))
+                    release_time = release_time.astimezone(est_tz)
+                    formatted_date = "Recent"
                 
                 release_timestamp = release_time.timestamp()
             except ValueError:
-                release_timestamp = datetime.now(timezone.utc).timestamp()
+                release_time = datetime.now(timezone.utc)
+                est_tz = timezone(timedelta(hours=-5))
+                release_time = release_time.astimezone(est_tz)
+                release_timestamp = release_time.timestamp()
+                formatted_date = "Unknown Date"
             
             # Add to releases list
             releases.append({
@@ -419,12 +431,12 @@ class MangaDexAPI:
                 'chapter_num': chapter_num,
                 'url': f"https://mangadex.org/chapter/{chapter_id}",
                 'source': 'mangadex',
-                'released_at': self.format_timestamp(release_time) if hasattr(self, 'format_timestamp') else str(release_time),
+                'released_at': formatted_date,
+                'release_time': release_time,  # Store the datetime object for relative time formatting
                 'release_timestamp': release_timestamp
             })
         
         return releases
-
 
 class TCBScansAPI:
     """API wrapper for TCB Scans (web scraping based)"""
@@ -815,8 +827,12 @@ class TCBScansAPI:
                 date_elem = item.select_one(".release-date") or item.select_one(".date")
                 date_text = date_elem.get_text(strip=True) if date_elem else ""
                 
-                # Try to parse date
+                # Try to parse date and convert to EST
                 release_time = datetime.now(timezone.utc)
+                est_tz = timezone(timedelta(hours=-5))
+                release_time = release_time.astimezone(est_tz)
+                formatted_date = "Recent"
+                
                 if date_text:
                     try:
                         # Handle relative dates like "2 days ago"
@@ -825,24 +841,29 @@ class TCBScansAPI:
                             hours_match = re.search(r'(\d+)\s*hours?\s*ago', date_text, re.IGNORECASE)
                             mins_match = re.search(r'(\d+)\s*mins?\s*ago', date_text, re.IGNORECASE)
                             
+                            now = datetime.now(timezone.utc)
                             if days_match:
-                                release_time = datetime.now(timezone.utc) - timedelta(days=int(days_match.group(1)))
+                                release_time = now - timedelta(days=int(days_match.group(1)))
                             elif hours_match:
-                                release_time = datetime.now(timezone.utc) - timedelta(hours=int(hours_match.group(1)))
+                                release_time = now - timedelta(hours=int(hours_match.group(1)))
                             elif mins_match:
-                                release_time = datetime.now(timezone.utc) - timedelta(minutes=int(mins_match.group(1)))
+                                release_time = now - timedelta(minutes=int(mins_match.group(1)))
                             elif "today" in date_text.lower():
-                                release_time = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+                                release_time = now.replace(hour=0, minute=0, second=0, microsecond=0)
                             elif "yesterday" in date_text.lower():
-                                release_time = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
+                                release_time = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
                         # Try standard date formats
                         elif re.match(r'\d{4}-\d{2}-\d{2}', date_text):
                             release_time = datetime.fromisoformat(date_text)
                         elif re.match(r'\d{2}/\d{2}/\d{4}', date_text):
                             release_time = datetime.strptime(date_text, '%m/%d/%Y')
+                        
+                        # Convert to EST
+                        release_time = release_time.astimezone(est_tz)
+                        formatted_date = release_time.strftime("%Y-%m-%d %I:%M %p EST")
                     except ValueError:
                         # If parsing fails, keep current time
-                        pass
+                        formatted_date = "Recent"
                 
                 release_timestamp = release_time.timestamp()
                 
@@ -851,7 +872,8 @@ class TCBScansAPI:
                     'chapter_num': chapter_num,
                     'url': chapter_url,
                     'source': 'tcbscans',
-                    'released_at': date_text or "Recent",
+                    'released_at': formatted_date,
+                    'release_time': release_time,  # Store the datetime object for relative time formatting
                     'release_timestamp': release_timestamp
                 })
             except Exception as e:
@@ -1072,9 +1094,17 @@ class MangaTracker(commands.Cog):
                 dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
             except ValueError:
                 return dt
+        
+        # Convert to EST
+        est_tz = timezone(timedelta(hours=-5))
+        if dt.tzinfo is not None:  # Make sure it has timezone info
+            dt = dt.astimezone(est_tz)
+        else:
+            # If no timezone info, assume UTC and convert
+            dt = dt.replace(tzinfo=timezone.utc).astimezone(est_tz)
                 
-        # Format: "March 22, 2025 at 6:38 PM UTC"
-        return dt.strftime("%B %d, %Y at %I:%M %p %Z")
+        # Format: "March 22, 2025 at 6:38 PM EST"
+        return dt.strftime("%B %d, %Y at %I:%M %p EST")
     
     def format_relative_time(self, dt):
         """Format a datetime as a relative time (e.g., "2 days ago")"""
@@ -1921,10 +1951,12 @@ class MangaTracker(commands.Cog):
                 manga_title = release.get('manga_title', 'Unknown Manga')
                 chapter_num = release.get('chapter_num', 'N/A')
                 url = release.get('url', '#')
-                released_at = release.get('released_at', 'Unknown')
                 
-                if isinstance(released_at, datetime):
-                    released_at = self.format_relative_time(released_at)
+                # Use relative time format if available, otherwise use formatted date
+                if 'release_time' in release and isinstance(release['release_time'], datetime):
+                    released_at = self.format_relative_time(release['release_time'])
+                else:
+                    released_at = release.get('released_at', 'Unknown')
                 
                 value = f"[Read Chapter]({url})\nReleased: {released_at}"
                 
