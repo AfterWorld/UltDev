@@ -1401,7 +1401,7 @@ class MangaTracker(commands.Cog):
         
         return "standard"
     
-    @manga.group(name="manga")
+    @commands.group(name="manga")
     async def manga(self, ctx: commands.Context):
         """Manga tracking commands"""
         if ctx.invoked_subcommand is None:
