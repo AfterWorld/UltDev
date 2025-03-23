@@ -407,7 +407,12 @@ class MangaDexAPI:
                 if published_at:
                     # Parse the ISO format date
                     release_time = datetime.fromisoformat(published_at.replace('Z', '+00:00'))
-                    # Convert to EST (UTC-5)
+                    
+                    # IMPORTANT: Check for unrealistic future dates (like 2037)
+                    if release_time.year > 2025:  # Current year + a buffer
+                        release_time = datetime.now(timezone.utc)
+                    
+                    # Convert to EST
                     est_tz = timezone(timedelta(hours=-5))
                     release_time = release_time.astimezone(est_tz)
                     formatted_date = release_time.strftime("%Y-%m-%d %I:%M %p EST")
@@ -415,7 +420,7 @@ class MangaDexAPI:
                     release_time = datetime.now(timezone.utc)
                     est_tz = timezone(timedelta(hours=-5))
                     release_time = release_time.astimezone(est_tz)
-                    formatted_date = "Recent"
+                    formatted_date = release_time.strftime("%Y-%m-%d %I:%M %p EST")
                 
                 release_timestamp = release_time.timestamp()
             except ValueError:
@@ -423,7 +428,7 @@ class MangaDexAPI:
                 est_tz = timezone(timedelta(hours=-5))
                 release_time = release_time.astimezone(est_tz)
                 release_timestamp = release_time.timestamp()
-                formatted_date = "Unknown Date"
+                formatted_date = release_time.strftime("%Y-%m-%d %I:%M %p EST")
             
             # Add to releases list
             releases.append({
@@ -432,7 +437,7 @@ class MangaDexAPI:
                 'url': f"https://mangadex.org/chapter/{chapter_id}",
                 'source': 'mangadex',
                 'released_at': formatted_date,
-                'release_time': release_time,  # Store the datetime object for relative time formatting
+                'release_time': release_time,
                 'release_timestamp': release_timestamp
             })
         
@@ -2149,17 +2154,100 @@ class MangaTracker(commands.Cog):
         try:
             # Get releases from MangaDex
             mangadex_releases = await self.mangadex_api.get_latest_releases(limit=20)
-            latest_releases['mangadex'] = mangadex_releases
+            
+            # Process the releases to fix date format issues
+            processed_mangadex_releases = []
+            for release in mangadex_releases:
+                # Get published date
+                published_at = release.get('published_at', '')
+                
+                # Try to parse and format it properly
+                try:
+                    if isinstance(published_at, str):
+                        if published_at.startswith('2037'):  # Fix for incorrect future dates
+                            # Replace with current time
+                            release_time = datetime.now(timezone.utc)
+                        else:
+                            # Try to parse the existing date
+                            release_time = datetime.fromisoformat(published_at.replace('Z', '+00:00'))
+                    else:
+                        release_time = datetime.now(timezone.utc)
+                    
+                    # Convert to EST
+                    est_tz = timezone(timedelta(hours=-5))
+                    release_time = release_time.astimezone(est_tz)
+                    formatted_date = release_time.strftime("%Y-%m-%d %I:%M %p EST")
+                    
+                    # Update the release with the corrected date
+                    release_copy = release.copy()
+                    release_copy['released_at'] = formatted_date
+                    release_copy['release_time'] = release_time
+                    release_copy['release_timestamp'] = release_time.timestamp()
+                    
+                    processed_mangadex_releases.append(release_copy)
+                except (ValueError, TypeError):
+                    # If date parsing fails, use current time
+                    release_time = datetime.now(timezone.utc)
+                    est_tz = timezone(timedelta(hours=-5))
+                    release_time = release_time.astimezone(est_tz)
+                    
+                    release_copy = release.copy()
+                    release_copy['released_at'] = release_time.strftime("%Y-%m-%d %I:%M %p EST")
+                    release_copy['release_time'] = release_time
+                    release_copy['release_timestamp'] = release_time.timestamp()
+                    
+                    processed_mangadex_releases.append(release_copy)
+            
+            latest_releases['mangadex'] = processed_mangadex_releases
             
             # Get releases from TCB Scans
             tcb_releases = await self.tcbscans_api.get_latest_releases(limit=20)
-            latest_releases['tcbscans'] = tcb_releases
+            
+            # Process TCB releases the same way
+            processed_tcb_releases = []
+            for release in tcb_releases:
+                # Get published date
+                published_at = release.get('released_at', '')
+                
+                # Try to parse and format it properly
+                try:
+                    if isinstance(published_at, str) and not published_at.lower() == 'recent' and not published_at.lower() == 'unknown':
+                        release_time = datetime.fromisoformat(published_at.replace('Z', '+00:00'))
+                    else:
+                        release_time = datetime.now(timezone.utc)
+                    
+                    # Convert to EST
+                    est_tz = timezone(timedelta(hours=-5))
+                    release_time = release_time.astimezone(est_tz)
+                    formatted_date = release_time.strftime("%Y-%m-%d %I:%M %p EST")
+                    
+                    # Update the release with the corrected date
+                    release_copy = release.copy()
+                    release_copy['released_at'] = formatted_date
+                    release_copy['release_time'] = release_time
+                    release_copy['release_timestamp'] = release_time.timestamp()
+                    
+                    processed_tcb_releases.append(release_copy)
+                except (ValueError, TypeError):
+                    # If date parsing fails, use current time
+                    release_time = datetime.now(timezone.utc)
+                    est_tz = timezone(timedelta(hours=-5))
+                    release_time = release_time.astimezone(est_tz)
+                    
+                    release_copy = release.copy()
+                    release_copy['released_at'] = release_time.strftime("%Y-%m-%d %I:%M %p EST")
+                    release_copy['release_time'] = release_time
+                    release_copy['release_timestamp'] = release_time.timestamp()
+                    
+                    processed_tcb_releases.append(release_copy)
+            
+            latest_releases['tcbscans'] = processed_tcb_releases
             
             # Save to config
             await self.config.latest_releases.set(latest_releases)
             await self.config.last_releases_check.set(datetime.now(timezone.utc).isoformat())
             
-            log.info(f"Collected latest releases: {len(mangadex_releases)} from MangaDex, {len(tcb_releases)} from TCB Scans")
+            log.info(f"Collected latest releases: {len(processed_mangadex_releases)} from MangaDex, {len(processed_tcb_releases)} from TCB Scans")
             
         except Exception as e:
             log.error(f"Error collecting latest releases: {str(e)}")
