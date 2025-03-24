@@ -26,6 +26,8 @@ class Suggestion(commands.Cog):
             "upvote_emoji": "✅",
             "downvote_emoji": "❌",
             "active_suggestions": {},  # Maps message_id to thread_id
+            "blacklisted_users": [],  # List of blacklisted user IDs
+            "suggestion_dialog": "Your suggestion has been submitted for community voting. If approved, it will be reviewed by staff. Misuse of this system may result in losing suggestion privileges.",
         }
         
         self.config.register_guild(**default_guild)
@@ -54,7 +56,18 @@ class Suggestion(commands.Cog):
     async def set_suggestion_channel(self, ctx: commands.Context, channel: discord.TextChannel):
         """Set the channel where users will submit suggestions."""
         await self.config.guild(ctx.guild).suggestion_channel_id.set(channel.id)
-        await ctx.send(f"Suggestion channel set to {channel.mention}")
+        
+        # Get the suggestion dialog to set as channel topic
+        dialog = await self.config.guild(ctx.guild).suggestion_dialog()
+        
+        # Set the channel topic
+        try:
+            await channel.edit(topic=dialog)
+            await ctx.send(f"Suggestion channel set to {channel.mention} with dialog message as the channel topic.")
+        except discord.Forbidden:
+            await ctx.send(f"Suggestion channel set to {channel.mention}, but I don't have permission to set the channel topic.")
+        except discord.HTTPException:
+            await ctx.send(f"Suggestion channel set to {channel.mention}, but failed to set the channel topic.")
         
     @suggestion_settings.command(name="userforum")
     async def set_user_forum(self, ctx: commands.Context, forum: discord.ForumChannel):
@@ -96,6 +109,119 @@ class Suggestion(commands.Cog):
         await self.config.guild(ctx.guild).downvote_emoji.set(downvote_emoji)
         await ctx.send(f"Voting emojis set to {upvote_emoji} for upvotes and {downvote_emoji} for downvotes")
         
+    @suggestion_settings.command(name="blacklist")
+    async def blacklist_user(self, ctx: commands.Context, user: discord.Member, *, reason: str = None):
+        """
+        Blacklist a user from submitting suggestions.
+        
+        Parameters:
+        - user: The user to blacklist
+        - reason: Optional reason for the blacklist
+        """
+        # Get the current blacklist
+        blacklisted_users = await self.config.guild(ctx.guild).blacklisted_users()
+        
+        # Check if the user is already blacklisted
+        if user.id in blacklisted_users:
+            await ctx.send(f"{user.mention} is already blacklisted from submitting suggestions.")
+            return
+        
+        # Add the user to the blacklist
+        blacklisted_users.append(user.id)
+        await self.config.guild(ctx.guild).blacklisted_users.set(blacklisted_users)
+        
+        # Send confirmation
+        if reason:
+            await ctx.send(f"{user.mention} has been blacklisted from submitting suggestions.\nReason: {reason}")
+        else:
+            await ctx.send(f"{user.mention} has been blacklisted from submitting suggestions.")
+        
+        # Notify the user
+        try:
+            if reason:
+                await user.send(f"You have been blacklisted from submitting suggestions in {ctx.guild.name}.\nReason: {reason}")
+            else:
+                await user.send(f"You have been blacklisted from submitting suggestions in {ctx.guild.name}.")
+        except (discord.Forbidden, discord.HTTPException):
+            # Cannot DM the user, continue silently
+            pass
+    
+    @suggestion_settings.command(name="unblacklist")
+    async def unblacklist_user(self, ctx: commands.Context, user: discord.Member):
+        """Remove a user from the suggestion blacklist."""
+        # Get the current blacklist
+        blacklisted_users = await self.config.guild(ctx.guild).blacklisted_users()
+        
+        # Check if the user is blacklisted
+        if user.id not in blacklisted_users:
+            await ctx.send(f"{user.mention} is not blacklisted from submitting suggestions.")
+            return
+        
+        # Remove the user from the blacklist
+        blacklisted_users.remove(user.id)
+        await self.config.guild(ctx.guild).blacklisted_users.set(blacklisted_users)
+        
+        # Send confirmation
+        await ctx.send(f"{user.mention} has been removed from the suggestion blacklist.")
+        
+        # Notify the user
+        try:
+            await user.send(f"You are no longer blacklisted from submitting suggestions in {ctx.guild.name}.")
+        except (discord.Forbidden, discord.HTTPException):
+            # Cannot DM the user, continue silently
+            pass
+    
+    @suggestion_settings.command(name="listblacklist")
+    async def list_blacklisted_users(self, ctx: commands.Context):
+        """View all blacklisted users."""
+        # Get the current blacklist
+        blacklisted_users = await self.config.guild(ctx.guild).blacklisted_users()
+        
+        if not blacklisted_users:
+            await ctx.send("There are no blacklisted users.")
+            return
+        
+        # Create an embed to display the blacklisted users
+        embed = discord.Embed(
+            title="Suggestion Blacklist",
+            color=discord.Color.red(),
+            description="Users who cannot submit suggestions:",
+            timestamp=datetime.now()
+        )
+        
+        # Add each user to the embed
+        for user_id in blacklisted_users:
+            user = ctx.guild.get_member(user_id)
+            if user:
+                embed.add_field(name=f"{user.display_name}", value=f"ID: {user.id}", inline=False)
+            else:
+                embed.add_field(name=f"Unknown User", value=f"ID: {user_id}", inline=False)
+        
+        await ctx.send(embed=embed)
+    
+    @suggestion_settings.command(name="dialog")
+    async def set_suggestion_dialog(self, ctx: commands.Context, *, message: str):
+        """
+        Set the suggestion dialog message shown in the channel.
+        
+        This message will appear as the channel topic in the suggestion channel.
+        """
+        await self.config.guild(ctx.guild).suggestion_dialog.set(message)
+        await ctx.send("Suggestion dialog message has been updated.")
+        
+        # Update the channel topic if the suggestion channel is set
+        suggestion_channel_id = await self.config.guild(ctx.guild).suggestion_channel_id()
+        if suggestion_channel_id:
+            suggestion_channel = self.bot.get_channel(suggestion_channel_id)
+            if suggestion_channel and isinstance(suggestion_channel, discord.TextChannel):
+                try:
+                    await suggestion_channel.edit(topic=message)
+                    await ctx.send(f"Updated the channel topic for {suggestion_channel.mention}.")
+                except discord.Forbidden:
+                    await ctx.send("I don't have permission to update the channel topic.")
+                except discord.HTTPException:
+                    await ctx.send("Failed to update the channel topic.")
+        
     @suggestion_settings.command(name="view")
     async def view_settings(self, ctx: commands.Context):
         """View the current suggestion system settings."""
@@ -131,6 +257,18 @@ class Suggestion(commands.Cog):
         embed.add_field(name="Upvote Emoji", value=settings["upvote_emoji"], inline=True)
         embed.add_field(name="Downvote Emoji", value=settings["downvote_emoji"], inline=True)
         
+        # Add dialog message to embed
+        embed.add_field(
+            name="Suggestion Dialog", 
+            value=settings["suggestion_dialog"][:1024] if len(settings["suggestion_dialog"]) <= 1024 
+                  else settings["suggestion_dialog"][:1021] + "...",
+            inline=False
+        )
+        
+        # Add blacklist count
+        blacklist_count = len(settings["blacklisted_users"])
+        embed.add_field(name="Blacklisted Users", value=str(blacklist_count), inline=True)
+        
         await ctx.send(embed=embed)
         
     @commands.Cog.listener()
@@ -150,6 +288,23 @@ class Suggestion(commands.Cog):
         # Check if suggestions are enabled and if the message is in the suggestion channel
         if not settings["enabled"] or message.channel.id != settings["suggestion_channel_id"]:
             return
+            
+        # Check if user is blacklisted
+        if message.author.id in settings["blacklisted_users"]:
+            try:
+                # Delete the message
+                await message.delete()
+                
+                # Inform the user they are blacklisted
+                warning = await message.channel.send(
+                    f"{message.author.mention} You are blacklisted from submitting suggestions.",
+                    delete_after=10  # Auto-delete after 10 seconds
+                )
+                
+                return
+            except (discord.Forbidden, discord.HTTPException):
+                # If we can't delete the message, just return
+                return
             
         # Get the user and staff forums
         user_forum = self.bot.get_channel(settings["user_forum_id"])
@@ -189,9 +344,26 @@ class Suggestion(commands.Cog):
                 
                 # Notify the user that their suggestion was created
                 try:
-                    await message.author.send(
-                        f"Your suggestion has been submitted! You can view it here: {starter_message.jump_url}"
+                    embed = discord.Embed(
+                        title="Suggestion Submitted",
+                        description=f"Your suggestion has been submitted for community voting!",
+                        color=discord.Color.green(),
+                        timestamp=datetime.now()
                     )
+                    embed.add_field(name="Suggestion", value=message.content, inline=False)
+                    embed.add_field(name="View Thread", value=f"[Click here]({starter_message.jump_url})", inline=False)
+                    embed.add_field(
+                        name="What happens next?", 
+                        value=(
+                            f"- Other users will vote on your suggestion with {settings['upvote_emoji']} or {settings['downvote_emoji']}\n"
+                            f"- If it receives {settings['required_upvotes']} upvotes, it will be reviewed by staff\n"
+                            f"- If it receives {settings['required_downvotes']} downvotes, it may be automatically deleted\n"
+                            f"- Submitting inappropriate suggestions may result in being blacklisted"
+                        ),
+                        inline=False
+                    )
+                    
+                    await message.author.send(embed=embed)
                 except (discord.Forbidden, discord.HTTPException):
                     # Cannot DM the user, continue silently
                     pass
