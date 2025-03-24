@@ -81,16 +81,92 @@ class Suggestion(commands.Cog):
             await ctx.send(f"Suggestion channel set to {channel.mention}, but failed to post or pin the dialog message.")
         
     @suggestion_settings.command(name="userforum")
-    async def set_user_forum(self, ctx: commands.Context, forum: discord.ForumChannel):
-        """Set the forum where user suggestion threads will be posted for voting."""
-        await self.config.guild(ctx.guild).user_forum_id.set(forum.id)
-        await ctx.send(f"User voting forum set to {forum.mention}")
+    async def set_user_forum(self, ctx: commands.Context, forum: discord.ForumChannel = None, category_id: int = 1243536580212166666):
+        """
+        Set the forum where user suggestion threads will be posted for voting.
+        
+        Parameters:
+        - forum: The forum channel to use (optional - will use the category to find or create a forum)
+        - category_id: The category ID to put the forum in (defaults to 1243536580212166666)
+        """
+        if forum:
+            # If a forum is directly provided, use it
+            await self.config.guild(ctx.guild).user_forum_id.set(forum.id)
+            await ctx.send(f"User voting forum set to {forum.mention}")
+            return
+            
+        # Try to find an existing forum channel in the specified category
+        category = ctx.guild.get_channel(category_id)
+        if not category or not isinstance(category, discord.CategoryChannel):
+            await ctx.send(f"Error: Category with ID {category_id} not found or is not a category. Please provide a valid category ID.")
+            return
+            
+        # Check for existing forum channels in this category
+        existing_forums = [c for c in category.channels if isinstance(c, discord.ForumChannel)]
+        
+        if existing_forums:
+            # Use the first forum found in the category
+            forum = existing_forums[0]
+            await self.config.guild(ctx.guild).user_forum_id.set(forum.id)
+            await ctx.send(f"Found existing forum channel {forum.mention} in the category and set it as the user voting forum.")
+        else:
+            # Try to create a new forum channel in the category
+            try:
+                forum = await ctx.guild.create_forum(
+                    name="suggestion-voting",
+                    category=category,
+                    topic="Vote on community suggestions here. Add ✅ to support or ❌ to deny."
+                )
+                await self.config.guild(ctx.guild).user_forum_id.set(forum.id)
+                await ctx.send(f"Created and set new forum channel {forum.mention} as the user voting forum.")
+            except discord.Forbidden:
+                await ctx.send("I don't have permission to create forum channels. Please create a forum channel in the category and try again with that channel.")
+            except discord.HTTPException as e:
+                await ctx.send(f"Failed to create forum channel: {str(e)}")
         
     @suggestion_settings.command(name="staffforum")
-    async def set_staff_forum(self, ctx: commands.Context, forum: discord.ForumChannel):
-        """Set the forum where staff will review approved suggestions."""
-        await self.config.guild(ctx.guild).staff_forum_id.set(forum.id)
-        await ctx.send(f"Staff review forum set to {forum.mention}")
+    async def set_staff_forum(self, ctx: commands.Context, forum: discord.ForumChannel = None, category_id: int = 442253827392143360):
+        """
+        Set the forum where staff will review approved suggestions.
+        
+        Parameters:
+        - forum: The forum channel to use (optional - will use the category to find or create a forum)
+        - category_id: The category ID to put the forum in (defaults to 442253827392143360)
+        """
+        if forum:
+            # If a forum is directly provided, use it
+            await self.config.guild(ctx.guild).staff_forum_id.set(forum.id)
+            await ctx.send(f"Staff review forum set to {forum.mention}")
+            return
+            
+        # Try to find an existing forum channel in the specified category
+        category = ctx.guild.get_channel(category_id)
+        if not category or not isinstance(category, discord.CategoryChannel):
+            await ctx.send(f"Error: Category with ID {category_id} not found or is not a category. Please provide a valid category ID.")
+            return
+            
+        # Check for existing forum channels in this category
+        existing_forums = [c for c in category.channels if isinstance(c, discord.ForumChannel)]
+        
+        if existing_forums:
+            # Use the first forum found in the category
+            forum = existing_forums[0]
+            await self.config.guild(ctx.guild).staff_forum_id.set(forum.id)
+            await ctx.send(f"Found existing forum channel {forum.mention} in the category and set it as the staff review forum.")
+        else:
+            # Try to create a new forum channel in the category
+            try:
+                forum = await ctx.guild.create_forum(
+                    name="staff-suggestions",
+                    category=category,
+                    topic="Review community-approved suggestions here."
+                )
+                await self.config.guild(ctx.guild).staff_forum_id.set(forum.id)
+                await ctx.send(f"Created and set new forum channel {forum.mention} as the staff review forum.")
+            except discord.Forbidden:
+                await ctx.send("I don't have permission to create forum channels. Please create a forum channel in the category and try again with that channel.")
+            except discord.HTTPException as e:
+                await ctx.send(f"Failed to create forum channel: {str(e)}")
         
     @suggestion_settings.command(name="requiredvotes")
     async def set_required_votes(self, ctx: commands.Context, upvotes: int, downvotes: int):
