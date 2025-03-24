@@ -27,7 +27,7 @@ class Suggestion(commands.Cog):
             "downvote_emoji": "❌",
             "active_suggestions": {},  # Maps message_id to thread_id
             "blacklisted_users": [],  # List of blacklisted user IDs
-            "suggestion_dialog": "Your suggestion has been submitted for community voting. If approved, it will be reviewed by staff. Misuse of this system may result in losing suggestion privileges.",
+            "suggestion_dialog": "📝 **SUGGESTION SYSTEM** 📝\n\nAny message you type in this channel will be submitted as a suggestion and will be deleted from this channel.\n\n**How it works:**\n1️⃣ Type your suggestion in this channel\n2️⃣ A forum thread will be created for community voting\n3️⃣ Members can vote with ✅ or ❌\n4️⃣ Suggestions with 10+ ✅ will be reviewed by staff\n5️⃣ Suggestions with 10+ ❌ will be automatically removed\n\n**⚠️ IMPORTANT:**\n• Trolling or abusing the suggestion system will result in being blacklisted\n• Continued abuse may lead to server-wide moderation actions\n• Only serious, constructive suggestions will be considered\n• You'll receive a DM with a link to your suggestion thread",
         }
         
         self.config.register_guild(**default_guild)
@@ -43,7 +43,8 @@ class Suggestion(commands.Cog):
     @commands.admin_or_permissions(administrator=True)
     async def suggestion_settings(self, ctx: commands.Context):
         """Configure the suggestion system."""
-        pass
+        if ctx.invoked_subcommand is None:
+            await ctx.send_help(ctx.command)
         
     @suggestion_settings.command(name="enable")
     async def set_enabled(self, ctx: commands.Context, enabled: bool):
@@ -57,17 +58,27 @@ class Suggestion(commands.Cog):
         """Set the channel where users will submit suggestions."""
         await self.config.guild(ctx.guild).suggestion_channel_id.set(channel.id)
         
-        # Get the suggestion dialog to set as channel topic
+        # Get the suggestion dialog to post in the channel
         dialog = await self.config.guild(ctx.guild).suggestion_dialog()
         
-        # Set the channel topic
+        # Create an embed for the dialog message
+        embed = discord.Embed(
+            title="Suggestion System Information",
+            description=dialog,
+            color=discord.Color.blue(),
+            timestamp=datetime.now()
+        )
+        embed.set_footer(text="Last updated")
+        
         try:
-            await channel.edit(topic=dialog)
-            await ctx.send(f"Suggestion channel set to {channel.mention} with dialog message as the channel topic.")
+            # Send and pin the dialog message
+            dialog_message = await channel.send(embed=embed)
+            await dialog_message.pin()
+            await ctx.send(f"Suggestion channel set to {channel.mention} with dialog message pinned in the channel.")
         except discord.Forbidden:
-            await ctx.send(f"Suggestion channel set to {channel.mention}, but I don't have permission to set the channel topic.")
+            await ctx.send(f"Suggestion channel set to {channel.mention}, but I don't have permission to send or pin messages.")
         except discord.HTTPException:
-            await ctx.send(f"Suggestion channel set to {channel.mention}, but failed to set the channel topic.")
+            await ctx.send(f"Suggestion channel set to {channel.mention}, but failed to post or pin the dialog message.")
         
     @suggestion_settings.command(name="userforum")
     async def set_user_forum(self, ctx: commands.Context, forum: discord.ForumChannel):
@@ -200,27 +211,98 @@ class Suggestion(commands.Cog):
         await ctx.send(embed=embed)
     
     @suggestion_settings.command(name="dialog")
-    async def set_suggestion_dialog(self, ctx: commands.Context, *, message: str):
+    async def set_suggestion_dialog(self, ctx: commands.Context, *, message: str = None):
         """
-        Set the suggestion dialog message shown in the channel.
+        Set the suggestion dialog message and post it in the suggestion channel.
         
-        This message will appear as the channel topic in the suggestion channel.
+        This message will be pinned in the suggestion channel as an explanation.
+        If no message is provided, a default comprehensive explanation will be used.
         """
+        if message is None:
+            # Get the current settings to include in the default message
+            settings = await self.config.guild(ctx.guild).all()
+            upvotes_required = settings["required_upvotes"]
+            downvotes_required = settings["required_downvotes"]
+            upvote_emoji = settings["upvote_emoji"]
+            downvote_emoji = settings["downvote_emoji"]
+            
+            message = (
+                f"📝 **SUGGESTION SYSTEM** 📝\n\n"
+                f"Any message you type in this channel will be submitted as a suggestion and will be deleted from this channel.\n\n"
+                f"**How it works:**\n"
+                f"1️⃣ Type your suggestion in this channel\n"
+                f"2️⃣ A forum thread will be created for community voting\n"
+                f"3️⃣ Members can vote with {upvote_emoji} or {downvote_emoji}\n"
+                f"4️⃣ Suggestions with {upvotes_required}+ {upvote_emoji} will be reviewed by staff\n"
+                f"5️⃣ Suggestions with {downvotes_required}+ {downvote_emoji} will be automatically removed\n\n"
+                f"**⚠️ IMPORTANT:**\n"
+                f"• Trolling or abusing the suggestion system will result in being blacklisted\n"
+                f"• Continued abuse may lead to server-wide moderation actions\n"
+                f"• Only serious, constructive suggestions will be considered\n"
+                f"• You'll receive a DM with a link to your suggestion thread"
+            )
+            
+            # Show a preview of the message
+            preview_embed = discord.Embed(
+                title="Default Dialog Message Preview",
+                description=message,
+                color=discord.Color.blue()
+            )
+            await ctx.send(embed=preview_embed)
+            await ctx.send("Do you want to use this default message? Type `yes` to confirm or `no` to cancel.")
+            
+            # Wait for confirmation
+            try:
+                def check(m):
+                    return m.author == ctx.author and m.channel == ctx.channel and m.content.lower() in ["yes", "no"]
+                
+                response = await self.bot.wait_for("message", check=check, timeout=60)
+                
+                if response.content.lower() != "yes":
+                    await ctx.send("Operation cancelled.")
+                    return
+            except asyncio.TimeoutError:
+                await ctx.send("Operation timed out.")
+                return
+        
+        # Update the dialog in the config
         await self.config.guild(ctx.guild).suggestion_dialog.set(message)
         await ctx.send("Suggestion dialog message has been updated.")
         
-        # Update the channel topic if the suggestion channel is set
+        # Post and pin the message in the suggestion channel
         suggestion_channel_id = await self.config.guild(ctx.guild).suggestion_channel_id()
         if suggestion_channel_id:
             suggestion_channel = self.bot.get_channel(suggestion_channel_id)
             if suggestion_channel and isinstance(suggestion_channel, discord.TextChannel):
                 try:
-                    await suggestion_channel.edit(topic=message)
-                    await ctx.send(f"Updated the channel topic for {suggestion_channel.mention}.")
+                    # Create an embed for the dialog message
+                    embed = discord.Embed(
+                        title="Suggestion System Information",
+                        description=message,
+                        color=discord.Color.blue(),
+                        timestamp=datetime.now()
+                    )
+                    embed.set_footer(text="Last updated")
+                    
+                    # Clear existing pinned messages that were posted by the bot and are about suggestions
+                    pins = await suggestion_channel.pins()
+                    for pin in pins:
+                        if pin.author.id == self.bot.user.id and pin.embeds and "Suggestion System Information" in pin.embeds[0].title:
+                            try:
+                                await pin.unpin()
+                                await pin.delete()
+                            except discord.HTTPException:
+                                pass
+                    
+                    # Send and pin the new message
+                    dialog_message = await suggestion_channel.send(embed=embed)
+                    await dialog_message.pin()
+                    
+                    await ctx.send(f"Posted and pinned the dialog message in {suggestion_channel.mention}.")
                 except discord.Forbidden:
-                    await ctx.send("I don't have permission to update the channel topic.")
-                except discord.HTTPException:
-                    await ctx.send("Failed to update the channel topic.")
+                    await ctx.send("I don't have permission to send or pin messages in the suggestion channel.")
+                except discord.HTTPException as e:
+                    await ctx.send(f"Failed to post or pin the dialog message: {str(e)}")
         
     @suggestion_settings.command(name="view")
     async def view_settings(self, ctx: commands.Context):
