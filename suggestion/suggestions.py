@@ -838,7 +838,7 @@ class Suggestion(commands.Cog):
             # Cannot DM the user, continue silently
             pass
     
-    @blacklist_commands.command(name="list")
+    @ignorelist_commands.command(name="list")
     async def list_blacklisted_users(self, ctx: commands.Context):
         """View all blacklisted users."""
         # Get the current blacklist
