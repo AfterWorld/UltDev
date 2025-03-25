@@ -876,41 +876,18 @@ class Suggestion(commands.Cog):
         Parameters:
         - template_name: The template to use (default if not specified)
         """
-        # Check if the command is used in a suggestion channel
-        settings = await self.config.guild(ctx.guild).all()
-        
-        if not settings["enabled"] or ctx.channel.id != settings["suggestion_channel_id"]:
-            return
-            
-        # Check if user is blacklisted
-        if ctx.author.id in settings["blacklisted_users"]:
-            try:
-                await ctx.message.delete()
-                warning = await ctx.send(
-                    f"{ctx.author.mention} You are blacklisted from submitting suggestions.",
-                    delete_after=10  # Auto-delete after 10 seconds
-                )
-                return
-            except (discord.Forbidden, discord.HTTPException):
-                # If we can't delete the message, just return
-                return
-                
         # Get the templates
+        settings = await self.config.guild(ctx.guild).all()
         templates = settings["suggestion_templates"]
         
         # Check if the requested template exists
         if template_name.lower() not in templates:
-            try:
-                await ctx.message.delete()
-                available_templates = ", ".join(templates.keys())
-                await ctx.send(
-                    f"{ctx.author.mention} Template `{template_name}` does not exist. Available templates: {available_templates}",
-                    delete_after=15
-                )
-                return
-            except (discord.Forbidden, discord.HTTPException):
-                # If we can't delete the message, just return
-                return
+            available_templates = ", ".join(templates.keys())
+            await ctx.send(
+                f"{ctx.author.mention} Template `{template_name}` does not exist. Available templates: {available_templates}",
+                delete_after=15
+            )
+            return
                 
         # Get the template
         template = templates[template_name.lower()]
@@ -918,16 +895,20 @@ class Suggestion(commands.Cog):
         # Send the template to the user via DM
         try:
             await ctx.author.send(f"**Suggestion Template ({template_name}):**\n\n{template}")
-            await ctx.send(f"{ctx.author.mention} I've sent you the template via DM.", delete_after=10)
+            
+            # If this is in the suggestion channel, send a notification and delete the command
+            if ctx.channel.id == settings.get("suggestion_channel_id"):
+                await ctx.send(f"{ctx.author.mention} I've sent you the template via DM.", delete_after=10)
+                try:
+                    await ctx.message.delete()
+                except (discord.Forbidden, discord.HTTPException):
+                    pass
+            else:
+                # Otherwise, just send the template in the channel
+                await ctx.send(f"Here's the template for `{template_name}`:\n\n{template}")
         except (discord.Forbidden, discord.HTTPException):
             # Cannot DM the user, send in channel
-            await ctx.send(f"{ctx.author.mention} Here's the template:\n\n{template}", delete_after=30)
-            
-        # Delete the command message
-        try:
-            await ctx.message.delete()
-        except (discord.Forbidden, discord.HTTPException):
-            pass
+            await ctx.send(f"{ctx.author.mention} Here's the template:\n\n{template}")
         
     # ================ Event Listeners ================
     
