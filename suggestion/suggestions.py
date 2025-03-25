@@ -813,7 +813,7 @@ class Suggestion(commands.Cog):
             # Cannot DM the user, continue silently
             pass
     
-    @blacklist_commands.command(name="remove")
+    @ignorelist_commands.command(name="remove")
     async def unblacklist_user(self, ctx: commands.Context, user: discord.Member):
         """Remove a user from the suggestion blacklist."""
         # Get the current blacklist
