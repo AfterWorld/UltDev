@@ -2,13 +2,17 @@ import asyncio
 import discord
 from redbot.core import commands, Config
 from redbot.core.bot import Red
-from typing import Dict, List, Literal, Optional, Union
+from typing import Dict, List, Literal, Optional, Union, Any
 from datetime import datetime, timedelta
+import re
+import json
+from collections import Counter
 
 
 class Suggestion(commands.Cog):
     """
     A cog that creates and manages suggestion forum threads with voting functionality.
+    Enhanced with tags, analytics, templates, and staff responses.
     """
 
     def __init__(self, bot: Red):
@@ -25,19 +29,514 @@ class Suggestion(commands.Cog):
             "auto_delete": True,
             "upvote_emoji": "✅",
             "downvote_emoji": "❌",
-            "active_suggestions": {},  # Maps message_id to thread_id
+            "active_suggestions": {},  # Maps message_id to thread_id and metadata
+            "completed_suggestions": {},  # Archive of processed suggestions
             "blacklisted_users": [],  # List of blacklisted user IDs
             "suggestion_dialog": "📝 **SUGGESTION SYSTEM** 📝\n\nAny message you type in this channel will be submitted as a suggestion and will be deleted from this channel.\n\n**How it works:**\n1️⃣ Type your suggestion in this channel\n2️⃣ A forum thread will be created for community voting\n3️⃣ Members can vote with ✅ or ❌\n4️⃣ Suggestions with 10+ ✅ will be reviewed by staff\n5️⃣ Suggestions with 10+ ❌ will be automatically removed\n\n**⚠️ IMPORTANT:**\n• Trolling or abusing the suggestion system will result in being blacklisted\n• Continued abuse may lead to server-wide moderation actions\n• Only serious, constructive suggestions will be considered\n• You'll receive a DM with a link to your suggestion thread",
+            "available_tags": ["Feature Request", "Bug Report", "Content Suggestion", "QoL Improvement", "Other"],  # Default tags
+            "suggestion_templates": {
+                "default": "**Suggestion Title:** \n**Description:** \n**Why is this needed:** ",
+                "feature": "**Feature Request**\n**Title:** \n**What does this feature do:** \n**Why is this needed:** \n**How would this improve the server/product:** ",
+                "bug": "**Bug Report**\n**Issue:** \n**Steps to reproduce:** \n**Expected behavior:** \n**Actual behavior:** \n**Screenshots/Evidence:** ",
+            },
+            "user_cooldowns": {},  # User ID -> next allowed suggestion timestamp
+            "cooldown_minutes": 60,  # Default 1 hour cooldown
+            "exempt_roles": [],  # Roles exempt from cooldown
+            "auto_archive_days": 14,  # Days before auto-archiving inactive suggestions
+            "tag_format_regex": r"\[([^\]]+)\]",  # Format for tags in suggestions: [Tag]
+            "analytics": {
+                "total_submitted": 0,
+                "total_approved": 0,
+                "total_rejected": 0,
+                "by_user": {},  # User ID -> count
+                "by_tag": {},  # Tag -> count
+                "by_status": {
+                    "Implemented": 0,
+                    "Planned": 0,
+                    "Under Review": 0,
+                    "Rejected": 0,
+                    "Duplicate": 0
+                },
+                "last_reset": datetime.now().timestamp()
+            }
         }
         
         self.config.register_guild(**default_guild)
         self.emoji_check_task = self.bot.loop.create_task(self.check_emojis_loop())
         self.vote_check_task = self.bot.loop.create_task(self.check_votes_loop())
+        self.cleanup_task = self.bot.loop.create_task(self.scheduled_cleanup_loop())
         
     def cog_unload(self):
         """Clean up when cog is unloaded."""
         self.emoji_check_task.cancel()
         self.vote_check_task.cancel()
+        self.cleanup_task.cancel()
+        
+    # ================ Tag Management Commands ================
+    
+    @commands.group(name="suggestiontags")
+    @commands.admin_or_permissions(administrator=True)
+    async def suggestion_tags(self, ctx: commands.Context):
+        """Configure the suggestion tagging system."""
+        if ctx.invoked_subcommand is None:
+            await ctx.send_help(ctx.command)
+            
+    @suggestion_tags.command(name="add")
+    async def add_tag(self, ctx: commands.Context, *, tag_name: str):
+        """Add a new tag to the available tags list."""
+        tags = await self.config.guild(ctx.guild).available_tags()
+        
+        # Check if tag already exists
+        if tag_name in tags:
+            await ctx.send(f"Tag `{tag_name}` already exists.")
+            return
+            
+        # Add the new tag
+        tags.append(tag_name)
+        await self.config.guild(ctx.guild).available_tags.set(tags)
+        await ctx.send(f"Tag `{tag_name}` has been added to the available tags.")
+        
+    @suggestion_tags.command(name="remove")
+    async def remove_tag(self, ctx: commands.Context, *, tag_name: str):
+        """Remove a tag from the available tags list."""
+        tags = await self.config.guild(ctx.guild).available_tags()
+        
+        # Check if tag exists
+        if tag_name not in tags:
+            await ctx.send(f"Tag `{tag_name}` does not exist.")
+            return
+            
+        # Remove the tag
+        tags.remove(tag_name)
+        await self.config.guild(ctx.guild).available_tags.set(tags)
+        await ctx.send(f"Tag `{tag_name}` has been removed from the available tags.")
+        
+    @suggestion_tags.command(name="list")
+    async def list_tags(self, ctx: commands.Context):
+        """List all available suggestion tags."""
+        tags = await self.config.guild(ctx.guild).available_tags()
+        
+        if not tags:
+            await ctx.send("There are no suggestion tags configured.")
+            return
+            
+        embed = discord.Embed(
+            title="Available Suggestion Tags",
+            description="\n".join([f"• {tag}" for tag in tags]),
+            color=discord.Color.blue(),
+            timestamp=datetime.now()
+        )
+        
+        await ctx.send(embed=embed)
+        
+    # ================ Template Management Commands ================
+    
+    @commands.group(name="suggestiontemplates")
+    @commands.admin_or_permissions(administrator=True)
+    async def suggestion_templates(self, ctx: commands.Context):
+        """Configure the suggestion template system."""
+        if ctx.invoked_subcommand is None:
+            await ctx.send_help(ctx.command)
+    
+    @suggestion_templates.command(name="add")
+    async def add_template(self, ctx: commands.Context, name: str, *, template: str):
+        """
+        Add or update a suggestion template.
+        
+        Parameters:
+        - name: The name of the template
+        - template: The template text
+        """
+        templates = await self.config.guild(ctx.guild).suggestion_templates()
+        
+        # Add/update the template
+        templates[name.lower()] = template
+        await self.config.guild(ctx.guild).suggestion_templates.set(templates)
+        
+        await ctx.send(f"Template `{name}` has been added/updated.")
+    
+    @suggestion_templates.command(name="remove")
+    async def remove_template(self, ctx: commands.Context, name: str):
+        """
+        Remove a suggestion template.
+        
+        Parameters:
+        - name: The name of the template to remove
+        """
+        templates = await self.config.guild(ctx.guild).suggestion_templates()
+        
+        # Check if template exists
+        if name.lower() not in templates:
+            await ctx.send(f"Template `{name}` does not exist.")
+            return
+            
+        # Don't allow removal of the default template
+        if name.lower() == "default":
+            await ctx.send("You cannot remove the default template.")
+            return
+            
+        # Remove the template
+        del templates[name.lower()]
+        await self.config.guild(ctx.guild).suggestion_templates.set(templates)
+        
+        await ctx.send(f"Template `{name}` has been removed.")
+    
+    @suggestion_templates.command(name="list")
+    async def list_templates(self, ctx: commands.Context):
+        """List all suggestion templates."""
+        templates = await self.config.guild(ctx.guild).suggestion_templates()
+        
+        if not templates:
+            await ctx.send("There are no suggestion templates configured.")
+            return
+            
+        embed = discord.Embed(
+            title="Available Suggestion Templates",
+            color=discord.Color.blue(),
+            timestamp=datetime.now()
+        )
+        
+        for name, template in templates.items():
+            preview = template[:1024] if len(template) <= 1024 else template[:1021] + "..."
+            embed.add_field(name=name.capitalize(), value=preview, inline=False)
+        
+        await ctx.send(embed=embed)
+        
+    @suggestion_templates.command(name="show")
+    async def show_template(self, ctx: commands.Context, name: str):
+        """Show a specific suggestion template."""
+        templates = await self.config.guild(ctx.guild).suggestion_templates()
+        
+        # Check if template exists
+        if name.lower() not in templates:
+            await ctx.send(f"Template `{name}` does not exist.")
+            return
+            
+        template = templates[name.lower()]
+        
+        embed = discord.Embed(
+            title=f"{name.capitalize()} Template",
+            description=template,
+            color=discord.Color.blue(),
+            timestamp=datetime.now()
+        )
+        
+        await ctx.send(embed=embed)
+        
+    # ================ Cooldown Management Commands ================
+    
+    @commands.group(name="suggestioncooldown")
+    @commands.admin_or_permissions(administrator=True)
+    async def suggestion_cooldown(self, ctx: commands.Context):
+        """Configure the suggestion cooldown system."""
+        if ctx.invoked_subcommand is None:
+            await ctx.send_help(ctx.command)
+    
+    @suggestion_cooldown.command(name="set")
+    async def set_cooldown(self, ctx: commands.Context, minutes: int):
+        """
+        Set the cooldown between suggestions.
+        
+        Parameters:
+        - minutes: Cooldown time in minutes (0 to disable)
+        """
+        if minutes < 0:
+            await ctx.send("Cooldown minutes cannot be negative.")
+            return
+            
+        await self.config.guild(ctx.guild).cooldown_minutes.set(minutes)
+        
+        if minutes == 0:
+            await ctx.send("Suggestion cooldown has been disabled.")
+        else:
+            await ctx.send(f"Suggestion cooldown set to {minutes} minutes.")
+    
+    @suggestion_cooldown.command(name="exempt")
+    async def exempt_role(self, ctx: commands.Context, role: discord.Role):
+        """
+        Add a role to the cooldown exemption list.
+        
+        Parameters:
+        - role: The role to exempt
+        """
+        exempt_roles = await self.config.guild(ctx.guild).exempt_roles()
+        
+        # Check if role is already exempt
+        if role.id in exempt_roles:
+            await ctx.send(f"Role {role.name} is already exempt from cooldowns.")
+            return
+            
+        # Add the role to exemptions
+        exempt_roles.append(role.id)
+        await self.config.guild(ctx.guild).exempt_roles.set(exempt_roles)
+        
+        await ctx.send(f"Role {role.name} is now exempt from suggestion cooldowns.")
+    
+    @suggestion_cooldown.command(name="unexempt")
+    async def unexempt_role(self, ctx: commands.Context, role: discord.Role):
+        """
+        Remove a role from the cooldown exemption list.
+        
+        Parameters:
+        - role: The role to remove from exemptions
+        """
+        exempt_roles = await self.config.guild(ctx.guild).exempt_roles()
+        
+        # Check if role is exempt
+        if role.id not in exempt_roles:
+            await ctx.send(f"Role {role.name} is not exempt from cooldowns.")
+            return
+            
+        # Remove the role from exemptions
+        exempt_roles.remove(role.id)
+        await self.config.guild(ctx.guild).exempt_roles.set(exempt_roles)
+        
+        await ctx.send(f"Role {role.name} is no longer exempt from suggestion cooldowns.")
+    
+    @suggestion_cooldown.command(name="reset")
+    async def reset_cooldown(self, ctx: commands.Context, user: discord.Member):
+        """
+        Reset a user's suggestion cooldown.
+        
+        Parameters:
+        - user: The user to reset cooldown for
+        """
+        cooldowns = await self.config.guild(ctx.guild).user_cooldowns()
+        
+        # Check if user has a cooldown
+        if str(user.id) not in cooldowns:
+            await ctx.send(f"{user.mention} does not have an active cooldown.")
+            return
+            
+        # Remove the cooldown
+        del cooldowns[str(user.id)]
+        await self.config.guild(ctx.guild).user_cooldowns.set(cooldowns)
+        
+        await ctx.send(f"Cooldown for {user.mention} has been reset.")
+        
+    # ================ Analytics Commands ================
+    
+    @commands.command(name="suggestionstats")
+    @commands.mod_or_permissions(manage_messages=True)
+    async def suggestion_stats(self, ctx: commands.Context, reset: bool = False):
+        """
+        View suggestion system analytics.
+        
+        Parameters:
+        - reset: Whether to reset analytics after showing (default: False)
+        """
+        analytics = await self.config.guild(ctx.guild).analytics()
+        
+        # Create the analytics embed
+        embed = discord.Embed(
+            title="Suggestion System Analytics",
+            color=discord.Color.blue(),
+            timestamp=datetime.now()
+        )
+        
+        # Add overview statistics
+        embed.add_field(
+            name="Overview",
+            value=(
+                f"**Total Submitted:** {analytics['total_submitted']}\n"
+                f"**Total Approved:** {analytics['total_approved']}\n"
+                f"**Total Rejected:** {analytics['total_rejected']}\n"
+                f"**Approval Rate:** {(analytics['total_approved'] / analytics['total_submitted'] * 100) if analytics['total_submitted'] > 0 else 0:.1f}%"
+            ),
+            inline=False
+        )
+        
+        # Add tag statistics
+        if analytics['by_tag']:
+            tag_stats = sorted(analytics['by_tag'].items(), key=lambda x: x[1], reverse=True)
+            tags_text = "\n".join([f"• {tag}: {count}" for tag, count in tag_stats[:5]])
+            embed.add_field(
+                name="Most Popular Tags",
+                value=tags_text if tags_text else "No tag data available",
+                inline=True
+            )
+        
+        # Add top submitters
+        if analytics['by_user']:
+            user_stats = sorted(analytics['by_user'].items(), key=lambda x: x[1], reverse=True)
+            users_text = ""
+            for user_id, count in user_stats[:5]:
+                user = ctx.guild.get_member(int(user_id))
+                username = user.display_name if user else f"Unknown User ({user_id})"
+                users_text += f"• {username}: {count}\n"
+            
+            embed.add_field(
+                name="Top Submitters",
+                value=users_text if users_text else "No user data available",
+                inline=True
+            )
+        
+        # Add status statistics
+        status_text = "\n".join([f"• {status}: {count}" for status, count in analytics['by_status'].items() if count > 0])
+        embed.add_field(
+            name="Status Distribution",
+            value=status_text if status_text else "No status data available",
+            inline=False
+        )
+        
+        # Add reset time
+        last_reset = datetime.fromtimestamp(analytics['last_reset'])
+        embed.set_footer(text=f"Last Reset: {last_reset.strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        await ctx.send(embed=embed)
+        
+        # Reset analytics if requested
+        if reset:
+            new_analytics = {
+                "total_submitted": 0,
+                "total_approved": 0,
+                "total_rejected": 0,
+                "by_user": {},
+                "by_tag": {},
+                "by_status": {
+                    "Implemented": 0,
+                    "Planned": 0,
+                    "Under Review": 0,
+                    "Rejected": 0,
+                    "Duplicate": 0
+                },
+                "last_reset": datetime.now().timestamp()
+            }
+            await self.config.guild(ctx.guild).analytics.set(new_analytics)
+            await ctx.send("Analytics have been reset.")
+            
+    # ================ Staff Response Commands ================
+    
+    @commands.command(name="suggestionresponse")
+    @commands.mod_or_permissions(manage_messages=True)
+    async def staff_response(self, ctx: commands.Context, thread: discord.Thread, status: str, *, response: str = None):
+        """
+        Add an official staff response to a suggestion.
+        
+        Parameters:
+        - thread: The suggestion thread to respond to
+        - status: Status to set (Implemented, Planned, Under Review, Rejected, Duplicate)
+        - response: Optional response message
+        """
+        # Validate status
+        valid_statuses = ["implemented", "planned", "under review", "rejected", "duplicate"]
+        if status.lower() not in valid_statuses:
+            await ctx.send(f"Invalid status. Please use one of: {', '.join(valid_statuses)}")
+            return
+            
+        # Normalize status for display
+        display_status = status.title() if status.lower() != "under review" else "Under Review"
+        
+        # Get settings and active suggestions
+        settings = await self.config.guild(ctx.guild).all()
+        active_suggestions = settings["active_suggestions"]
+        
+        # Find the suggestion associated with this thread
+        thread_id = str(thread.id)
+        message_id = None
+        suggestion_data = None
+        
+        for msg_id, data in active_suggestions.items():
+            if data.get("thread_id") == int(thread_id):
+                message_id = msg_id
+                suggestion_data = data
+                break
+                
+        if not suggestion_data:
+            await ctx.send("This thread is not associated with an active suggestion.")
+            return
+            
+        # Create the response embed
+        embed = discord.Embed(
+            title=f"Staff Response: {display_status}",
+            description=response if response else f"This suggestion has been marked as {display_status}",
+            color=self._get_status_color(display_status),
+            timestamp=datetime.now()
+        )
+        embed.set_author(name=ctx.author.display_name, icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
+        
+        # Send the response to the thread
+        await thread.send(embed=embed)
+        
+        # Update the analytics
+        analytics = await self.config.guild(ctx.guild).analytics()
+        analytics["by_status"][display_status] = analytics["by_status"].get(display_status, 0) + 1
+        await self.config.guild(ctx.guild).analytics.set(analytics)
+        
+        # Update the status in the suggestion data
+        suggestion_data["status"] = display_status
+        suggestion_data["response"] = response
+        suggestion_data["responded_by"] = ctx.author.id
+        suggestion_data["response_time"] = datetime.now().timestamp()
+        active_suggestions[message_id] = suggestion_data
+        
+        await self.config.guild(ctx.guild).active_suggestions.set(active_suggestions)
+        
+        # Notify the user if implemented or rejected
+        if display_status in ["Implemented", "Rejected"]:
+            author_id = suggestion_data.get("author_id")
+            author = ctx.guild.get_member(author_id)
+            
+            if author:
+                try:
+                    user_embed = discord.Embed(
+                        title=f"Your Suggestion has been {display_status}",
+                        description=f"Your suggestion has received an official response:\n\n{response if response else f'This suggestion has been marked as {display_status}'}",
+                        color=self._get_status_color(display_status),
+                        timestamp=datetime.now()
+                    )
+                    user_embed.add_field(name="Original Suggestion", value=suggestion_data.get("content", ""), inline=False)
+                    user_embed.add_field(name="View Thread", value=f"[Click here]({thread.jump_url})", inline=False)
+                    
+                    await author.send(embed=user_embed)
+                except (discord.Forbidden, discord.HTTPException):
+                    # Cannot DM the user, continue silently
+                    pass
+        
+        await ctx.send(f"Response added to the suggestion with status: {display_status}")
+        
+    def _get_status_color(self, status: str) -> discord.Color:
+        """Get the appropriate color for a status."""
+        status_colors = {
+            "Implemented": discord.Color.green(),
+            "Planned": discord.Color.blue(),
+            "Under Review": discord.Color.orange(),
+            "Rejected": discord.Color.red(),
+            "Duplicate": discord.Color.purple()
+        }
+        return status_colors.get(status, discord.Color.default())
+        
+    # ================ Scheduled Cleanup Command ================
+    
+    @commands.command(name="suggestcleanup")
+    @commands.admin_or_permissions(administrator=True)
+    async def manual_cleanup(self, ctx: commands.Context):
+        """Manually trigger the suggestion cleanup process."""
+        await ctx.send("Starting manual suggestion cleanup...")
+        await self.perform_cleanup(ctx.guild)
+        await ctx.send("Suggestion cleanup completed.")
+        
+    @commands.command(name="suggestarchive")
+    @commands.admin_or_permissions(administrator=True)
+    async def set_archive_days(self, ctx: commands.Context, days: int):
+        """
+        Set the number of days before suggestions are automatically archived.
+        
+        Parameters:
+        - days: Number of days before archiving (0 to disable)
+        """
+        if days < 0:
+            await ctx.send("Archive days cannot be negative.")
+            return
+            
+        await self.config.guild(ctx.guild).auto_archive_days.set(days)
+        
+        if days == 0:
+            await ctx.send("Automatic archiving has been disabled.")
+        else:
+            await ctx.send(f"Suggestions will be automatically archived after {days} days of inactivity.")
+        
+    # ================ Enhanced Original Commands ================
     
     @commands.group(name="suggestionset")
     @commands.admin_or_permissions(administrator=True)
@@ -60,11 +559,20 @@ class Suggestion(commands.Cog):
         
         # Get the suggestion dialog to post in the channel
         dialog = await self.config.guild(ctx.guild).suggestion_dialog()
+        templates = await self.config.guild(ctx.guild).suggestion_templates()
+        tags = await self.config.guild(ctx.guild).available_tags()
+        
+        # Add available templates and tags to the dialog
+        template_info = "\n\n**Available Templates:**\n"
+        template_info += "\n".join([f"• `{name}` - Use by typing `/template {name}`" for name in templates.keys()])
+        
+        tag_info = "\n\n**Available Tags:**\n"
+        tag_info += "\n".join([f"• `{tag}` - Use by including `[{tag}]` in your suggestion" for tag in tags])
         
         # Create an embed for the dialog message
         embed = discord.Embed(
             title="Suggestion System Information",
-            description=dialog,
+            description=dialog + template_info + tag_info,
             color=discord.Color.blue(),
             timestamp=datetime.now()
         )
@@ -195,8 +703,80 @@ class Suggestion(commands.Cog):
         await self.config.guild(ctx.guild).upvote_emoji.set(upvote_emoji)
         await self.config.guild(ctx.guild).downvote_emoji.set(downvote_emoji)
         await ctx.send(f"Voting emojis set to {upvote_emoji} for upvotes and {downvote_emoji} for downvotes")
+    
+    @suggestion_settings.command(name="view")
+    async def view_settings(self, ctx: commands.Context):
+        """View the current suggestion system settings."""
+        settings = await self.config.guild(ctx.guild).all()
         
-    @suggestion_settings.command(name="blacklist")
+        # Get channel mentions if they exist
+        suggestion_channel = self.bot.get_channel(settings["suggestion_channel_id"])
+        user_forum = self.bot.get_channel(settings["user_forum_id"])
+        staff_forum = self.bot.get_channel(settings["staff_forum_id"])
+        
+        suggestion_channel_str = suggestion_channel.mention if suggestion_channel else "Not set"
+        user_forum_str = user_forum.mention if user_forum else "Not set"
+        staff_forum_str = staff_forum.mention if staff_forum else "Not set"
+        
+        enabled_str = "Enabled" if settings["enabled"] else "Disabled"
+        auto_delete_str = "Enabled" if settings["auto_delete"] else "Disabled"
+        
+        embed = discord.Embed(
+            title="Suggestion System Settings",
+            color=discord.Color.blue(),
+            timestamp=datetime.now()
+        )
+        
+        embed.add_field(name="Status", value=enabled_str, inline=True)
+        embed.add_field(name="Auto-delete", value=auto_delete_str, inline=True)
+        embed.add_field(name="\u200b", value="\u200b", inline=True)  # Empty field for spacing
+        embed.add_field(name="Suggestion Channel", value=suggestion_channel_str, inline=True)
+        embed.add_field(name="User Forum", value=user_forum_str, inline=True)
+        embed.add_field(name="Staff Forum", value=staff_forum_str, inline=True)
+        embed.add_field(name="Required Upvotes", value=settings["required_upvotes"], inline=True)
+        embed.add_field(name="Required Downvotes", value=settings["required_downvotes"], inline=True)
+        embed.add_field(name="\u200b", value="\u200b", inline=True)  # Empty field for spacing
+        embed.add_field(name="Upvote Emoji", value=settings["upvote_emoji"], inline=True)
+        embed.add_field(name="Downvote Emoji", value=settings["downvote_emoji"], inline=True)
+        embed.add_field(name="Cooldown", value=f"{settings['cooldown_minutes']} minutes", inline=True)
+        
+        # Add tags info
+        embed.add_field(
+            name="Available Tags", 
+            value=", ".join(settings["available_tags"]) if settings["available_tags"] else "None configured",
+            inline=False
+        )
+        
+        # Add template names
+        embed.add_field(
+            name="Available Templates",
+            value=", ".join(settings["suggestion_templates"].keys()) if settings["suggestion_templates"] else "None configured",
+            inline=False
+        )
+        
+        # Add blacklist count
+        blacklist_count = len(settings["blacklisted_users"])
+        embed.add_field(name="Blacklisted Users", value=str(blacklist_count), inline=True)
+        
+        # Add analytics summary
+        embed.add_field(
+            name="Analytics Summary",
+            value=f"Submissions: {settings['analytics']['total_submitted']} | Approved: {settings['analytics']['total_approved']} | Rejected: {settings['analytics']['total_rejected']}",
+            inline=False
+        )
+        
+        await ctx.send(embed=embed)
+    
+    # ================ Blacklist Commands ================
+    
+    @commands.group(name="blacklist")
+    @commands.mod_or_permissions(manage_messages=True)
+    async def blacklist_commands(self, ctx: commands.Context):
+        """Commands for managing the suggestion blacklist."""
+        if ctx.invoked_subcommand is None:
+            await ctx.send_help(ctx.command)
+    
+    @blacklist_commands.command(name="add")
     async def blacklist_user(self, ctx: commands.Context, user: discord.Member, *, reason: str = None):
         """
         Blacklist a user from submitting suggestions.
@@ -233,7 +813,7 @@ class Suggestion(commands.Cog):
             # Cannot DM the user, continue silently
             pass
     
-    @suggestion_settings.command(name="unblacklist")
+    @blacklist_commands.command(name="remove")
     async def unblacklist_user(self, ctx: commands.Context, user: discord.Member):
         """Remove a user from the suggestion blacklist."""
         # Get the current blacklist
@@ -258,7 +838,7 @@ class Suggestion(commands.Cog):
             # Cannot DM the user, continue silently
             pass
     
-    @suggestion_settings.command(name="listblacklist")
+    @blacklist_commands.command(name="list")
     async def list_blacklisted_users(self, ctx: commands.Context):
         """View all blacklisted users."""
         # Get the current blacklist
@@ -285,150 +865,72 @@ class Suggestion(commands.Cog):
                 embed.add_field(name=f"Unknown User", value=f"ID: {user_id}", inline=False)
         
         await ctx.send(embed=embed)
+        
+    # ================ Template Command for Users ================
     
-    @suggestion_settings.command(name="dialog")
-    async def set_suggestion_dialog(self, ctx: commands.Context, *, message: str = None):
+    @commands.command(name="template")
+    async def get_template(self, ctx: commands.Context, template_name: str = "default"):
         """
-        Set the suggestion dialog message and post it in the suggestion channel.
+        Get a suggestion template to use.
         
-        This message will be pinned in the suggestion channel as an explanation.
-        If no message is provided, a default comprehensive explanation will be used.
+        Parameters:
+        - template_name: The template to use (default if not specified)
         """
-        if message is None:
-            # Get the current settings to include in the default message
-            settings = await self.config.guild(ctx.guild).all()
-            upvotes_required = settings["required_upvotes"]
-            downvotes_required = settings["required_downvotes"]
-            upvote_emoji = settings["upvote_emoji"]
-            downvote_emoji = settings["downvote_emoji"]
-            
-            message = (
-                f"📝 **SUGGESTION SYSTEM** 📝\n\n"
-                f"Any message you type in this channel will be submitted as a suggestion and will be deleted from this channel.\n\n"
-                f"**How it works:**\n"
-                f"1️⃣ Type your suggestion in this channel\n"
-                f"2️⃣ A forum thread will be created for community voting\n"
-                f"3️⃣ Members can vote with {upvote_emoji} or {downvote_emoji}\n"
-                f"4️⃣ Suggestions with {upvotes_required}+ {upvote_emoji} will be reviewed by staff\n"
-                f"5️⃣ Suggestions with {downvotes_required}+ {downvote_emoji} will be automatically removed\n\n"
-                f"**⚠️ IMPORTANT:**\n"
-                f"• Trolling or abusing the suggestion system will result in being blacklisted\n"
-                f"• Continued abuse may lead to server-wide moderation actions\n"
-                f"• Only serious, constructive suggestions will be considered\n"
-                f"• You'll receive a DM with a link to your suggestion thread"
-            )
-            
-            # Show a preview of the message
-            preview_embed = discord.Embed(
-                title="Default Dialog Message Preview",
-                description=message,
-                color=discord.Color.blue()
-            )
-            await ctx.send(embed=preview_embed)
-            await ctx.send("Do you want to use this default message? Type `yes` to confirm or `no` to cancel.")
-            
-            # Wait for confirmation
-            try:
-                def check(m):
-                    return m.author == ctx.author and m.channel == ctx.channel and m.content.lower() in ["yes", "no"]
-                
-                response = await self.bot.wait_for("message", check=check, timeout=60)
-                
-                if response.content.lower() != "yes":
-                    await ctx.send("Operation cancelled.")
-                    return
-            except asyncio.TimeoutError:
-                await ctx.send("Operation timed out.")
-                return
-        
-        # Update the dialog in the config
-        await self.config.guild(ctx.guild).suggestion_dialog.set(message)
-        await ctx.send("Suggestion dialog message has been updated.")
-        
-        # Post and pin the message in the suggestion channel
-        suggestion_channel_id = await self.config.guild(ctx.guild).suggestion_channel_id()
-        if suggestion_channel_id:
-            suggestion_channel = self.bot.get_channel(suggestion_channel_id)
-            if suggestion_channel and isinstance(suggestion_channel, discord.TextChannel):
-                try:
-                    # Create an embed for the dialog message
-                    embed = discord.Embed(
-                        title="Suggestion System Information",
-                        description=message,
-                        color=discord.Color.blue(),
-                        timestamp=datetime.now()
-                    )
-                    embed.set_footer(text="Last updated")
-                    
-                    # Clear existing pinned messages that were posted by the bot and are about suggestions
-                    pins = await suggestion_channel.pins()
-                    for pin in pins:
-                        if pin.author.id == self.bot.user.id and pin.embeds and "Suggestion System Information" in pin.embeds[0].title:
-                            try:
-                                await pin.unpin()
-                                await pin.delete()
-                            except discord.HTTPException:
-                                pass
-                    
-                    # Send and pin the new message
-                    dialog_message = await suggestion_channel.send(embed=embed)
-                    await dialog_message.pin()
-                    
-                    await ctx.send(f"Posted and pinned the dialog message in {suggestion_channel.mention}.")
-                except discord.Forbidden:
-                    await ctx.send("I don't have permission to send or pin messages in the suggestion channel.")
-                except discord.HTTPException as e:
-                    await ctx.send(f"Failed to post or pin the dialog message: {str(e)}")
-        
-    @suggestion_settings.command(name="view")
-    async def view_settings(self, ctx: commands.Context):
-        """View the current suggestion system settings."""
+        # Check if the command is used in a suggestion channel
         settings = await self.config.guild(ctx.guild).all()
         
-        # Get channel mentions if they exist
-        suggestion_channel = self.bot.get_channel(settings["suggestion_channel_id"])
-        user_forum = self.bot.get_channel(settings["user_forum_id"])
-        staff_forum = self.bot.get_channel(settings["staff_forum_id"])
+        if not settings["enabled"] or ctx.channel.id != settings["suggestion_channel_id"]:
+            return
+            
+        # Check if user is blacklisted
+        if ctx.author.id in settings["blacklisted_users"]:
+            try:
+                await ctx.message.delete()
+                warning = await ctx.send(
+                    f"{ctx.author.mention} You are blacklisted from submitting suggestions.",
+                    delete_after=10  # Auto-delete after 10 seconds
+                )
+                return
+            except (discord.Forbidden, discord.HTTPException):
+                # If we can't delete the message, just return
+                return
+                
+        # Get the templates
+        templates = settings["suggestion_templates"]
         
-        suggestion_channel_str = suggestion_channel.mention if suggestion_channel else "Not set"
-        user_forum_str = user_forum.mention if user_forum else "Not set"
-        staff_forum_str = staff_forum.mention if staff_forum else "Not set"
+        # Check if the requested template exists
+        if template_name.lower() not in templates:
+            try:
+                await ctx.message.delete()
+                available_templates = ", ".join(templates.keys())
+                await ctx.send(
+                    f"{ctx.author.mention} Template `{template_name}` does not exist. Available templates: {available_templates}",
+                    delete_after=15
+                )
+                return
+            except (discord.Forbidden, discord.HTTPException):
+                # If we can't delete the message, just return
+                return
+                
+        # Get the template
+        template = templates[template_name.lower()]
         
-        enabled_str = "Enabled" if settings["enabled"] else "Disabled"
-        auto_delete_str = "Enabled" if settings["auto_delete"] else "Disabled"
+        # Send the template to the user via DM
+        try:
+            await ctx.author.send(f"**Suggestion Template ({template_name}):**\n\n{template}")
+            await ctx.send(f"{ctx.author.mention} I've sent you the template via DM.", delete_after=10)
+        except (discord.Forbidden, discord.HTTPException):
+            # Cannot DM the user, send in channel
+            await ctx.send(f"{ctx.author.mention} Here's the template:\n\n{template}", delete_after=30)
+            
+        # Delete the command message
+        try:
+            await ctx.message.delete()
+        except (discord.Forbidden, discord.HTTPException):
+            pass
         
-        embed = discord.Embed(
-            title="Suggestion System Settings",
-            color=discord.Color.blue(),
-            timestamp=datetime.now()
-        )
-        
-        embed.add_field(name="Status", value=enabled_str, inline=True)
-        embed.add_field(name="Auto-delete", value=auto_delete_str, inline=True)
-        embed.add_field(name="\u200b", value="\u200b", inline=True)  # Empty field for spacing
-        embed.add_field(name="Suggestion Channel", value=suggestion_channel_str, inline=True)
-        embed.add_field(name="User Forum", value=user_forum_str, inline=True)
-        embed.add_field(name="Staff Forum", value=staff_forum_str, inline=True)
-        embed.add_field(name="Required Upvotes", value=settings["required_upvotes"], inline=True)
-        embed.add_field(name="Required Downvotes", value=settings["required_downvotes"], inline=True)
-        embed.add_field(name="\u200b", value="\u200b", inline=True)  # Empty field for spacing
-        embed.add_field(name="Upvote Emoji", value=settings["upvote_emoji"], inline=True)
-        embed.add_field(name="Downvote Emoji", value=settings["downvote_emoji"], inline=True)
-        
-        # Add dialog message to embed
-        embed.add_field(
-            name="Suggestion Dialog", 
-            value=settings["suggestion_dialog"][:1024] if len(settings["suggestion_dialog"]) <= 1024 
-                  else settings["suggestion_dialog"][:1021] + "...",
-            inline=False
-        )
-        
-        # Add blacklist count
-        blacklist_count = len(settings["blacklisted_users"])
-        embed.add_field(name="Blacklisted Users", value=str(blacklist_count), inline=True)
-        
-        await ctx.send(embed=embed)
-        
+    # ================ Event Listeners ================
+    
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         """Process messages in the suggestion channel."""
@@ -463,6 +965,46 @@ class Suggestion(commands.Cog):
             except (discord.Forbidden, discord.HTTPException):
                 # If we can't delete the message, just return
                 return
+                
+        # Check for cooldown
+        if settings["cooldown_minutes"] > 0:
+            # Check if user has roles that are exempt from cooldown
+            exempt = False
+            for role_id in settings["exempt_roles"]:
+                role = message.guild.get_role(role_id)
+                if role and role in message.author.roles:
+                    exempt = True
+                    break
+                    
+            # If not exempt, check cooldown
+            if not exempt:
+                cooldowns = settings["user_cooldowns"]
+                user_id = str(message.author.id)
+                
+                if user_id in cooldowns:
+                    next_allowed = datetime.fromtimestamp(cooldowns[user_id])
+                    now = datetime.now()
+                    
+                    if now < next_allowed:
+                        # User is on cooldown
+                        time_left = next_allowed - now
+                        minutes = time_left.seconds // 60
+                        seconds = time_left.seconds % 60
+                        
+                        try:
+                            # Delete the message
+                            await message.delete()
+                            
+                            # Inform the user about the cooldown
+                            warning = await message.channel.send(
+                                f"{message.author.mention} You are on cooldown. Please wait {minutes}m {seconds}s before submitting another suggestion.",
+                                delete_after=15  # Auto-delete after 15 seconds
+                            )
+                            
+                            return
+                        except (discord.Forbidden, discord.HTTPException):
+                            # If we can't delete the message, just return
+                            return
             
         # Get the user and staff forums
         user_forum = self.bot.get_channel(settings["user_forum_id"])
@@ -472,13 +1014,33 @@ class Suggestion(commands.Cog):
             return
             
         try:
+            # Extract tags from the message using regex
+            content = message.content
+            tags = []
+            tag_regex = settings["tag_format_regex"]
+            
+            # Find all tags in the message
+            match = re.findall(tag_regex, content)
+            if match:
+                for tag in match:
+                    # Check if the tag is valid
+                    if tag in settings["available_tags"]:
+                        tags.append(tag)
+                    
+                # Remove the tags from the message content
+                content = re.sub(tag_regex, "", content).strip()
+                
             # Delete the original message
             await message.delete()
             
             # Create a thread in the user forum for voting
+            thread_name = f"Suggestion from {message.author.display_name}"
+            if tags:
+                thread_name = f"[{', '.join(tags)}] {thread_name}"
+                
             suggestion_thread = await user_forum.create_thread(
-                name=f"Suggestion from {message.author.display_name}",
-                content=message.content,
+                name=thread_name[:100],  # Discord has a 100 character limit on thread names
+                content=content,
                 auto_archive_duration=10080,  # 7 days
             )
             
@@ -493,12 +1055,49 @@ class Suggestion(commands.Cog):
                 active_suggestions[str(starter_message.id)] = {
                     "thread_id": suggestion_thread.id,
                     "author_id": message.author.id,
-                    "content": message.content,
+                    "content": content,
                     "created_at": datetime.now().timestamp(),
                     "upvotes": 0,
                     "downvotes": 0,
+                    "tags": tags,
+                    "status": "Pending"
                 }
                 await self.config.guild(message.guild).active_suggestions.set(active_suggestions)
+                
+                # Update analytics
+                analytics = await self.config.guild(message.guild).analytics()
+                
+                # Increment total submitted
+                analytics["total_submitted"] += 1
+                
+                # Update by_user count
+                user_id_str = str(message.author.id)
+                analytics["by_user"][user_id_str] = analytics["by_user"].get(user_id_str, 0) + 1
+                
+                # Update by_tag count
+                for tag in tags:
+                    analytics["by_tag"][tag] = analytics["by_tag"].get(tag, 0) + 1
+                    
+                await self.config.guild(message.guild).analytics.set(analytics)
+                
+                # Set cooldown for the user
+                if settings["cooldown_minutes"] > 0:
+                    # Check if user is exempt from cooldown
+                    exempt = False
+                    for role_id in settings["exempt_roles"]:
+                        role = message.guild.get_role(role_id)
+                        if role and role in message.author.roles:
+                            exempt = True
+                            break
+                            
+                    # If not exempt, set cooldown
+                    if not exempt:
+                        cooldowns = settings["user_cooldowns"]
+                        now = datetime.now()
+                        next_allowed = now + timedelta(minutes=settings["cooldown_minutes"])
+                        
+                        cooldowns[str(message.author.id)] = next_allowed.timestamp()
+                        await self.config.guild(message.guild).user_cooldowns.set(cooldowns)
                 
                 # Notify the user that their suggestion was created
                 try:
@@ -508,7 +1107,11 @@ class Suggestion(commands.Cog):
                         color=discord.Color.green(),
                         timestamp=datetime.now()
                     )
-                    embed.add_field(name="Suggestion", value=message.content, inline=False)
+                    embed.add_field(name="Suggestion", value=content, inline=False)
+                    
+                    if tags:
+                        embed.add_field(name="Tags", value=", ".join(tags), inline=False)
+                        
                     embed.add_field(name="View Thread", value=f"[Click here]({starter_message.jump_url})", inline=False)
                     embed.add_field(
                         name="What happens next?", 
@@ -520,6 +1123,22 @@ class Suggestion(commands.Cog):
                         ),
                         inline=False
                     )
+                    
+                    if settings["cooldown_minutes"] > 0:
+                        exempt = False
+                        for role_id in settings["exempt_roles"]:
+                            role = message.guild.get_role(role_id)
+                            if role and role in message.author.roles:
+                                exempt = True
+                                break
+                                
+                        if not exempt:
+                            next_allowed = datetime.now() + timedelta(minutes=settings["cooldown_minutes"])
+                            embed.add_field(
+                                name="Cooldown",
+                                value=f"You can submit another suggestion after {next_allowed.strftime('%Y-%m-%d %H:%M:%S')}",
+                                inline=False
+                            )
                     
                     await message.author.send(embed=embed)
                 except (discord.Forbidden, discord.HTTPException):
@@ -607,6 +1226,8 @@ class Suggestion(commands.Cog):
             active_suggestions[message_id]["downvotes"] = max(0, active_suggestions[message_id]["downvotes"] - 1)
             await self.config.guild(reaction.message.guild).active_suggestions.set(active_suggestions)
     
+    # ================ Background Tasks ================
+    
     async def check_emojis_loop(self):
         """Background loop to check and remove invalid emojis from suggestion threads."""
         await self.bot.wait_until_ready()
@@ -685,29 +1306,72 @@ class Suggestion(commands.Cog):
                     
                     for message_id, suggestion_data in active_suggestions.items():
                         try:
+                            # Skip suggestions that already have a status other than "Pending"
+                            if suggestion_data.get("status", "Pending") != "Pending":
+                                continue
+                                
                             # Check upvotes for promotion to staff forum
                             if suggestion_data["upvotes"] >= settings["required_upvotes"]:
                                 # Create a thread in the staff forum
                                 author = guild.get_member(suggestion_data["author_id"])
                                 author_name = author.display_name if author else "Unknown User"
                                 
+                                # Format the content with tags if present
+                                tag_display = f"[{', '.join(suggestion_data.get('tags', []))}] " if suggestion_data.get('tags') else ""
+                                thread_title = f"{tag_display}Approved: {author_name}'s Suggestion"
+                                thread_content = f"**Original Suggestion:**\n{suggestion_data['content']}\n\n"
+                                
+                                if suggestion_data.get('tags'):
+                                    thread_content += f"**Tags:** {', '.join(suggestion_data['tags'])}\n\n"
+                                    
+                                thread_content += f"**Votes:** {suggestion_data['upvotes']} {settings['upvote_emoji']} | {suggestion_data['downvotes']} {settings['downvote_emoji']}"
+                                
                                 staff_thread = await staff_forum.create_thread(
-                                    name=f"Approved Suggestion from {author_name}",
-                                    content=f"**Original Suggestion:**\n{suggestion_data['content']}\n\n"
-                                            f"**Votes:** {suggestion_data['upvotes']} ✅ | {suggestion_data['downvotes']} ❌",
+                                    name=thread_title[:100],  # Discord has a 100 character limit on thread names
+                                    content=thread_content,
                                     auto_archive_duration=10080,  # 7 days
                                 )
+                                
+                                # Add a staff action embed with response options
+                                action_embed = discord.Embed(
+                                    title="Staff Actions",
+                                    description=(
+                                        "Use the following command to respond to this suggestion:\n\n"
+                                        f"`/suggestionresponse {staff_thread.mention} [status] [response]`\n\n"
+                                        "**Available Statuses:**\n"
+                                        "• `implemented` - The suggestion has been implemented\n"
+                                        "• `planned` - The suggestion is planned for future implementation\n"
+                                        "• `under review` - The suggestion is still being considered\n"
+                                        "• `rejected` - The suggestion has been rejected\n"
+                                        "• `duplicate` - The suggestion is a duplicate of another suggestion"
+                                    ),
+                                    color=discord.Color.blue(),
+                                    timestamp=datetime.now()
+                                )
+                                
+                                await staff_thread.send(embed=action_embed)
                                 
                                 # Close the user forum thread
                                 user_thread = self.bot.get_channel(suggestion_data["thread_id"])
                                 if user_thread:
                                     try:
                                         await user_thread.edit(archived=True, locked=True)
+                                        
+                                        # Send final message with promotion information
+                                        await user_thread.send(
+                                            "This suggestion has received enough upvotes and has been forwarded to staff for review."
+                                        )
                                     except discord.HTTPException:
                                         pass
                                 
-                                # Remove from active suggestions
-                                del updated_suggestions[message_id]
+                                # Update the suggestion status
+                                suggestion_data["status"] = "Under Review"
+                                updated_suggestions[message_id] = suggestion_data
+                                
+                                # Update analytics
+                                analytics = await self.config.guild(guild).analytics()
+                                analytics["total_approved"] += 1
+                                await self.config.guild(guild).analytics.set(analytics)
                                 
                                 # Notify the author if possible
                                 if author:
@@ -724,12 +1388,33 @@ class Suggestion(commands.Cog):
                                 user_thread = self.bot.get_channel(suggestion_data["thread_id"])
                                 if user_thread:
                                     try:
-                                        await user_thread.delete()
+                                        # Send final message with rejection information
+                                        await user_thread.send(
+                                            "This suggestion has received too many downvotes and has been automatically removed."
+                                        )
+                                        
+                                        # Archive and lock the thread rather than deleting it
+                                        await user_thread.edit(archived=True, locked=True)
                                     except discord.HTTPException:
                                         pass
                                 
+                                # Update the suggestion status
+                                suggestion_data["status"] = "Rejected"
+                                suggestion_data["response"] = "Automatically rejected due to too many downvotes."
+                                suggestion_data["response_time"] = datetime.now().timestamp()
+                                
+                                # Move to completed suggestions
+                                completed_suggestions = await self.config.guild(guild).completed_suggestions()
+                                completed_suggestions[message_id] = suggestion_data
+                                await self.config.guild(guild).completed_suggestions.set(completed_suggestions)
+                                
                                 # Remove from active suggestions
                                 del updated_suggestions[message_id]
+                                
+                                # Update analytics
+                                analytics = await self.config.guild(guild).analytics()
+                                analytics["total_rejected"] += 1
+                                await self.config.guild(guild).analytics.set(analytics)
                                 
                                 # Notify the author if possible
                                 author = guild.get_member(suggestion_data["author_id"])
@@ -753,6 +1438,152 @@ class Suggestion(commands.Cog):
                 
             # Check every 5 minutes
             await asyncio.sleep(300)
+    
+    async def scheduled_cleanup_loop(self):
+        """Background loop to clean up and archive old suggestions."""
+        await self.bot.wait_until_ready()
+        while not self.bot.is_closed():
+            try:
+                # Process each guild's active suggestions
+                for guild in self.bot.guilds:
+                    await self.perform_cleanup(guild)
+                    
+            except Exception as e:
+                print(f"Error in cleanup loop: {str(e)}")
+                
+            # Check once per day
+            await asyncio.sleep(86400)  # 24 hours
+    
+    async def perform_cleanup(self, guild: discord.Guild):
+        """Perform cleanup of old suggestions for a guild."""
+        settings = await self.config.guild(guild).all()
+        
+        # Skip if suggestions are disabled or auto-archive is disabled
+        if not settings["enabled"] or settings["auto_archive_days"] <= 0:
+            return
+            
+        # Calculate the cutoff time
+        cutoff_time = datetime.now() - timedelta(days=settings["auto_archive_days"])
+        cutoff_timestamp = cutoff_time.timestamp()
+        
+        active_suggestions = await self.config.guild(guild).active_suggestions()
+        updated_suggestions = active_suggestions.copy()
+        completed_suggestions = await self.config.guild(guild).completed_suggestions()
+        
+        # Check for old suggestions to archive
+        for message_id, suggestion_data in active_suggestions.items():
+            try:
+                # Skip suggestions that already have a status other than "Pending"
+                if suggestion_data.get("status", "Pending") != "Pending":
+                    continue
+                    
+                # Check if the suggestion is older than the cutoff
+                if suggestion_data["created_at"] < cutoff_timestamp:
+                    # Get the thread
+                    thread = self.bot.get_channel(suggestion_data["thread_id"])
+                    
+                    if thread:
+                        try:
+                            # Send notification about archiving
+                            await thread.send(
+                                f"This suggestion is being automatically archived after {settings['auto_archive_days']} days of inactivity."
+                            )
+                            
+                            # Archive and lock the thread
+                            await thread.edit(archived=True, locked=True)
+                        except discord.HTTPException:
+                            pass
+                    
+                    # Update the suggestion status
+                    suggestion_data["status"] = "Archived"
+                    suggestion_data["response"] = f"Automatically archived after {settings['auto_archive_days']} days of inactivity."
+                    suggestion_data["response_time"] = datetime.now().timestamp()
+                    
+                    # Move to completed suggestions
+                    completed_suggestions[message_id] = suggestion_data
+                    
+                    # Remove from active suggestions
+                    del updated_suggestions[message_id]
+                    
+            except Exception as e:
+                print(f"Error archiving old suggestion {message_id}: {str(e)}")
+        
+        # Update the suggestion lists if changes were made
+        if updated_suggestions != active_suggestions:
+            await self.config.guild(guild).active_suggestions.set(updated_suggestions)
+            await self.config.guild(guild).completed_suggestions.set(completed_suggestions)
+            
+            # Generate a cleanup report
+            total_archived = len(active_suggestions) - len(updated_suggestions)
+            
+            # Try to send the report to a log channel
+            # For now, we'll just print it
+            print(f"Archived {total_archived} old suggestions in {guild.name}")
+    
+    # ================ Helper Methods ================
+    
+    async def _extract_suggestion_analytics(self, guild: discord.Guild):
+        """Extract analytics from suggestion data."""
+        analytics = {
+            "total_submitted": 0,
+            "total_approved": 0,
+            "total_rejected": 0,
+            "by_user": {},
+            "by_tag": {},
+            "by_status": {
+                "Implemented": 0,
+                "Planned": 0,
+                "Under Review": 0,
+                "Rejected": 0,
+                "Duplicate": 0
+            },
+            "last_reset": datetime.now().timestamp()
+        }
+        
+        # Get active and completed suggestions
+        active_suggestions = await self.config.guild(guild).active_suggestions()
+        completed_suggestions = await self.config.guild(guild).completed_suggestions()
+        
+        # Count active suggestions
+        for suggestion_id, data in active_suggestions.items():
+            analytics["total_submitted"] += 1
+            
+            # Count by user
+            user_id = str(data.get("author_id", "unknown"))
+            analytics["by_user"][user_id] = analytics["by_user"].get(user_id, 0) + 1
+            
+            # Count by tags
+            for tag in data.get("tags", []):
+                analytics["by_tag"][tag] = analytics["by_tag"].get(tag, 0) + 1
+                
+            # Count by status
+            status = data.get("status", "Pending")
+            if status in analytics["by_status"]:
+                analytics["by_status"][status] += 1
+                
+            # Count approved/rejected
+            if status == "Under Review":
+                analytics["total_approved"] += 1
+        
+        # Count completed suggestions
+        for suggestion_id, data in completed_suggestions.items():
+            # We already counted it as submitted when active
+            
+            # Count by status
+            status = data.get("status", "Pending")
+            if status in analytics["by_status"]:
+                analytics["by_status"][status] += 1
+                
+            # Count rejected
+            if status == "Rejected":
+                analytics["total_rejected"] += 1
+                
+        return analytics
+    
+    def _get_user_display_name(self, guild: discord.Guild, user_id: int) -> str:
+        """Get a user's display name."""
+        user = guild.get_member(user_id)
+        return user.display_name if user else f"Unknown User ({user_id})"
 
 async def setup(bot):
     """Add the cog to the bot."""
