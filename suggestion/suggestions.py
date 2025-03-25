@@ -769,15 +769,15 @@ class Suggestion(commands.Cog):
     
     # ================ Blacklist Commands ================
     
-    @commands.group(name="blacklist")
+    @commands.group(name="ignorelist")
     @commands.mod_or_permissions(manage_messages=True)
-    async def blacklist_commands(self, ctx: commands.Context):
+    async def ignorelist_commands(self, ctx: commands.Context):
         """Commands for managing the suggestion blacklist."""
         if ctx.invoked_subcommand is None:
             await ctx.send_help(ctx.command)
     
-    @blacklist_commands.command(name="add")
-    async def blacklist_user(self, ctx: commands.Context, user: discord.Member, *, reason: str = None):
+    @ignorelist_commands.command(name="add")
+    async def ignorelist_user(self, ctx: commands.Context, user: discord.Member, *, reason: str = None):
         """
         Blacklist a user from submitting suggestions.
         
