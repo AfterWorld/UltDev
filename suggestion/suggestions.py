@@ -1410,184 +1410,187 @@ class Suggestion(commands.Cog):
             try:
                 # Process each guild's active suggestions
                 for guild in self.bot.guilds:
-                    settings = await self.config.guild(guild).all()
-                    
-                    # Skip if suggestions are disabled
-                    if not settings["enabled"]:
-                        continue
+                    try:  # Added try block for guild-level error handling
+                        settings = await self.config.guild(guild).all()
                         
-                    valid_emojis = [settings["upvote_emoji"], settings["downvote_emoji"]]
-                    user_forum = self.bot.get_channel(settings["user_forum_id"])
-                    
-                    if not user_forum:
-                        continue
+                        # Skip if suggestions are disabled
+                        if not settings["enabled"]:
+                            continue
+                            
+                        valid_emojis = [settings["upvote_emoji"], settings["downvote_emoji"]]
+                        user_forum = self.bot.get_channel(settings["user_forum_id"])
                         
-                    # Check all active suggestions
-                    active_suggestions = await self.config.guild(guild).active_suggestions()
-                    
-                    for message_id, suggestion_data in active_suggestions.items():
-                        try:
-                            thread_id = suggestion_data.get("thread_id")
-                            if not thread_id:
-                                continue
-                                
-                            thread = self.bot.get_channel(thread_id)
-                            if not thread:
-                                continue
+                        if not user_forum:
+                            continue
                             
-                            # Try to get the starter message
-                            starter_message = None
-                            
-                            # Try multiple approaches to get the starter message
+                        # Check all active suggestions
+                        active_suggestions = await self.config.guild(guild).active_suggestions()
+                        
+                        for message_id, suggestion_data in active_suggestions.items():
                             try:
-                                starter_message = await thread.starter_message()
-                            except Exception as e:
-                                print(f"Error getting starter message in check_emojis_loop: {str(e)}")
-                            
-                            # If that failed, try to get the message directly
-                            if not starter_message:
-                                try:
-                                    starter_message = await thread.fetch_message(int(message_id))
-                                except Exception as e:
-                                    print(f"Error fetching message {message_id}: {str(e)}")
-                            
-                            # If that failed too, try to get the first message in history
-                            if not starter_message:
-                                try:
-                                    async for first_msg in thread.history(limit=1, oldest_first=True):
-                                        starter_message = first_msg
-                                        break
-                                except Exception as e:
-                                    print(f"Error getting history: {str(e)}")
-                            
-                            if not starter_message:
-                                continue
-                                
-                            # First ensure our voting emojis are present
-                            has_upvote = False
-                            has_downvote = False
-                            
-                            # Check existing reactions
-                            for reaction in starter_message.reactions:
-                                emoji = str(reaction.emoji)
-                                
-                                # Check if our voting emojis are present
-                                if emoji == settings["upvote_emoji"]:
-                                    has_upvote = True
-                                elif emoji == settings["downvote_emoji"]:
-                                    has_downvote = True
-                                # Remove any non-voting emoji
-                                elif emoji not in valid_emojis:
-                                    # Get users who reacted with this emoji
-                                    async for user in reaction.users():
-                                        if user.id != self.bot.user.id:
-                                            try:
-                                                await starter_message.remove_reaction(emoji, user)
-                                                print(f"Removed invalid reaction {emoji} in thread {thread_id}")
-                                            except Exception as e:
-                                                print(f"Error removing reaction: {str(e)}")
-                            
-                            # Add our voting emojis if they're missing
-                            if not has_upvote:
-                                try:
-                                    await starter_message.add_reaction(settings["upvote_emoji"])
-                                    print(f"Added missing upvote reaction to {starter_message.id}")
-                                except Exception as e:
-                                    print(f"Error adding upvote: {str(e)}")
-                                    
-                            if not has_downvote:
-                                try:
-                                    await starter_message.add_reaction(settings["downvote_emoji"])
-                                    print(f"Added missing downvote reaction to {starter_message.id}")
-                                except Exception as e:
-                                    print(f"Error adding downvote: {str(e)}")
-                                    
-                        except Exception as e:
-                            print(f"Error checking emojis on suggestion {message_id}: {str(e)}")
-                    
-                    # Also check recent threads in the forum that might not be tracked yet
-                    if isinstance(user_forum, discord.ForumChannel):
-                        try:
-                            # Get active threads in the forum
-                            for thread in user_forum.threads:
-                                # Skip if thread is already tracked in active suggestions
-                                is_tracked = False
-                                for _, data in active_suggestions.items():
-                                    if data.get("thread_id") == thread.id:
-                                        is_tracked = True
-                                        break
-                                
-                                if is_tracked:
+                                thread_id = suggestion_data.get("thread_id")
+                                if not thread_id:
                                     continue
                                     
-                                # Only check recent threads (less than 24 hours old)
-                                thread_age = (datetime.now() - thread.created_at.replace(tzinfo=None)).total_seconds()
-                                if thread_age > 86400:  # 24 hours in seconds
+                                thread = self.bot.get_channel(thread_id)
+                                if not thread:
                                     continue
-                                    
+                                
                                 # Try to get the starter message
                                 starter_message = None
+                                
+                                # Try multiple approaches to get the starter message
                                 try:
                                     starter_message = await thread.starter_message()
-                                except Exception:
-                                    pass
-                                    
+                                except Exception as e:
+                                    print(f"Error getting starter message in check_emojis_loop: {str(e)}")
+                                
+                                # If that failed, try to get the message directly
                                 if not starter_message:
                                     try:
-                                        async for msg in thread.history(limit=1, oldest_first=True):
-                                            starter_message = msg
+                                        starter_message = await thread.fetch_message(int(message_id))
+                                    except Exception as e:
+                                        print(f"Error fetching message {message_id}: {str(e)}")
+                                
+                                # If that failed too, try to get the first message in history
+                                if not starter_message:
+                                    try:
+                                        async for first_msg in thread.history(limit=1, oldest_first=True):
+                                            starter_message = first_msg
                                             break
+                                    except Exception as e:
+                                        print(f"Error getting history: {str(e)}")
+                                
+                                if not starter_message:
+                                    continue
+                                    
+                                # First ensure our voting emojis are present
+                                has_upvote = False
+                                has_downvote = False
+                                
+                                # Check existing reactions
+                                for reaction in starter_message.reactions:
+                                    emoji = str(reaction.emoji)
+                                    
+                                    # Check if our voting emojis are present
+                                    if emoji == settings["upvote_emoji"]:
+                                        has_upvote = True
+                                    elif emoji == settings["downvote_emoji"]:
+                                        has_downvote = True
+                                    # Remove any non-voting emoji
+                                    elif emoji not in valid_emojis:
+                                        # Get users who reacted with this emoji
+                                        async for user in reaction.users():
+                                            if user.id != self.bot.user.id:
+                                                try:
+                                                    await starter_message.remove_reaction(emoji, user)
+                                                    print(f"Removed invalid reaction {emoji} in thread {thread_id}")
+                                                except Exception as e:
+                                                    print(f"Error removing reaction: {str(e)}")
+                                
+                                # Add our voting emojis if they're missing
+                                if not has_upvote:
+                                    try:
+                                        await starter_message.add_reaction(settings["upvote_emoji"])
+                                        print(f"Added missing upvote reaction to {starter_message.id}")
+                                    except Exception as e:
+                                        print(f"Error adding upvote: {str(e)}")
+                                        
+                                if not has_downvote:
+                                    try:
+                                        await starter_message.add_reaction(settings["downvote_emoji"])
+                                        print(f"Added missing downvote reaction to {starter_message.id}")
+                                    except Exception as e:
+                                        print(f"Error adding downvote: {str(e)}")
+                                        
+                            except Exception as e:
+                                print(f"Error checking emojis on suggestion {message_id}: {str(e)}")
+                        
+                        # Also check recent threads in the forum that might not be tracked yet
+                        if isinstance(user_forum, discord.ForumChannel):
+                            try:
+                                # Get active threads in the forum
+                                for thread in user_forum.threads:
+                                    # Skip if thread is already tracked in active suggestions
+                                    is_tracked = False
+                                    for _, data in active_suggestions.items():
+                                        if data.get("thread_id") == thread.id:
+                                            is_tracked = True
+                                            break
+                                    
+                                    if is_tracked:
+                                        continue
+                                        
+                                    # Only check recent threads (less than 24 hours old)
+                                    thread_age = (datetime.now() - thread.created_at.replace(tzinfo=None)).total_seconds()
+                                    if thread_age > 86400:  # 24 hours in seconds
+                                        continue
+                                        
+                                    # Try to get the starter message
+                                    starter_message = None
+                                    try:
+                                        starter_message = await thread.starter_message()
                                     except Exception:
                                         pass
-                                
-                                if starter_message:
-                                    # Check if it has our reactions
-                                    has_upvote = False
-                                    has_downvote = False
-                                    
-                                    for reaction in starter_message.reactions:
-                                        emoji = str(reaction.emoji)
-                                        if emoji == settings["upvote_emoji"]:
-                                            has_upvote = True
-                                        elif emoji == settings["downvote_emoji"]:
-                                            has_downvote = True
-                                    
-                                    # Add missing reactions
-                                    if not has_upvote:
+                                        
+                                    if not starter_message:
                                         try:
-                                            await starter_message.add_reaction(settings["upvote_emoji"])
-                                            print(f"Added upvote to untracked thread {thread.id}")
-                                        except Exception:
-                                            pass
-                                            
-                                    if not has_downvote:
-                                        try:
-                                            await starter_message.add_reaction(settings["downvote_emoji"])
-                                            print(f"Added downvote to untracked thread {thread.id}")
+                                            async for msg in thread.history(limit=1, oldest_first=True):
+                                                starter_message = msg
+                                                break
                                         except Exception:
                                             pass
                                     
-                                    # Track this thread in active suggestions
-                                    active_suggestions[str(starter_message.id)] = {
-                                        "thread_id": thread.id,
-                                        "author_id": starter_message.author.id,
-                                        "content": starter_message.content,
-                                        "created_at": thread.created_at.timestamp(),
-                                        "upvotes": 0,
-                                        "downvotes": 0,
-                                        "tags": [],  # We don't have tags here
-                                        "status": "Pending"
-                                    }
-                                    await self.config.guild(guild).active_suggestions.set(active_suggestions)
-                                    print(f"Added previously untracked thread {thread.id} to suggestions")
-                        except Exception as e:
-                            print(f"Error processing forum threads: {str(e)}")
-                    
-                except Exception as e:
-                    print(f"Error in emoji check loop: {str(e)}")
-                    
-                # Check more frequently (every 30 seconds)
-                await asyncio.sleep(30)
+                                    if starter_message:
+                                        # Check if it has our reactions
+                                        has_upvote = False
+                                        has_downvote = False
+                                        
+                                        for reaction in starter_message.reactions:
+                                            emoji = str(reaction.emoji)
+                                            if emoji == settings["upvote_emoji"]:
+                                                has_upvote = True
+                                            elif emoji == settings["downvote_emoji"]:
+                                                has_downvote = True
+                                        
+                                        # Add missing reactions
+                                        if not has_upvote:
+                                            try:
+                                                await starter_message.add_reaction(settings["upvote_emoji"])
+                                                print(f"Added upvote to untracked thread {thread.id}")
+                                            except Exception:
+                                                pass
+                                                
+                                        if not has_downvote:
+                                            try:
+                                                await starter_message.add_reaction(settings["downvote_emoji"])
+                                                print(f"Added downvote to untracked thread {thread.id}")
+                                            except Exception:
+                                                pass
+                                        
+                                        # Track this thread in active suggestions
+                                        active_suggestions[str(starter_message.id)] = {
+                                            "thread_id": thread.id,
+                                            "author_id": starter_message.author.id,
+                                            "content": starter_message.content,
+                                            "created_at": thread.created_at.timestamp(),
+                                            "upvotes": 0,
+                                            "downvotes": 0,
+                                            "tags": [],  # We don't have tags here
+                                            "status": "Pending"
+                                        }
+                                        await self.config.guild(guild).active_suggestions.set(active_suggestions)
+                                        print(f"Added previously untracked thread {thread.id} to suggestions")
+                            except Exception as e:
+                                print(f"Error processing forum threads: {str(e)}")
+                    except Exception as e:  # Added to catch guild-level errors
+                        print(f"Error processing guild {guild.id}: {str(e)}")
+                
+            except Exception as e:
+                print(f"Error in emoji check loop: {str(e)}")
+                
+            # Check more frequently (every 30 seconds)
+            await asyncio.sleep(30)
         
     async def check_votes_loop(self):
         """Background loop to check vote counts and promote/delete suggestions."""
