@@ -1028,22 +1028,38 @@ class Suggestion(commands.Cog):
                     auto_archive_duration=10080,  # 7 days
                 )
                 
-                # Wait a short time for Discord to fully create the thread
-                await asyncio.sleep(1)
+                # Wait a moment for Discord to fully process the thread
+                await asyncio.sleep(1.5)  # Increased delay for better reliability
                 
-                # Add voting reactions to the thread starter message
-                try:
-                    # Try multiple times to get the starter message, as it might not be immediately available
-                    starter_message = None
-                    for attempt in range(3):
+                # Try to get and react to the starter message using multiple approaches
+                starter_message = None
+                
+                # First approach: Try multiple times with thread.starter_message()
+                for attempt in range(4):  # Try 4 times
+                    try:
                         starter_message = await suggestion_thread.starter_message()
                         if starter_message:
                             break
-                        await asyncio.sleep(1)  # Wait a bit between attempts
+                        await asyncio.sleep(1)  # Wait longer between attempts
+                    except Exception as e:
+                        print(f"Error getting starter message (attempt {attempt+1}): {str(e)}")
+                        await asyncio.sleep(1)
                 
-                    if starter_message:
-                        # Add our voting emojis
+                # Second approach: If starter_message is still None, try to get the first message in thread history
+                if starter_message is None:
+                    try:
+                        print(f"Trying fallback method for thread {suggestion_thread.id}")
+                        async for first_msg in suggestion_thread.history(limit=1, oldest_first=True):
+                            starter_message = first_msg
+                            break
+                    except Exception as e:
+                        print(f"Error getting first message in thread: {str(e)}")
+                
+                # Now add reactions if we found a message
+                if starter_message:
+                    try:
                         await starter_message.add_reaction(settings["upvote_emoji"])
+                        await asyncio.sleep(0.5)  # Add delay between reactions to avoid rate limits
                         await starter_message.add_reaction(settings["downvote_emoji"])
                         
                         # Update active suggestions in the config
@@ -1059,53 +1075,77 @@ class Suggestion(commands.Cog):
                             "status": "Pending"
                         }
                         await self.config.guild(message.guild).active_suggestions.set(active_suggestions)
-                    else:
-                        # Fallback: if we still can't get the starter message, try to get the first message in the thread
-                        print(f"Could not get starter message for thread {suggestion_thread.id}, trying to get first message")
-                        async for first_msg in suggestion_thread.history(limit=1, oldest_first=True):
-                            starter_message = first_msg
+                        print(f"Successfully added reactions to starter message {starter_message.id}")
+                    except Exception as e:
+                        print(f"Error adding reactions: {str(e)}")
+                else:
+                    print(f"Failed to find starter message for thread {suggestion_thread.id}")
+                
+                # Update analytics
+                analytics = await self.config.guild(message.guild).analytics()
+                
+                # Increment total submitted
+                analytics["total_submitted"] += 1
+                
+                # Update by_user count
+                user_id_str = str(message.author.id)
+                analytics["by_user"][user_id_str] = analytics["by_user"].get(user_id_str, 0) + 1
+                
+                # Update by_tag count
+                for tag in tags:
+                    analytics["by_tag"][tag] = analytics["by_tag"].get(tag, 0) + 1
+                    
+                await self.config.guild(message.guild).analytics.set(analytics)
+                
+                # Set cooldown for the user
+                if settings["cooldown_minutes"] > 0:
+                    # Check if user is exempt from cooldown
+                    exempt = False
+                    for role_id in settings["exempt_roles"]:
+                        role = message.guild.get_role(role_id)
+                        if role and role in message.author.roles:
+                            exempt = True
                             break
                             
-                        if starter_message:
-                            # Add our voting emojis
-                            await starter_message.add_reaction(settings["upvote_emoji"])
-                            await starter_message.add_reaction(settings["downvote_emoji"])
-                            
-                            # Update active suggestions in the config
-                            active_suggestions = await self.config.guild(message.guild).active_suggestions()
-                            active_suggestions[str(starter_message.id)] = {
-                                "thread_id": suggestion_thread.id,
-                                "author_id": message.author.id,
-                                "content": content,
-                                "created_at": datetime.now().timestamp(),
-                                "upvotes": 0,
-                                "downvotes": 0,
-                                "tags": tags,
-                                "status": "Pending"
-                            }
-                            await self.config.guild(message.guild).active_suggestions.set(active_suggestions)
-                        else:
-                            print(f"Failed to find any messages in the thread {suggestion_thread.id}")
-                    
-                    # Update analytics
-                    analytics = await self.config.guild(message.guild).analytics()
-                    
-                    # Increment total submitted
-                    analytics["total_submitted"] += 1
-                    
-                    # Update by_user count
-                    user_id_str = str(message.author.id)
-                    analytics["by_user"][user_id_str] = analytics["by_user"].get(user_id_str, 0) + 1
-                    
-                    # Update by_tag count
-                    for tag in tags:
-                        analytics["by_tag"][tag] = analytics["by_tag"].get(tag, 0) + 1
+                    # If not exempt, set cooldown
+                    if not exempt:
+                        cooldowns = settings["user_cooldowns"]
+                        now = datetime.now()
+                        next_allowed = now + timedelta(minutes=settings["cooldown_minutes"])
                         
-                    await self.config.guild(message.guild).analytics.set(analytics)
+                        cooldowns[str(message.author.id)] = next_allowed.timestamp()
+                        await self.config.guild(message.guild).user_cooldowns.set(cooldowns)
+                
+                # Notify the user that their suggestion was created
+                try:
+                    embed = discord.Embed(
+                        title="Suggestion Submitted",
+                        description=f"Your suggestion has been submitted for community voting!",
+                        color=discord.Color.green(),
+                        timestamp=datetime.now()
+                    )
+                    embed.add_field(name="Suggestion", value=content, inline=False)
                     
-                    # Set cooldown for the user
+                    if tags:
+                        embed.add_field(name="Tags", value=", ".join(tags), inline=False)
+                        
+                    if starter_message:
+                        embed.add_field(name="View Thread", value=f"[Click here]({starter_message.jump_url})", inline=False)
+                    else:
+                        embed.add_field(name="View Thread", value=f"[Click here]({suggestion_thread.jump_url})", inline=False)
+                    
+                    embed.add_field(
+                        name="What happens next?", 
+                        value=(
+                            f"- Other users will vote on your suggestion with {settings['upvote_emoji']} or {settings['downvote_emoji']}\n"
+                            f"- If it receives {settings['required_upvotes']} upvotes, it will be reviewed by staff\n"
+                            f"- If it receives {settings['required_downvotes']} downvotes, it may be automatically deleted\n"
+                            f"- Submitting inappropriate suggestions may result in being blacklisted"
+                        ),
+                        inline=False
+                    )
+                    
                     if settings["cooldown_minutes"] > 0:
-                        # Check if user is exempt from cooldown
                         exempt = False
                         for role_id in settings["exempt_roles"]:
                             role = message.guild.get_role(role_id)
@@ -1113,68 +1153,18 @@ class Suggestion(commands.Cog):
                                 exempt = True
                                 break
                                 
-                        # If not exempt, set cooldown
                         if not exempt:
-                            cooldowns = settings["user_cooldowns"]
-                            now = datetime.now()
-                            next_allowed = now + timedelta(minutes=settings["cooldown_minutes"])
-                            
-                            cooldowns[str(message.author.id)] = next_allowed.timestamp()
-                            await self.config.guild(message.guild).user_cooldowns.set(cooldowns)
+                            next_allowed = datetime.now() + timedelta(minutes=settings["cooldown_minutes"])
+                            embed.add_field(
+                                name="Cooldown",
+                                value=f"You can submit another suggestion after {next_allowed.strftime('%Y-%m-%d %H:%M:%S')}",
+                                inline=False
+                            )
                     
-                    # Notify the user that their suggestion was created
-                    try:
-                        embed = discord.Embed(
-                            title="Suggestion Submitted",
-                            description=f"Your suggestion has been submitted for community voting!",
-                            color=discord.Color.green(),
-                            timestamp=datetime.now()
-                        )
-                        embed.add_field(name="Suggestion", value=content, inline=False)
-                        
-                        if tags:
-                            embed.add_field(name="Tags", value=", ".join(tags), inline=False)
-                            
-                        if starter_message:
-                            embed.add_field(name="View Thread", value=f"[Click here]({starter_message.jump_url})", inline=False)
-                        else:
-                            embed.add_field(name="View Thread", value=f"[Click here]({suggestion_thread.jump_url})", inline=False)
-                            
-                        embed.add_field(
-                            name="What happens next?", 
-                            value=(
-                                f"- Other users will vote on your suggestion with {settings['upvote_emoji']} or {settings['downvote_emoji']}\n"
-                                f"- If it receives {settings['required_upvotes']} upvotes, it will be reviewed by staff\n"
-                                f"- If it receives {settings['required_downvotes']} downvotes, it may be automatically deleted\n"
-                                f"- Submitting inappropriate suggestions may result in being blacklisted"
-                            ),
-                            inline=False
-                        )
-                        
-                        if settings["cooldown_minutes"] > 0:
-                            exempt = False
-                            for role_id in settings["exempt_roles"]:
-                                role = message.guild.get_role(role_id)
-                                if role and role in message.author.roles:
-                                    exempt = True
-                                    break
-                                    
-                            if not exempt:
-                                next_allowed = datetime.now() + timedelta(minutes=settings["cooldown_minutes"])
-                                embed.add_field(
-                                    name="Cooldown",
-                                    value=f"You can submit another suggestion after {next_allowed.strftime('%Y-%m-%d %H:%M:%S')}",
-                                    inline=False
-                                )
-                        
-                        await message.author.send(embed=embed)
-                    except (discord.Forbidden, discord.HTTPException):
-                        # Cannot DM the user, continue silently
-                        pass
-                
-                except discord.HTTPException as e:
-                    # Log the error
-                    print(f"Error processing forum thread: {str(e)}")
+                    await message.author.send(embed=embed)
+                except (discord.Forbidden, discord.HTTPException):
+                    # Cannot DM the user, continue silently
+                    pass
             
             except discord.HTTPException as e:
                 # Log the error
@@ -1184,7 +1174,21 @@ class Suggestion(commands.Cog):
         elif isinstance(message.channel, discord.Thread) and message.channel.parent_id == settings["user_forum_id"]:
             # Only process the first message in the thread (the thread starter)
             try:
-                starter_message = await message.channel.starter_message()
+                # Try to get the starter message using multiple approaches
+                starter_message = None
+                
+                # First approach: Try multiple times with thread.starter_message()
+                for attempt in range(3):  # Try 3 times
+                    try:
+                        starter_message = await message.channel.starter_message()
+                        if starter_message and message.id == starter_message.id:
+                            break
+                        await asyncio.sleep(0.5)  # Wait between attempts
+                    except Exception as e:
+                        print(f"Error getting starter message in on_message event (attempt {attempt+1}): {str(e)}")
+                        await asyncio.sleep(0.5)
+                
+                # If we found a starter message and it matches the current message
                 if starter_message and message.id == starter_message.id:
                     # Check if this is a thread we created for suggestions
                     active_suggestions = await self.config.guild(message.guild).active_suggestions()
@@ -1200,8 +1204,13 @@ class Suggestion(commands.Cog):
                     # If it's our suggestion thread, add reactions and track it
                     if is_our_thread:
                         # Add voting reactions
-                        await message.add_reaction(settings["upvote_emoji"])
-                        await message.add_reaction(settings["downvote_emoji"])
+                        try:
+                            await message.add_reaction(settings["upvote_emoji"])
+                            await asyncio.sleep(0.5)  # Add delay between reactions
+                            await message.add_reaction(settings["downvote_emoji"])
+                            print(f"Added reactions to forum post {message.id} in thread {thread_id}")
+                        except Exception as e:
+                            print(f"Error adding reactions to forum post: {str(e)}")
                         
                         # Store the message in active suggestions if not already there
                         if str(message.id) not in active_suggestions:
