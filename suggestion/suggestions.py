@@ -933,8 +933,220 @@ class Suggestion(commands.Cog):
         
         # Handle messages in the suggestion channel
         if message.channel.id == settings["suggestion_channel_id"]:
-            # [Original suggestion channel handling logic remains the same]
-            # ...
+            # Check if user is blacklisted
+            if message.author.id in settings["blacklisted_users"]:
+                try:
+                    # Delete the message
+                    await message.delete()
+                    
+                    # Inform the user they are blacklisted
+                    warning = await message.channel.send(
+                        f"{message.author.mention} You are blacklisted from submitting suggestions.",
+                        delete_after=10  # Auto-delete after 10 seconds
+                    )
+                    
+                    return
+                except (discord.Forbidden, discord.HTTPException):
+                    # If we can't delete the message, just return
+                    return
+                    
+            # Check for cooldown
+            if settings["cooldown_minutes"] > 0:
+                # Check if user has roles that are exempt from cooldown
+                exempt = False
+                for role_id in settings["exempt_roles"]:
+                    role = message.guild.get_role(role_id)
+                    if role and role in message.author.roles:
+                        exempt = True
+                        break
+                        
+                # If not exempt, check cooldown
+                if not exempt:
+                    cooldowns = settings["user_cooldowns"]
+                    user_id = str(message.author.id)
+                    
+                    if user_id in cooldowns:
+                        next_allowed = datetime.fromtimestamp(cooldowns[user_id])
+                        now = datetime.now()
+                        
+                        if now < next_allowed:
+                            # User is on cooldown
+                            time_left = next_allowed - now
+                            minutes = time_left.seconds // 60
+                            seconds = time_left.seconds % 60
+                            
+                            try:
+                                # Delete the message
+                                await message.delete()
+                                
+                                # Inform the user about the cooldown
+                                warning = await message.channel.send(
+                                    f"{message.author.mention} You are on cooldown. Please wait {minutes}m {seconds}s before submitting another suggestion.",
+                                    delete_after=15  # Auto-delete after 15 seconds
+                                )
+                                
+                                return
+                            except (discord.Forbidden, discord.HTTPException):
+                                # If we can't delete the message, just return
+                                return
+            
+            # Get the user and staff forums
+            user_forum = self.bot.get_channel(settings["user_forum_id"])
+            staff_forum = self.bot.get_channel(settings["staff_forum_id"])
+            
+            if not user_forum:
+                return
+                
+            try:
+                # Extract tags from the message using regex
+                content = message.content
+                tags = []
+                tag_regex = settings["tag_format_regex"]
+                
+                # Find all tags in the message
+                match = re.findall(tag_regex, content)
+                if match:
+                    for tag in match:
+                        # Check if the tag is valid
+                        if tag in settings["available_tags"]:
+                            tags.append(tag)
+                        
+                    # Remove the tags from the message content
+                    content = re.sub(tag_regex, "", content).strip()
+                    
+                # Delete the original message
+                await message.delete()
+                
+                # Create a thread in the user forum for voting
+                thread_name = f"Suggestion from {message.author.display_name}"
+                if tags:
+                    thread_name = f"[{', '.join(tags)}] {thread_name}"
+                    
+                suggestion_thread = await user_forum.create_thread(
+                    name=thread_name[:100],  # Discord has a 100 character limit on thread names
+                    content=content,
+                    auto_archive_duration=10080,  # 7 days
+                )
+                
+                # Add voting reactions to the thread starter message
+                starter_message = await suggestion_thread.starter_message()
+                if starter_message:
+                    try:
+                        # Add our voting emojis
+                        await starter_message.add_reaction(settings["upvote_emoji"])
+                        await starter_message.add_reaction(settings["downvote_emoji"])
+                        
+                        # Remove any existing reactions that aren't our voting emojis
+                        valid_emojis = [settings["upvote_emoji"], settings["downvote_emoji"]]
+                        for reaction in starter_message.reactions:
+                            if str(reaction.emoji) not in valid_emojis:
+                                async for user in reaction.users():
+                                    if user.id != self.bot.user.id:
+                                        try:
+                                            await starter_message.remove_reaction(reaction.emoji, user)
+                                        except (discord.Forbidden, discord.HTTPException):
+                                            pass
+                    except discord.HTTPException as e:
+                        print(f"Error adding reactions to suggestion thread: {str(e)}")
+                    
+                    # Update active suggestions in the config
+                    active_suggestions = await self.config.guild(message.guild).active_suggestions()
+                    active_suggestions[str(starter_message.id)] = {
+                        "thread_id": suggestion_thread.id,
+                        "author_id": message.author.id,
+                        "content": content,
+                        "created_at": datetime.now().timestamp(),
+                        "upvotes": 0,
+                        "downvotes": 0,
+                        "tags": tags,
+                        "status": "Pending"
+                    }
+                    await self.config.guild(message.guild).active_suggestions.set(active_suggestions)
+                    
+                    # Update analytics
+                    analytics = await self.config.guild(message.guild).analytics()
+                    
+                    # Increment total submitted
+                    analytics["total_submitted"] += 1
+                    
+                    # Update by_user count
+                    user_id_str = str(message.author.id)
+                    analytics["by_user"][user_id_str] = analytics["by_user"].get(user_id_str, 0) + 1
+                    
+                    # Update by_tag count
+                    for tag in tags:
+                        analytics["by_tag"][tag] = analytics["by_tag"].get(tag, 0) + 1
+                        
+                    await self.config.guild(message.guild).analytics.set(analytics)
+                    
+                    # Set cooldown for the user
+                    if settings["cooldown_minutes"] > 0:
+                        # Check if user is exempt from cooldown
+                        exempt = False
+                        for role_id in settings["exempt_roles"]:
+                            role = message.guild.get_role(role_id)
+                            if role and role in message.author.roles:
+                                exempt = True
+                                break
+                                
+                        # If not exempt, set cooldown
+                        if not exempt:
+                            cooldowns = settings["user_cooldowns"]
+                            now = datetime.now()
+                            next_allowed = now + timedelta(minutes=settings["cooldown_minutes"])
+                            
+                            cooldowns[str(message.author.id)] = next_allowed.timestamp()
+                            await self.config.guild(message.guild).user_cooldowns.set(cooldowns)
+                    
+                    # Notify the user that their suggestion was created
+                    try:
+                        embed = discord.Embed(
+                            title="Suggestion Submitted",
+                            description=f"Your suggestion has been submitted for community voting!",
+                            color=discord.Color.green(),
+                            timestamp=datetime.now()
+                        )
+                        embed.add_field(name="Suggestion", value=content, inline=False)
+                        
+                        if tags:
+                            embed.add_field(name="Tags", value=", ".join(tags), inline=False)
+                            
+                        embed.add_field(name="View Thread", value=f"[Click here]({starter_message.jump_url})", inline=False)
+                        embed.add_field(
+                            name="What happens next?", 
+                            value=(
+                                f"- Other users will vote on your suggestion with {settings['upvote_emoji']} or {settings['downvote_emoji']}\n"
+                                f"- If it receives {settings['required_upvotes']} upvotes, it will be reviewed by staff\n"
+                                f"- If it receives {settings['required_downvotes']} downvotes, it may be automatically deleted\n"
+                                f"- Submitting inappropriate suggestions may result in being blacklisted"
+                            ),
+                            inline=False
+                        )
+                        
+                        if settings["cooldown_minutes"] > 0:
+                            exempt = False
+                            for role_id in settings["exempt_roles"]:
+                                role = message.guild.get_role(role_id)
+                                if role and role in message.author.roles:
+                                    exempt = True
+                                    break
+                                    
+                            if not exempt:
+                                next_allowed = datetime.now() + timedelta(minutes=settings["cooldown_minutes"])
+                                embed.add_field(
+                                    name="Cooldown",
+                                    value=f"You can submit another suggestion after {next_allowed.strftime('%Y-%m-%d %H:%M:%S')}",
+                                    inline=False
+                                )
+                        
+                        await message.author.send(embed=embed)
+                    except (discord.Forbidden, discord.HTTPException):
+                        # Cannot DM the user, continue silently
+                        pass
+            
+            except discord.HTTPException as e:
+                # Log the error
+                print(f"Error creating suggestion: {str(e)}")
         
         # Add reactions to forum posts in the user forum
         elif isinstance(message.channel, discord.Thread) and message.channel.parent_id == settings["user_forum_id"]:
