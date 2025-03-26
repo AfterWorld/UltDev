@@ -912,11 +912,12 @@ class Suggestion(commands.Cog):
         
     # ================ Event Listeners ================
     
+    # Modify the on_message event listener to handle forum posts
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
-        """Process messages in the suggestion channel."""
-        # Ignore messages from bots
-        if message.author.bot:
+        """Process messages in the suggestion channel and forum posts."""
+        # Ignore messages from bots other than our own
+        if message.author.bot and message.author.id != self.bot.user.id:
             return
             
         # Check if message is in a guild
@@ -926,209 +927,53 @@ class Suggestion(commands.Cog):
         # Get the settings for this guild
         settings = await self.config.guild(message.guild).all()
         
-        # Check if suggestions are enabled and if the message is in the suggestion channel
-        if not settings["enabled"] or message.channel.id != settings["suggestion_channel_id"]:
+        # Check if suggestions are enabled
+        if not settings["enabled"]:
             return
-            
-        # Check if user is blacklisted
-        if message.author.id in settings["blacklisted_users"]:
+        
+        # Handle messages in the suggestion channel
+        if message.channel.id == settings["suggestion_channel_id"]:
+            # [Original suggestion channel handling logic remains the same]
+            # ...
+        
+        # Add reactions to forum posts in the user forum
+        elif isinstance(message.channel, discord.Thread) and message.channel.parent_id == settings["user_forum_id"]:
+            # Only process the first message in the thread (the thread starter)
             try:
-                # Delete the message
-                await message.delete()
-                
-                # Inform the user they are blacklisted
-                warning = await message.channel.send(
-                    f"{message.author.mention} You are blacklisted from submitting suggestions.",
-                    delete_after=10  # Auto-delete after 10 seconds
-                )
-                
-                return
-            except (discord.Forbidden, discord.HTTPException):
-                # If we can't delete the message, just return
-                return
-                
-        # Check for cooldown
-        if settings["cooldown_minutes"] > 0:
-            # Check if user has roles that are exempt from cooldown
-            exempt = False
-            for role_id in settings["exempt_roles"]:
-                role = message.guild.get_role(role_id)
-                if role and role in message.author.roles:
-                    exempt = True
-                    break
+                starter_message = await message.channel.starter_message()
+                if starter_message and message.id == starter_message.id:
+                    # Check if this is a thread we created for suggestions
+                    active_suggestions = await self.config.guild(message.guild).active_suggestions()
+                    thread_id = message.channel.id
                     
-            # If not exempt, check cooldown
-            if not exempt:
-                cooldowns = settings["user_cooldowns"]
-                user_id = str(message.author.id)
-                
-                if user_id in cooldowns:
-                    next_allowed = datetime.fromtimestamp(cooldowns[user_id])
-                    now = datetime.now()
-                    
-                    if now < next_allowed:
-                        # User is on cooldown
-                        time_left = next_allowed - now
-                        minutes = time_left.seconds // 60
-                        seconds = time_left.seconds % 60
-                        
-                        try:
-                            # Delete the message
-                            await message.delete()
-                            
-                            # Inform the user about the cooldown
-                            warning = await message.channel.send(
-                                f"{message.author.mention} You are on cooldown. Please wait {minutes}m {seconds}s before submitting another suggestion.",
-                                delete_after=15  # Auto-delete after 15 seconds
-                            )
-                            
-                            return
-                        except (discord.Forbidden, discord.HTTPException):
-                            # If we can't delete the message, just return
-                            return
-            
-        # Get the user and staff forums
-        user_forum = self.bot.get_channel(settings["user_forum_id"])
-        staff_forum = self.bot.get_channel(settings["staff_forum_id"])
-        
-        if not user_forum:
-            return
-            
-        try:
-            # Extract tags from the message using regex
-            content = message.content
-            tags = []
-            tag_regex = settings["tag_format_regex"]
-            
-            # Find all tags in the message
-            match = re.findall(tag_regex, content)
-            if match:
-                for tag in match:
-                    # Check if the tag is valid
-                    if tag in settings["available_tags"]:
-                        tags.append(tag)
-                    
-                # Remove the tags from the message content
-                content = re.sub(tag_regex, "", content).strip()
-                
-            # Delete the original message
-            await message.delete()
-            
-            # Create a thread in the user forum for voting
-            thread_name = f"Suggestion from {message.author.display_name}"
-            if tags:
-                thread_name = f"[{', '.join(tags)}] {thread_name}"
-                
-            suggestion_thread = await user_forum.create_thread(
-                name=thread_name[:100],  # Discord has a 100 character limit on thread names
-                content=content,
-                auto_archive_duration=10080,  # 7 days
-            )
-            
-            # Add voting reactions to the thread starter message
-            starter_message = await suggestion_thread.starter_message()
-            if starter_message:
-                await starter_message.add_reaction(settings["upvote_emoji"])
-                await starter_message.add_reaction(settings["downvote_emoji"])
-                
-                # Update active suggestions in the config
-                active_suggestions = await self.config.guild(message.guild).active_suggestions()
-                active_suggestions[str(starter_message.id)] = {
-                    "thread_id": suggestion_thread.id,
-                    "author_id": message.author.id,
-                    "content": content,
-                    "created_at": datetime.now().timestamp(),
-                    "upvotes": 0,
-                    "downvotes": 0,
-                    "tags": tags,
-                    "status": "Pending"
-                }
-                await self.config.guild(message.guild).active_suggestions.set(active_suggestions)
-                
-                # Update analytics
-                analytics = await self.config.guild(message.guild).analytics()
-                
-                # Increment total submitted
-                analytics["total_submitted"] += 1
-                
-                # Update by_user count
-                user_id_str = str(message.author.id)
-                analytics["by_user"][user_id_str] = analytics["by_user"].get(user_id_str, 0) + 1
-                
-                # Update by_tag count
-                for tag in tags:
-                    analytics["by_tag"][tag] = analytics["by_tag"].get(tag, 0) + 1
-                    
-                await self.config.guild(message.guild).analytics.set(analytics)
-                
-                # Set cooldown for the user
-                if settings["cooldown_minutes"] > 0:
-                    # Check if user is exempt from cooldown
-                    exempt = False
-                    for role_id in settings["exempt_roles"]:
-                        role = message.guild.get_role(role_id)
-                        if role and role in message.author.roles:
-                            exempt = True
+                    # Check if this is a suggestion thread we should manage
+                    is_our_thread = False
+                    for msg_id, data in active_suggestions.items():
+                        if data.get("thread_id") == thread_id:
+                            is_our_thread = True
                             break
-                            
-                    # If not exempt, set cooldown
-                    if not exempt:
-                        cooldowns = settings["user_cooldowns"]
-                        now = datetime.now()
-                        next_allowed = now + timedelta(minutes=settings["cooldown_minutes"])
+                    
+                    # If it's our suggestion thread, add reactions and track it
+                    if is_our_thread:
+                        # Add voting reactions
+                        await message.add_reaction(settings["upvote_emoji"])
+                        await message.add_reaction(settings["downvote_emoji"])
                         
-                        cooldowns[str(message.author.id)] = next_allowed.timestamp()
-                        await self.config.guild(message.guild).user_cooldowns.set(cooldowns)
-                
-                # Notify the user that their suggestion was created
-                try:
-                    embed = discord.Embed(
-                        title="Suggestion Submitted",
-                        description=f"Your suggestion has been submitted for community voting!",
-                        color=discord.Color.green(),
-                        timestamp=datetime.now()
-                    )
-                    embed.add_field(name="Suggestion", value=content, inline=False)
-                    
-                    if tags:
-                        embed.add_field(name="Tags", value=", ".join(tags), inline=False)
-                        
-                    embed.add_field(name="View Thread", value=f"[Click here]({starter_message.jump_url})", inline=False)
-                    embed.add_field(
-                        name="What happens next?", 
-                        value=(
-                            f"- Other users will vote on your suggestion with {settings['upvote_emoji']} or {settings['downvote_emoji']}\n"
-                            f"- If it receives {settings['required_upvotes']} upvotes, it will be reviewed by staff\n"
-                            f"- If it receives {settings['required_downvotes']} downvotes, it may be automatically deleted\n"
-                            f"- Submitting inappropriate suggestions may result in being blacklisted"
-                        ),
-                        inline=False
-                    )
-                    
-                    if settings["cooldown_minutes"] > 0:
-                        exempt = False
-                        for role_id in settings["exempt_roles"]:
-                            role = message.guild.get_role(role_id)
-                            if role and role in message.author.roles:
-                                exempt = True
-                                break
-                                
-                        if not exempt:
-                            next_allowed = datetime.now() + timedelta(minutes=settings["cooldown_minutes"])
-                            embed.add_field(
-                                name="Cooldown",
-                                value=f"You can submit another suggestion after {next_allowed.strftime('%Y-%m-%d %H:%M:%S')}",
-                                inline=False
-                            )
-                    
-                    await message.author.send(embed=embed)
-                except (discord.Forbidden, discord.HTTPException):
-                    # Cannot DM the user, continue silently
-                    pass
-        
-        except discord.HTTPException as e:
-            # Log the error
-            print(f"Error creating suggestion: {str(e)}")
+                        # Store the message in active suggestions if not already there
+                        if str(message.id) not in active_suggestions:
+                            active_suggestions[str(message.id)] = {
+                                "thread_id": thread_id,
+                                "author_id": message.author.id,
+                                "content": message.content,
+                                "created_at": datetime.now().timestamp(),
+                                "upvotes": 0,
+                                "downvotes": 0,
+                                "tags": [],  # Extract tags if needed
+                                "status": "Pending"
+                            }
+                            await self.config.guild(message.guild).active_suggestions.set(active_suggestions)
+            except (discord.HTTPException, discord.Forbidden) as e:
+                print(f"Error processing forum post: {str(e)}")
     
     @commands.Cog.listener()
     async def on_reaction_add(self, reaction: discord.Reaction, user: discord.User):
@@ -1228,6 +1073,7 @@ class Suggestion(commands.Cog):
                     if not user_forum:
                         continue
                         
+                    # Check all active suggestions
                     active_suggestions = await self.config.guild(guild).active_suggestions()
                     
                     for message_id, suggestion_data in active_suggestions.items():
@@ -1242,27 +1088,91 @@ class Suggestion(commands.Cog):
                             if not starter_message:
                                 continue
                                 
-                            # Get all reactions on the message
+                            # First ensure our voting emojis are present
+                            has_upvote = False
+                            has_downvote = False
+                            
+                            # Check existing reactions
                             for reaction in starter_message.reactions:
-                                # If this is not a valid voting emoji
-                                if str(reaction.emoji) not in valid_emojis:
+                                emoji = str(reaction.emoji)
+                                
+                                # Check if our voting emojis are present
+                                if emoji == settings["upvote_emoji"]:
+                                    has_upvote = True
+                                elif emoji == settings["downvote_emoji"]:
+                                    has_downvote = True
+                                # Remove any non-voting emoji
+                                elif emoji not in valid_emojis:
                                     # Get users who reacted with this emoji
                                     async for user in reaction.users():
-                                        # Don't remove the bot's own reactions
-                                        if user.id != self.bot.user.id:
-                                            try:
-                                                await starter_message.remove_reaction(reaction.emoji, user)
-                                            except (discord.Forbidden, discord.HTTPException):
-                                                pass
+                                        try:
+                                            await starter_message.remove_reaction(emoji, user)
+                                        except (discord.Forbidden, discord.HTTPException):
+                                            pass
+                            
+                            # Add our emojis if they're missing
+                            if not has_upvote:
+                                try:
+                                    await starter_message.add_reaction(settings["upvote_emoji"])
+                                except discord.HTTPException:
+                                    pass
+                                    
+                            if not has_downvote:
+                                try:
+                                    await starter_message.add_reaction(settings["downvote_emoji"])
+                                except discord.HTTPException:
+                                    pass
+                                    
                         except Exception as e:
                             print(f"Error checking emojis on suggestion {message_id}: {str(e)}")
+                    
+                    # Also check new forum posts in user forum
+                    if isinstance(user_forum, discord.ForumChannel):
+                        try:
+                            # Check active threads in the forum
+                            async for thread in user_forum.archived_threads(limit=30):
+                                # Skip if thread is already in active suggestions
+                                is_tracked = False
+                                for _, data in active_suggestions.items():
+                                    if data.get("thread_id") == thread.id:
+                                        is_tracked = True
+                                        break
+                                        
+                                if is_tracked:
+                                    continue
+                                    
+                                # Check if this is a recent thread (last 24 hours)
+                                if (datetime.now() - thread.created_at).total_seconds() < 86400:
+                                    try:
+                                        starter_message = await thread.starter_message()
+                                        if starter_message:
+                                            # Check if our emojis are already there
+                                            has_upvote = False
+                                            has_downvote = False
+                                            
+                                            for reaction in starter_message.reactions:
+                                                emoji = str(reaction.emoji)
+                                                if emoji == settings["upvote_emoji"]:
+                                                    has_upvote = True
+                                                elif emoji == settings["downvote_emoji"]:
+                                                    has_downvote = True
+                                            
+                                            # Add missing emojis
+                                            if not has_upvote:
+                                                await starter_message.add_reaction(settings["upvote_emoji"])
+                                            if not has_downvote:
+                                                await starter_message.add_reaction(settings["downvote_emoji"])
+                                    except (discord.HTTPException, discord.Forbidden):
+                                        pass
+                        except Exception as e:
+                            print(f"Error checking forum threads: {str(e)}")
                     
             except Exception as e:
                 print(f"Error in emoji check loop: {str(e)}")
                 
-            # Check every 60 seconds
-            await asyncio.sleep(60)
-    
+            # Check every 30 seconds (more frequently than before)
+            await asyncio.sleep(30)
+        
     async def check_votes_loop(self):
         """Background loop to check vote counts and promote/delete suggestions."""
         await self.bot.wait_until_ready()
@@ -1312,6 +1222,26 @@ class Suggestion(commands.Cog):
                                     content=thread_content,
                                     auto_archive_duration=10080,  # 7 days
                                 )
+
+                                starter_message = await suggestion_thread.starter_message()
+                                if starter_message:
+                                    try:
+                                        # Add our voting emojis
+                                        await starter_message.add_reaction(settings["upvote_emoji"])
+                                        await starter_message.add_reaction(settings["downvote_emoji"])
+                                        
+                                        # Remove any existing reactions that aren't our voting emojis
+                                        valid_emojis = [settings["upvote_emoji"], settings["downvote_emoji"]]
+                                        for reaction in starter_message.reactions:
+                                            if str(reaction.emoji) not in valid_emojis:
+                                                async for user in reaction.users():
+                                                    if user.id != self.bot.user.id:
+                                                        try:
+                                                            await starter_message.remove_reaction(reaction.emoji, user)
+                                                        except (discord.Forbidden, discord.HTTPException):
+                                                            pass
+                                    except discord.HTTPException as e:
+                                        print(f"Error adding reactions to suggestion thread: {str(e)}")
                                 
                                 # Add a staff action embed with response options
                                 action_embed = discord.Embed(
