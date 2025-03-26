@@ -1010,7 +1010,7 @@ class Suggestion(commands.Cog):
                         # Check if the tag is valid
                         if tag in settings["available_tags"]:
                             tags.append(tag)
-                        
+                    
                     # Remove the tags from the message content
                     content = re.sub(tag_regex, "", content).strip()
                     
@@ -1027,17 +1027,25 @@ class Suggestion(commands.Cog):
                 if isinstance(user_forum, discord.ForumChannel) and hasattr(user_forum, "available_tags"):
                     for tag_name in tags:
                         # Find matching forum tags by name
-                        matching_tag = discord.utils.get(user_forum.available_tags, name=tag_name)
-                        if matching_tag:
-                            forum_tags.append(matching_tag.id)
+                        for forum_tag in user_forum.available_tags:
+                            if forum_tag.name.lower() == tag_name.lower():
+                                forum_tags.append(forum_tag.id)
+                                break
                 
                 # Create the thread with proper API params
-                suggestion_thread = await user_forum.create_thread(
-                    name=thread_name[:100],  # Discord has a 100 character limit on thread names
-                    content=content,
-                    auto_archive_duration=10080,  # 7 days
-                    applied_tags=forum_tags if forum_tags else None
-                )
+                if forum_tags:
+                    suggestion_thread = await user_forum.create_thread(
+                        name=thread_name[:100],  # Discord has a 100 character limit on thread names
+                        content=content,
+                        auto_archive_duration=10080,  # 7 days
+                        applied_tags=forum_tags
+                    )
+                else:
+                    suggestion_thread = await user_forum.create_thread(
+                        name=thread_name[:100],  # Discord has a 100 character limit on thread names
+                        content=content,
+                        auto_archive_duration=10080  # 7 days
+                    )
                 
                 # Wait a short moment for Discord to process
                 await asyncio.sleep(1)
