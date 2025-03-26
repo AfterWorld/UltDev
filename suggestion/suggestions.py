@@ -1028,40 +1028,64 @@ class Suggestion(commands.Cog):
                     auto_archive_duration=10080,  # 7 days
                 )
                 
+                # Wait a short time for Discord to fully create the thread
+                await asyncio.sleep(1)
+                
                 # Add voting reactions to the thread starter message
-                starter_message = await suggestion_thread.starter_message()
-                if starter_message:
-                    try:
+                try:
+                    # Try multiple times to get the starter message, as it might not be immediately available
+                    starter_message = None
+                    for attempt in range(3):
+                        starter_message = await suggestion_thread.starter_message()
+                        if starter_message:
+                            break
+                        await asyncio.sleep(1)  # Wait a bit between attempts
+                
+                    if starter_message:
                         # Add our voting emojis
                         await starter_message.add_reaction(settings["upvote_emoji"])
                         await starter_message.add_reaction(settings["downvote_emoji"])
                         
-                        # Remove any existing reactions that aren't our voting emojis
-                        valid_emojis = [settings["upvote_emoji"], settings["downvote_emoji"]]
-                        for reaction in starter_message.reactions:
-                            if str(reaction.emoji) not in valid_emojis:
-                                async for user in reaction.users():
-                                    if user.id != self.bot.user.id:
-                                        try:
-                                            await starter_message.remove_reaction(reaction.emoji, user)
-                                        except (discord.Forbidden, discord.HTTPException):
-                                            pass
-                    except discord.HTTPException as e:
-                        print(f"Error adding reactions to suggestion thread: {str(e)}")
-                    
-                    # Update active suggestions in the config
-                    active_suggestions = await self.config.guild(message.guild).active_suggestions()
-                    active_suggestions[str(starter_message.id)] = {
-                        "thread_id": suggestion_thread.id,
-                        "author_id": message.author.id,
-                        "content": content,
-                        "created_at": datetime.now().timestamp(),
-                        "upvotes": 0,
-                        "downvotes": 0,
-                        "tags": tags,
-                        "status": "Pending"
-                    }
-                    await self.config.guild(message.guild).active_suggestions.set(active_suggestions)
+                        # Update active suggestions in the config
+                        active_suggestions = await self.config.guild(message.guild).active_suggestions()
+                        active_suggestions[str(starter_message.id)] = {
+                            "thread_id": suggestion_thread.id,
+                            "author_id": message.author.id,
+                            "content": content,
+                            "created_at": datetime.now().timestamp(),
+                            "upvotes": 0,
+                            "downvotes": 0,
+                            "tags": tags,
+                            "status": "Pending"
+                        }
+                        await self.config.guild(message.guild).active_suggestions.set(active_suggestions)
+                    else:
+                        # Fallback: if we still can't get the starter message, try to get the first message in the thread
+                        print(f"Could not get starter message for thread {suggestion_thread.id}, trying to get first message")
+                        async for first_msg in suggestion_thread.history(limit=1, oldest_first=True):
+                            starter_message = first_msg
+                            break
+                            
+                        if starter_message:
+                            # Add our voting emojis
+                            await starter_message.add_reaction(settings["upvote_emoji"])
+                            await starter_message.add_reaction(settings["downvote_emoji"])
+                            
+                            # Update active suggestions in the config
+                            active_suggestions = await self.config.guild(message.guild).active_suggestions()
+                            active_suggestions[str(starter_message.id)] = {
+                                "thread_id": suggestion_thread.id,
+                                "author_id": message.author.id,
+                                "content": content,
+                                "created_at": datetime.now().timestamp(),
+                                "upvotes": 0,
+                                "downvotes": 0,
+                                "tags": tags,
+                                "status": "Pending"
+                            }
+                            await self.config.guild(message.guild).active_suggestions.set(active_suggestions)
+                        else:
+                            print(f"Failed to find any messages in the thread {suggestion_thread.id}")
                     
                     # Update analytics
                     analytics = await self.config.guild(message.guild).analytics()
@@ -1111,7 +1135,11 @@ class Suggestion(commands.Cog):
                         if tags:
                             embed.add_field(name="Tags", value=", ".join(tags), inline=False)
                             
-                        embed.add_field(name="View Thread", value=f"[Click here]({starter_message.jump_url})", inline=False)
+                        if starter_message:
+                            embed.add_field(name="View Thread", value=f"[Click here]({starter_message.jump_url})", inline=False)
+                        else:
+                            embed.add_field(name="View Thread", value=f"[Click here]({suggestion_thread.jump_url})", inline=False)
+                            
                         embed.add_field(
                             name="What happens next?", 
                             value=(
@@ -1143,6 +1171,10 @@ class Suggestion(commands.Cog):
                     except (discord.Forbidden, discord.HTTPException):
                         # Cannot DM the user, continue silently
                         pass
+                
+                except discord.HTTPException as e:
+                    # Log the error
+                    print(f"Error processing forum thread: {str(e)}")
             
             except discord.HTTPException as e:
                 # Log the error
