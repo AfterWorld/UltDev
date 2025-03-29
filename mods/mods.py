@@ -1,10 +1,11 @@
-from redbot.core import commands, Config
-from discord import Embed, Member, TextChannel
+from redbot.core import commands, Config, checks
+from discord import Embed, Member, TextChannel, Role
 from datetime import datetime, timedelta
 import discord
 import asyncio
 import time
 from collections import deque
+from typing import Optional
 
 class Moderation(commands.Cog):
     """Enhanced moderation cog with point-based warning system."""
@@ -17,6 +18,7 @@ class Moderation(commands.Cog):
         default_guild = {
             "log_channel": None,
             "mute_role": None,
+            "staff_role": None,  # Added staff role configuration
             "warning_expiry_days": 30,  # Default warning expiry time in days
             "action_thresholds": {
                 # Format: "points": {"action": "action_type", "duration": duration_in_minutes, "reason": "reason"}
@@ -53,6 +55,21 @@ class Moderation(commands.Cog):
         """Called when the cog is unloaded."""
         self.warning_cleanup_task.cancel()
         self.unmute_check_task.cancel()
+
+    # Add a custom check for staff members
+    async def is_staff_or_admin(self, ctx):
+        """Check if the user is staff, has manage_roles, or is admin/mod."""
+        if ctx.author.guild_permissions.administrator or ctx.author.guild_permissions.manage_roles:
+            return True
+            
+        # Check for staff role
+        staff_role_id = await self.config.guild(ctx.guild).staff_role()
+        if staff_role_id:
+            staff_role = ctx.guild.get_role(staff_role_id)
+            if staff_role and staff_role in ctx.author.roles:
+                return True
+                
+        return False
 
     async def check_mutes(self):
         """Background task to check and remove expired mutes."""
@@ -254,6 +271,26 @@ class Moderation(commands.Cog):
         if ctx.invoked_subcommand is None:
             await ctx.send_help(ctx.command)
 
+    @caution_settings.command(name="staffrole")
+    @commands.admin_or_permissions(administrator=True)
+    async def set_staff_role(self, ctx, role: Optional[Role] = None):
+        """Set the staff role that can use moderation commands."""
+        if role is None:
+            # If no role is provided, show the current staff role
+            current_role_id = await self.config.guild(ctx.guild).staff_role()
+            if current_role_id:
+                current_role = ctx.guild.get_role(current_role_id)
+                if current_role:
+                    await ctx.send(f"Current staff role: {current_role.mention}")
+                else:
+                    await ctx.send("Staff role is set but could not be found (it may have been deleted)")
+            else:
+                await ctx.send("No staff role is currently set.")
+            return
+            
+        await self.config.guild(ctx.guild).staff_role.set(role.id)
+        await ctx.send(f"Staff role set to {role.mention}")
+
     @caution_settings.command(name="expiry")
     async def set_warning_expiry(self, ctx, days: int):
         """Set how many days until warnings expire automatically."""
@@ -352,7 +389,7 @@ class Moderation(commands.Cog):
         await ctx.send(f"Log channel set to {channel.mention}")
 
     @commands.command(name="caution")
-    @commands.has_permissions(manage_roles=True)
+    @commands.check(is_staff_or_admin)
     async def warn_member(self, ctx, member: Member, points: int = 1, *, reason: str = None):
         """
         Issue a caution/warning to a member with optional point value.
@@ -518,7 +555,7 @@ class Moderation(commands.Cog):
             print(f"Error in apply_threshold_action: {e}")
 
     @commands.command(name="quiet")
-    @commands.has_permissions(manage_roles=True)
+    @commands.check(is_staff_or_admin)
     async def mute_member(self, ctx, member: Member, duration: int = 30, *, reason: str = None):
         """Mute a member for the specified duration (in minutes)."""
         try:
@@ -679,7 +716,7 @@ class Moderation(commands.Cog):
                     await self.safe_send_message(log_channel, f"Error unmuting {member.mention}: {str(e)}")
 
     @commands.command(name="unquiet")
-    @commands.has_permissions(manage_roles=True)
+    @commands.check(is_staff_or_admin)
     async def custom_unmute(self, ctx, member: Member):
         """Unmute a member."""
         mute_role = await self.get_mute_role(ctx.guild)
@@ -695,14 +732,17 @@ class Moderation(commands.Cog):
     async def list_warnings(self, ctx, member: Member = None):
         """
         List all active warnings for a member.
-        Moderators can check other members. Members can check themselves.
+        Members can check themselves, staff can check other members.
         """
         if member is None:
             member = ctx.author
         
         # Check permissions if checking someone else
-        if member != ctx.author and not ctx.author.guild_permissions.manage_roles:
-            return await ctx.send("You don't have permission to view other members' warnings.")
+        if member != ctx.author:
+            # Check if user has staff role or management permissions
+            is_staff = await self.is_staff_or_admin(ctx)
+            if not is_staff:
+                return await ctx.send("You don't have permission to view other members' warnings.")
         
         # Get member data
         guild_data = await self.config.guild(ctx.guild).all()
@@ -743,7 +783,7 @@ class Moderation(commands.Cog):
         await ctx.send(embed=embed)
 
     @commands.command(name="clearcautions")
-    @commands.has_permissions(manage_roles=True)
+    @commands.check(is_staff_or_admin)
     async def clear_warnings(self, ctx, member: Member):
         """Clear all warnings from a member."""
         # Get member data
@@ -770,7 +810,7 @@ class Moderation(commands.Cog):
             await ctx.send(f"{member.mention} has no warnings to clear.")
 
     @commands.command(name="removecaution")
-    @commands.has_permissions(manage_roles=True)
+    @commands.check(is_staff_or_admin)
     async def remove_warning(self, ctx, member: Member, warning_index: int):
         """Remove a specific warning from a member by index (use 'cautions' to see indexes)."""
         if warning_index < 1:
