@@ -832,7 +832,15 @@ class Prune(commands.Cog):
             await self.config.guild(ctx.guild).silenced_role.set(None)
             await ctx.send("Silenced role configuration removed.")
 
-"""
+    @pruneset.command(name="levelrole")
+    async def set_level_role(self, ctx: commands.Context, level: str, role: discord.Role = None):
+        """Set a custom role for a lockdown level.
+        
+        Examples:
+        - `.pruneset levelrole 5 @Level5Role` - Set custom role for level 5
+        - `.pruneset levelrole staff @StaffRole` - Set custom staff role
+        - `.pruneset levelrole 5` - Remove custom role for level 5
+        """
         try:
             lockdown_level = LockdownLevel(level.lower())
         except ValueError:
