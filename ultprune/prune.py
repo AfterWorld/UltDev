@@ -441,15 +441,37 @@ class Prune(commands.Cog):
         - `.prune @user 200 #channel` - Delete the last 200 messages from a user in a specific channel
         - `.prune @user 15 #channel keyword` - Delete messages containing the keyword
         """
-        if isinstance(amount_or_user, int):
-            await self.simple_purge(ctx, amount_or_user)
-        elif isinstance(amount_or_user, discord.Member):
+        # Check if it's a Member object (user mention or user object)
+        if isinstance(amount_or_user, discord.Member):
             if amount_if_user is None:
                 await ctx.send("Please specify the number of messages to delete.\nUsage: `.prune @user 100`")
                 return
             await self.targeted_prune(ctx, amount_or_user, amount_if_user, channel, keyword)
+        # Check if it's an integer that could be a reasonable message count (not a user ID)
+        elif isinstance(amount_or_user, int) and amount_or_user <= 10000:
+            # This is likely a message count for bulk purge
+            await self.simple_purge(ctx, amount_or_user)
         else:
-            await ctx.send("Invalid parameters. Use `.prune 15` or `.prune @user 100`.")
+            # Large integers are likely user IDs that failed to convert to Member
+            await ctx.send("Invalid parameters. Use `.prune 15` for bulk deletion or `.prune @user 100` for targeted deletion.\n"
+                          "Make sure to mention the user properly with @ or use their current username.")
+
+    @commands.cooldown(1, 5, commands.BucketType.user)
+    @commands.max_concurrency(2, commands.BucketType.guild)
+    @commands.mod()
+    @commands.guild_only()
+    @commands.command()
+    async def pruneuser(self, ctx: commands.Context, user: discord.Member, amount: int, 
+                       channel: Optional[discord.TextChannel] = None, *, keyword: Optional[str] = None):
+        """
+        Delete messages from a specific user (alternative command with clearer syntax).
+        
+        Examples:
+        - `.pruneuser @user 100` - Delete 100 messages from user
+        - `.pruneuser @user 50 #channel` - Delete 50 messages from user in specific channel
+        - `.pruneuser @user 25 #channel keyword` - Delete messages containing keyword
+        """
+        await self.targeted_prune(ctx, user, amount, channel, keyword)
 
     async def simple_purge(self, ctx: commands.Context, amount: int):
         """Delete a specific number of recent messages in a channel."""
@@ -522,10 +544,13 @@ class Prune(commands.Cog):
             
         async with ctx.typing():
             def check(msg):
+                # Don't delete the command message itself
                 if msg.id == ctx.message.id:
                     return False
+                # Only delete messages from the specified user
                 if msg.author.id != user.id:
                     return False
+                # If keyword is specified, only delete messages containing it
                 if keyword and keyword.lower() not in msg.content.lower():
                     return False
                 return True
@@ -533,14 +558,28 @@ class Prune(commands.Cog):
             messages_to_delete = []
             search_limit = min(Constants.REASONABLE_SEARCH_LIMIT, amount * Constants.SEARCH_LIMIT_MULTIPLIER)
             
+            # Debug: Let's add some logging to see what's happening
+            found_user_messages = 0
+            total_checked = 0
+            
             async for message in channel.history(limit=search_limit):
-                if check(message):
-                    messages_to_delete.append(message)
-                    if len(messages_to_delete) >= amount:
-                        break
+                total_checked += 1
+                if message.author.id == user.id:
+                    found_user_messages += 1
+                    if check(message):
+                        messages_to_delete.append(message)
+                        if len(messages_to_delete) >= amount:
+                            break
             
             if not messages_to_delete:
-                return await ctx.send(f"No messages from {user.mention} found matching the criteria.")
+                # Provide more detailed feedback
+                if found_user_messages == 0:
+                    return await ctx.send(f"No messages from {user.mention} found in {channel.mention}. "
+                                        f"Searched through the last {total_checked} messages.")
+                elif keyword:
+                    return await ctx.send(f"Found {found_user_messages} messages from {user.mention} but none containing '{keyword}' in {channel.mention}.")
+                else:
+                    return await ctx.send(f"Found {found_user_messages} messages from {user.mention} but couldn't delete them. They might be too old or protected.")
 
             # Create log entries
             log_entries = [
@@ -793,15 +832,7 @@ class Prune(commands.Cog):
             await self.config.guild(ctx.guild).silenced_role.set(None)
             await ctx.send("Silenced role configuration removed.")
 
-    @pruneset.command(name="levelrole")
-    async def set_level_role(self, ctx: commands.Context, level: str, role: discord.Role = None):
-        """Set a custom role for a lockdown level.
-        
-        Examples:
-        - `.pruneset levelrole 5 @Level5Role` - Set custom role for level 5
-        - `.pruneset levelrole staff @StaffRole` - Set custom staff role
-        - `.pruneset levelrole 5` - Remove custom role for level 5
-        """
+"""
         try:
             lockdown_level = LockdownLevel(level.lower())
         except ValueError:
